@@ -1,18 +1,18 @@
 {
   "name": "Avaliação Pré-Anestésica",
   "short_name": "Pré-Anestésica",
-  "description": "Apoio à decisão clínica — Suporte Anestésico Pré-Cirúrgico",
+  "description": "Triagem pré-anestésica com suporte à decisão clínica",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0a0b0d",
-  "theme_color": "#0a0b0d",
-  "orientation": "portrait-primary",
+  "orientation": "portrait",
+  "background_color": "#000000",
+  "theme_color": "#000000",
   "icons": [
     {
       "src": "https://base44.com/logo_v2.svg",
       "sizes": "any",
       "type": "image/svg+xml",
-      "purpose": "any"
+      "purpose": "any maskable"
     }
   ],
   "share_target": {
@@ -20,9 +20,8 @@
     "method": "POST",
     "enctype": "multipart/form-data",
     "params": {
-      "title": "title",
-      "text": "text",
-      "url": "url",
+      "title": "name",
+      "text": "description",
       "files": [
         {
           "name": "files",

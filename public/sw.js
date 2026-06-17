@@ -1,70 +1,57 @@
-const CACHE_NAME = 'preanestesica-v1';
-
-self.addEventListener('install', (event) => {
+self.addEventListener('install', () => {
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(clients.claim());
 });
 
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Intercept share target POST
   if (url.pathname === '/share' && event.request.method === 'POST') {
-    event.respondWith(
-      (async () => {
-        try {
-          const formData = await event.request.formData();
-          const sharedFiles = [];
-          const sharedText = formData.get('text') || '';
-          const sharedTitle = formData.get('title') || '';
-
-          const files = formData.getAll('files');
-          for (const file of files) {
-            if (file && file.size > 0) {
-              const arrayBuffer = await file.arrayBuffer();
-              sharedFiles.push({
-                name: file.name,
-                type: file.type,
-                size: file.size,
-                data: Array.from(new Uint8Array(arrayBuffer))
-              });
-            }
-          }
-
-          // Store shared data in a client that will be opened
-          const allClients = await self.clients.matchAll({ type: 'window' });
-          if (allClients.length > 0) {
-            allClients[0].postMessage({
-              type: 'SHARED_FILES',
-              text: sharedText || sharedTitle,
-              files: sharedFiles
-            });
-            allClients[0].focus();
-            return Response.redirect('/', 303);
-          }
-
-          // Open new window if none open
-          const newClient = await self.clients.openWindow('/');
-          if (newClient) {
-            // Wait a moment for the page to load then post message
-            setTimeout(() => {
-              newClient.postMessage({
-                type: 'SHARED_FILES',
-                text: sharedText || sharedTitle,
-                files: sharedFiles
-              });
-            }, 1500);
-          }
-
-          return Response.redirect('/', 303);
-        } catch (err) {
-          console.error('Share target error:', err);
-          return Response.redirect('/', 303);
-        }
-      })()
-    );
+    event.respondWith(handleShareTarget(event.request));
   }
 });
+
+async function handleShareTarget(request) {
+  try {
+    const formData = await request.formData();
+    const text = formData.get('description') || '';
+    const rawFiles = formData.getAll('files');
+
+    const files = [];
+    for (const file of rawFiles) {
+      if (file && file.name) {
+        const buffer = await file.arrayBuffer();
+        files.push({
+          name: file.name,
+          type: file.type,
+          data: Array.from(new Uint8Array(buffer))
+        });
+      }
+    }
+
+    const redirectUrl = '/?shared=true';
+
+    // Send data to any open app windows
+    const allClients = await clients.matchAll({ type: 'window' });
+    for (const client of allClients) {
+      client.postMessage({
+        type: 'SHARED_FILES',
+        text: text.toString().trim(),
+        files: files
+      });
+    }
+
+    // If no windows open, open one — data is already in POST
+    if (allClients.length === 0) {
+      await clients.openWindow(redirectUrl);
+    }
+
+    return Response.redirect(redirectUrl, 303);
+  } catch (err) {
+    console.error('Share target error:', err);
+    return Response.redirect('/', 303);
+  }
+}
