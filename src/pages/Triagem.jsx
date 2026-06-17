@@ -10,6 +10,15 @@ import RelatorioTecnico from "@/components/triagem/RelatorioTecnico";
 import BlocoResumo from "@/components/triagem/BlocoResumo";
 import SecurityNotice from "@/components/triagem/SecurityNotice";
 
+const SURGERY_LABELS = {
+  protese_mamaria: "Prótese Mamária",
+  mastopexia: "Mastopexia",
+  abdominoplastia: "Abdominoplastia",
+  lipoaspiracao: "Lipoaspiração",
+  combinada: "Combinada",
+  indefinida: "Não identificada",
+};
+
 export default function Triagem() {
   const [anamnesis, setAnamnesis] = useState("");
   const [files, setFiles] = useState([]);
@@ -39,7 +48,6 @@ export default function Triagem() {
     setResults(null);
 
     try {
-      // Step 1: Upload all files
       setProgressStatus("uploading");
       const fileUrls = [];
       for (const file of files) {
@@ -47,7 +55,6 @@ export default function Triagem() {
         fileUrls.push(file_url);
       }
 
-      // Step 2: Analyze batch - identifies patients and runs triage
       setProgressStatus("analyzing");
       const response = await base44.functions.invoke("analyzeBatch", {
         fileUrls,
@@ -71,14 +78,14 @@ export default function Triagem() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F8F9FA] dark:bg-slate-950">
+    <div className="min-h-screen bg-background">
       <div className="max-w-3xl mx-auto px-4 py-6 sm:py-10">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white mb-1">
+          <h1 className="text-2xl sm:text-3xl font-bold text-foreground mb-1">
             Triagem Pré-Anestésica
           </h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
+          <p className="text-sm text-muted-foreground">
             Cirurgias plásticas eletivas — apoio à decisão clínica
           </p>
         </div>
@@ -90,7 +97,7 @@ export default function Triagem() {
 
         {/* Form Card */}
         {!results && (
-          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm p-5 sm:p-6 mb-6">
+          <div className="bg-card rounded-xl border border-border shadow-sm p-5 sm:p-6 mb-6">
             <div className="space-y-4">
               <FileUploader
                 files={files}
@@ -99,8 +106,8 @@ export default function Triagem() {
               />
 
               <div className="space-y-2">
-                <Label htmlFor="anamnesis" className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                  Anamnese / Observações clínicas <span className="text-slate-400 font-normal">(opcional — aplicado a todos os pacientes)</span>
+                <Label htmlFor="anamnesis" className="text-sm font-medium text-foreground/80">
+                  Anamnese / Observações clínicas <span className="text-muted-foreground font-normal">(opcional — aplicado a todos os pacientes)</span>
                 </Label>
                 <Textarea
                   id="anamnesis"
@@ -109,15 +116,15 @@ export default function Triagem() {
                   onChange={(e) => setAnamnesis(e.target.value)}
                   disabled={analyzing}
                   rows={3}
-                  className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 resize-none"
+                  className="bg-background border-border resize-none"
                 />
               </div>
             </div>
 
             {/* Error */}
             {error && (
-              <div className="mt-4 p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg">
-                <p className="text-sm text-red-700 dark:text-red-400">{error}</p>
+              <div className="mt-4 p-3 bg-destructive/10 border border-destructive/30 rounded-lg">
+                <p className="text-sm text-destructive">{error}</p>
               </div>
             )}
 
@@ -126,7 +133,7 @@ export default function Triagem() {
               <Button
                 onClick={handleAnalyze}
                 disabled={!canAnalyze}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-8 h-11 text-sm font-medium"
+                className="bg-primary hover:bg-primary/90 text-primary-foreground px-8 h-11 text-sm font-medium"
               >
                 Analisar
               </Button>
@@ -141,7 +148,7 @@ export default function Triagem() {
         {results && results.length > 0 && (
           <div className="space-y-8">
             <div className="flex items-center justify-between">
-              <p className="text-sm text-slate-500 dark:text-slate-400">
+              <p className="text-sm text-muted-foreground">
                 {results.length} paciente{results.length > 1 ? "s" : ""} encontrado{results.length > 1 ? "s" : ""}
               </p>
             </div>
@@ -150,33 +157,29 @@ export default function Triagem() {
               <div key={i} className="space-y-4">
                 {/* Patient header */}
                 <div className="flex items-center gap-3 px-1">
-                  <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center text-sm font-bold text-blue-700 dark:text-blue-300">
+                  <div className="w-8 h-8 rounded-full bg-primary/15 flex items-center justify-center text-sm font-bold text-primary">
                     {i + 1}
                   </div>
                   <div>
-                    <h3 className="font-semibold text-slate-800 dark:text-slate-100">
+                    <h3 className="font-semibold text-foreground">
                       {result.patientName}
                     </h3>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
-                      {({protese_mamaria:"Prótese Mamária",mastopexia:"Mastopexia",abdominoplastia:"Abdominoplastia",lipoaspiracao:"Lipoaspiração",combinada:"Combinada",indefinida:"Não identificada"})[result.surgeryType] || result.surgeryType}
+                    <p className="text-xs text-muted-foreground">
+                      {SURGERY_LABELS[result.surgeryType] || result.surgeryType}
                     </p>
                   </div>
                 </div>
 
-                {/* WhatsApp Summary Card */}
                 <BlocoResumo content={result.blocoResumo} patientName={result.patientName} />
-
-                {/* Technical Report Card */}
                 <RelatorioTecnico content={result.relatorioTecnico} patientName={result.patientName} />
               </div>
             ))}
 
-            {/* Nova Triagem */}
             <div className="flex justify-center pt-4">
               <Button
                 onClick={resetAll}
                 variant="outline"
-                className="gap-2 text-slate-600 dark:text-slate-400 border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800"
+                className="gap-2"
               >
                 <RotateCcw className="w-4 h-4" />
                 Nova triagem
@@ -188,14 +191,10 @@ export default function Triagem() {
         {/* No patients found */}
         {results && results.length === 0 && (
           <div className="text-center py-12">
-            <p className="text-slate-500 dark:text-slate-400 mb-4">
+            <p className="text-muted-foreground mb-4">
               Nenhum paciente identificado nos arquivos enviados.
             </p>
-            <Button
-              onClick={resetAll}
-              variant="outline"
-              className="gap-2"
-            >
+            <Button onClick={resetAll} variant="outline" className="gap-2">
               <RotateCcw className="w-4 h-4" />
               Tentar novamente
             </Button>

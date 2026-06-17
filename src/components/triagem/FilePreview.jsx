@@ -27,10 +27,10 @@ export default function FilePreview({ files, onRemove, disabled }) {
         return (
           <div
             key={`${file.name}-${index}`}
-            className="relative group rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 overflow-hidden"
+            className="relative group rounded-lg border border-border bg-card overflow-hidden"
           >
             {isImage ? (
-              <div className="aspect-square flex items-center justify-center bg-slate-100 dark:bg-slate-900">
+              <div className="aspect-square flex items-center justify-center bg-muted">
                 <img
                   src={URL.createObjectURL(file)}
                   alt={file.name}
@@ -38,19 +38,19 @@ export default function FilePreview({ files, onRemove, disabled }) {
                 />
               </div>
             ) : (
-              <div className="aspect-square flex flex-col items-center justify-center gap-2 p-3 bg-slate-50 dark:bg-slate-900">
-                <Icon className="w-8 h-8 text-slate-400 dark:text-slate-500" />
-                <span className="text-xs text-slate-500 dark:text-slate-400 uppercase font-medium">
+              <div className="aspect-square flex flex-col items-center justify-center gap-2 p-3 bg-muted">
+                <Icon className="w-8 h-8 text-muted-foreground" />
+                <span className="text-xs text-muted-foreground uppercase font-medium">
                   {file.name.split(".").pop()}
                 </span>
               </div>
             )}
 
             <div className="p-2">
-              <p className="text-xs text-slate-700 dark:text-slate-300 truncate" title={file.name}>
+              <p className="text-xs text-foreground/80 truncate" title={file.name}>
                 {file.name}
               </p>
-              <p className="text-[10px] text-slate-400 dark:text-slate-500">
+              <p className="text-[10px] text-muted-foreground">
                 {formatSize(file.size)}
               </p>
             </div>
@@ -58,7 +58,7 @@ export default function FilePreview({ files, onRemove, disabled }) {
             {!disabled && (
               <button
                 onClick={() => onRemove(index)}
-                className="absolute top-1 right-1 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                className="absolute top-1 right-1 w-5 h-5 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
               >
                 <X className="w-3 h-3" />
               </button>

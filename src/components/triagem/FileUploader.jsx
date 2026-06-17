@@ -1,9 +1,9 @@
 import { useCallback, useRef, useState } from "react";
-import { Upload, X } from "lucide-react";
+import { Upload } from "lucide-react";
 import FilePreview from "./FilePreview";
 
 const ACCEPTED_TYPES = ".txt,.jpg,.jpeg,.png,.webp,.pdf";
-const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB
+const MAX_FILE_SIZE = 25 * 1024 * 1024;
 
 export default function FileUploader({ files, setFiles, disabled }) {
   const [isDragging, setIsDragging] = useState(false);
@@ -13,27 +13,20 @@ export default function FileUploader({ files, setFiles, disabled }) {
   const validateAndAdd = useCallback((newFiles) => {
     setError("");
     const valid = [];
-
     for (const file of newFiles) {
       const ext = file.name.split(".").pop()?.toLowerCase();
       const allowed = ["txt", "jpg", "jpeg", "png", "webp", "pdf"];
-
       if (!allowed.includes(ext)) {
         setError(`Formato não suportado: ${file.name}`);
         continue;
       }
-
       if (file.size > MAX_FILE_SIZE) {
         setError(`Arquivo muito grande (máx. 25MB): ${file.name}`);
         continue;
       }
-
       valid.push(file);
     }
-
-    if (valid.length > 0) {
-      setFiles((prev) => [...prev, ...valid]);
-    }
+    if (valid.length > 0) setFiles((prev) => [...prev, ...valid]);
   }, [setFiles]);
 
   const handleDrop = useCallback((e) => {
@@ -48,14 +41,10 @@ export default function FileUploader({ files, setFiles, disabled }) {
     if (!disabled) setIsDragging(true);
   }, [disabled]);
 
-  const handleDragLeave = useCallback(() => {
-    setIsDragging(false);
-  }, []);
+  const handleDragLeave = useCallback(() => setIsDragging(false), []);
 
   const handleFileSelect = useCallback((e) => {
-    if (e.target.files?.length) {
-      validateAndAdd(Array.from(e.target.files));
-    }
+    if (e.target.files?.length) validateAndAdd(Array.from(e.target.files));
     e.target.value = "";
   }, [validateAndAdd]);
 
@@ -74,8 +63,8 @@ export default function FileUploader({ files, setFiles, disabled }) {
           relative border-2 border-dashed rounded-xl p-8 text-center cursor-pointer
           transition-all duration-200
           ${isDragging
-            ? "border-blue-500 bg-blue-50 dark:bg-blue-950/20"
-            : "border-slate-300 dark:border-slate-600 hover:border-blue-400 dark:hover:border-blue-500 bg-slate-50 dark:bg-slate-800/50"
+            ? "border-primary bg-primary/10"
+            : "border-border hover:border-primary/60 bg-muted/50"
           }
           ${disabled ? "opacity-50 pointer-events-none" : ""}
         `}
@@ -89,19 +78,16 @@ export default function FileUploader({ files, setFiles, disabled }) {
           className="hidden"
           disabled={disabled}
         />
-
-        <Upload className="w-10 h-10 text-slate-400 dark:text-slate-500 mx-auto mb-3" />
-        <p className="text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">
+        <Upload className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
+        <p className="text-sm font-medium text-foreground/80 mb-1">
           Arraste os arquivos aqui ou clique para selecionar
         </p>
-        <p className="text-xs text-slate-400 dark:text-slate-500">
+        <p className="text-xs text-muted-foreground">
           .txt, .jpg, .jpeg, .png, .webp, .pdf — até 25MB cada
         </p>
       </div>
 
-      {error && (
-        <p className="text-sm text-red-600 dark:text-red-400 px-1">{error}</p>
-      )}
+      {error && <p className="text-sm text-destructive px-1">{error}</p>}
 
       {files.length > 0 && (
         <FilePreview files={files} onRemove={removeFile} disabled={disabled} />
