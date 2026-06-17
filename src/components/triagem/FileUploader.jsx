@@ -1,96 +1,123 @@
-import { useCallback, useRef, useState } from "react";
 import { Upload } from "lucide-react";
-import FilePreview from "./FilePreview";
-
-const ACCEPTED_TYPES = ".txt,.jpg,.jpeg,.png,.webp,.pdf";
-const MAX_FILE_SIZE = 25 * 1024 * 1024;
 
 export default function FileUploader({ files, setFiles, disabled }) {
-  const [isDragging, setIsDragging] = useState(false);
-  const [error, setError] = useState("");
-  const inputRef = useRef(null);
+  const ALLOWED_TYPES = [
+    "image/jpeg", "image/png", "application/pdf",
+    "text/plain", "image/webp", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-excel", "text/csv"
+  ];
+  const MAX_SIZE = 25 * 1024 * 1024;
 
-  const validateAndAdd = useCallback((newFiles) => {
-    setError("");
-    const valid = [];
-    for (const file of newFiles) {
-      const ext = file.name.split(".").pop()?.toLowerCase();
-      const allowed = ["txt", "jpg", "jpeg", "png", "webp", "pdf"];
-      if (!allowed.includes(ext)) {
-        setError(`Formato não suportado: ${file.name}`);
-        continue;
-      }
-      if (file.size > MAX_FILE_SIZE) {
-        setError(`Arquivo muito grande (máx. 25MB): ${file.name}`);
-        continue;
-      }
-      valid.push(file);
+  const validateFile = (file) => {
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      return { valid: false, error: `Tipo não suportado: ${file.name}` };
     }
-    if (valid.length > 0) setFiles((prev) => [...prev, ...valid]);
-  }, [setFiles]);
+    if (file.size > MAX_SIZE) {
+      return { valid: false, error: `Arquivo muito grande (máx 25MB): ${file.name}` };
+    }
+    return { valid: true };
+  };
 
-  const handleDrop = useCallback((e) => {
+  const handleDrop = (e) => {
     e.preventDefault();
-    setIsDragging(false);
     if (disabled) return;
-    validateAndAdd(Array.from(e.dataTransfer.files));
-  }, [disabled, validateAndAdd]);
+    const dropped = Array.from(e.dataTransfer.files);
+    addFiles(dropped);
+  };
 
-  const handleDragOver = useCallback((e) => {
-    e.preventDefault();
-    if (!disabled) setIsDragging(true);
-  }, [disabled]);
-
-  const handleDragLeave = useCallback(() => setIsDragging(false), []);
-
-  const handleFileSelect = useCallback((e) => {
-    if (e.target.files?.length) validateAndAdd(Array.from(e.target.files));
+  const handleSelect = (e) => {
+    if (disabled) return;
+    const selected = Array.from(e.target.files);
+    addFiles(selected);
     e.target.value = "";
-  }, [validateAndAdd]);
+  };
 
-  const removeFile = useCallback((index) => {
-    setFiles((prev) => prev.filter((_, i) => i !== index));
-  }, [setFiles]);
+  const addFiles = (newFiles) => {
+    const valid = [];
+    for (const f of newFiles) {
+      const result = validateFile(f);
+      if (!result.valid) continue;
+      Object.defineProperty(f, 'preview', { value: URL.createObjectURL(f), writable: true });
+      valid.push(f);
+    }
+    setFiles((prev) => [...prev, ...valid]);
+  };
+
+  const removeFile = (index) => {
+    setFiles((prev) => {
+      const updated = [...prev];
+      if (updated[index]?.preview) URL.revokeObjectURL(updated[index].preview);
+      updated.splice(index, 1);
+      return updated;
+    });
+  };
+
+  const formatSize = (bytes) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
+      {/* Drop zone */}
       <div
         onDrop={handleDrop}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onClick={() => !disabled && inputRef.current?.click()}
-        className={`
-          relative border-2 border-dashed rounded-3xl px-6 py-10 sm:p-8 text-center cursor-pointer
-          transition-all duration-300 touch-manipulation min-h-[140px] flex flex-col items-center justify-center
-          ${isDragging
-            ? "border-primary/50 bg-primary/5"
-            : "border-border/50 hover:border-primary/30 bg-muted/20"
-          }
-          ${disabled ? "opacity-50 pointer-events-none" : ""}
-        `}
+        onDragOver={(e) => e.preventDefault()}
+        className={`border-2 border-dashed rounded-2xl p-10 text-center cursor-pointer transition-colors
+          ${disabled ? "opacity-40 cursor-not-allowed border-[#1a1a1a]" : "border-[#2d2d2d] hover:border-[#555]"}
+          bg-[#0a0a0a]`}
+        onClick={() => !disabled && document.getElementById("file-input")?.click()}
       >
+        <Upload className="w-8 h-8 text-[#555] mx-auto mb-4" />
+        <p className="text-xs font-bold text-white uppercase tracking-[0.15em] mb-2">
+          Carregar arquivos
+        </p>
+        <p className="text-[11px] text-[#555]">
+          Arraste arquivos ou toque para selecionar
+        </p>
+        <p className="text-[10px] text-[#444] mt-2">
+          JPEG, PNG, PDF, TXT — até 25MB
+        </p>
         <input
-          ref={inputRef}
+          id="file-input"
           type="file"
-          accept={ACCEPTED_TYPES}
           multiple
-          onChange={handleFileSelect}
+          accept=".jpg,.jpeg,.png,.pdf,.txt,.webp,.xlsx,.xls,.csv"
+          onChange={handleSelect}
           className="hidden"
           disabled={disabled}
         />
-        <Upload className="w-10 h-10 text-muted-foreground/40 mx-auto mb-3" />
-        <p className="text-sm font-medium text-foreground/80 mb-1">
-          Arraste arquivos ou toque para selecionar
-        </p>
-        <p className="text-xs text-muted-foreground">
-          JPEG, PNG, PDF, TXT — até 25MB
-        </p>
       </div>
 
-      {error && <p className="text-sm text-destructive px-1">{error}</p>}
-
+      {/* File list */}
       {files.length > 0 && (
-        <FilePreview files={files} onRemove={removeFile} disabled={disabled} />
+        <div className="space-y-2">
+          <p className="text-[10px] font-semibold text-[#808080] uppercase tracking-[0.15em]">
+            {files.length} arquivo{files.length > 1 ? "s" : ""} selecionado{files.length > 1 ? "s" : ""}
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {files.map((file, i) => (
+              <div
+                key={i}
+                className="flex items-center gap-3 p-3 bg-[#0a0a0a] border border-[#1a1a1a] rounded-xl group"
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-white truncate font-medium">{file.name}</p>
+                  <p className="text-[10px] text-[#555]">{formatSize(file.size)}</p>
+                </div>
+                {!disabled && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); removeFile(i); }}
+                    className="text-[#555] hover:text-[#ff4444] transition-colors text-lg leading-none"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   );

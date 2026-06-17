@@ -14,26 +14,26 @@ export default function RelatorioTecnico({ content, patientName }) {
   if (!content) return null;
 
   return (
-    <div className="bg-card/90 backdrop-blur-sm border border-border/50 rounded-3xl overflow-hidden shadow-lg shadow-black/5">
-      <div className="flex items-center justify-between px-5 py-3 border-b border-border/50 bg-muted/30">
-        <h3 className="text-sm font-semibold text-foreground/70 font-heading tracking-wide">
+    <div className="bg-[#121212] border border-[#2d2d2d] rounded-2xl overflow-hidden">
+      <div className="flex items-center justify-between px-5 py-3 border-b border-[#1a1a1a]">
+        <h3 className="text-[10px] font-bold text-[#808080] uppercase tracking-[0.15em]">
           Relatório Técnico
         </h3>
         <Button
           variant="ghost"
           size="sm"
           onClick={handleCopy}
-          className="h-8 text-xs gap-1.5 text-muted-foreground hover:text-foreground rounded-xl transition-all duration-300"
+          className="h-7 text-[10px] gap-1.5 text-[#555] hover:text-white rounded-lg transition-colors uppercase tracking-wider"
         >
           {copied ? (
-            <><Check className="w-3.5 h-3.5" /> Copiado</>
+            <><Check className="w-3 h-3" /> Copiado</>
           ) : (
-            <><Copy className="w-3.5 h-3.5" /> Copiar</>
+            <><Copy className="w-3 h-3" /> Copiar</>
           )}
         </Button>
       </div>
       <div className="p-5">
-        <pre className="text-sm text-foreground/90 whitespace-pre-wrap font-mono leading-relaxed">
+        <pre className="text-xs text-[#a0a0a0] whitespace-pre-wrap font-mono leading-relaxed">
           {content}
         </pre>
       </div>

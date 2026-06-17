@@ -56,46 +56,45 @@ export default function SurgeryForm({ surgery, onSave, onCancel }) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="bg-card/80 backdrop-blur-sm border border-border/50 rounded-2xl p-5 space-y-4 shadow-lg shadow-black/5">
+    <form onSubmit={handleSubmit} className="bg-[#121212] border border-[#2d2d2d] rounded-2xl p-5 space-y-4">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label className="text-sm text-foreground/80">Nome da cirurgia</Label>
+          <Label className="text-[10px] font-semibold text-white uppercase tracking-wider">Nome da cirurgia</Label>
           <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Ex: Inclusão de prótese mamária"
-            className="bg-background/80 border-border/50 rounded-2xl focus:border-primary/40 transition-all duration-300"
+            className="bg-[#0a0a0a] border-[#2d2d2d] rounded-xl text-white placeholder:text-[#444] focus:border-[#555] transition-colors"
           />
         </div>
         <div className="space-y-2">
-          <Label className="text-sm text-foreground/80">Chave (identificador)</Label>
+          <Label className="text-[10px] font-semibold text-white uppercase tracking-wider">Chave (identificador)</Label>
           <Input
             value={key}
             onChange={(e) => setKey(e.target.value)}
             placeholder="Ex: protese_mamaria"
-            className="bg-background/80 border-border/50 rounded-2xl focus:border-primary/40 transition-all duration-300"
+            className="bg-[#0a0a0a] border-[#2d2d2d] rounded-xl text-white placeholder:text-[#444] focus:border-[#555] transition-colors"
           />
         </div>
       </div>
 
-      {/* Quick select from options */}
       <div className="space-y-2">
-        <Label className="text-sm text-foreground/80">Exames obrigatórios</Label>
+        <Label className="text-[10px] font-semibold text-white uppercase tracking-wider">Exames obrigatórios</Label>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
           {EXAM_OPTIONS.map((exam) => (
             <label
               key={exam}
-              className={`flex items-center gap-2 px-3 py-2 rounded-2xl border cursor-pointer transition-all duration-300 text-sm ${
+              className={`flex items-center gap-2 px-3 py-2 rounded-xl border cursor-pointer transition-colors text-sm ${
                 exams.includes(exam)
-                  ? "border-primary/40 bg-primary/10 text-foreground shadow-sm"
-                  : "border-border/50 bg-background/80 text-muted-foreground hover:border-primary/30"
+                  ? "border-[#808080]/40 bg-[#808080]/10 text-white"
+                  : "border-[#2d2d2d] bg-[#0a0a0a] text-[#555] hover:border-[#555]"
               }`}
             >
               <input
                 type="checkbox"
                 checked={exams.includes(exam)}
                 onChange={() => toggleExamOption(exam)}
-                className="rounded accent-primary"
+                className="rounded accent-[#808080]"
               />
               {exam}
             </label>
@@ -103,27 +102,25 @@ export default function SurgeryForm({ surgery, onSave, onCancel }) {
         </div>
       </div>
 
-      {/* Custom exam input */}
       <div className="flex gap-2">
         <Input
           value={newExam}
           onChange={(e) => setNewExam(e.target.value)}
           placeholder="Ou digite um exame personalizado..."
-          className="bg-background border-border flex-1"
+          className="bg-[#0a0a0a] border-[#2d2d2d] flex-1 rounded-xl text-white placeholder:text-[#444] focus:border-[#555]"
           onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addExam())}
         />
-        <Button type="button" variant="outline" onClick={addExam} size="icon" className="h-9 w-9 rounded-2xl">
+        <Button type="button" variant="outline" onClick={addExam} size="icon" className="h-9 w-9 rounded-xl border-[#2d2d2d] text-[#a0a0a0] hover:text-white hover:border-[#555] bg-transparent">
           <Plus className="w-4 h-4" />
         </Button>
       </div>
 
-      {/* Custom exams added */}
       {exams.filter((e) => !EXAM_OPTIONS.includes(e)).length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {exams.filter((e) => !EXAM_OPTIONS.includes(e)).map((exam) => (
-            <span key={exam} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary/10 text-primary text-xs">
+            <span key={exam} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#808080]/10 text-[#808080] text-xs">
               {exam}
-              <button onClick={() => removeExam(exam)} className="hover:text-destructive">
+              <button onClick={() => removeExam(exam)} className="hover:text-[#f87171]">
                 <X className="w-3 h-3" />
               </button>
             </span>
@@ -132,10 +129,10 @@ export default function SurgeryForm({ surgery, onSave, onCancel }) {
       )}
 
       <div className="flex justify-end gap-3 pt-2">
-        <Button type="button" variant="outline" onClick={onCancel} className="rounded-2xl">
+        <Button type="button" variant="outline" onClick={onCancel} className="rounded-xl border-[#2d2d2d] text-[#a0a0a0] hover:text-white hover:border-[#555] bg-transparent text-xs uppercase tracking-wider">
           Cancelar
         </Button>
-        <Button type="submit" disabled={saving || !name.trim() || !key.trim()} className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-2xl shadow-lg shadow-primary/10 transition-all duration-300">
+        <Button type="submit" disabled={saving || !name.trim() || !key.trim()} className="bg-[#808080] hover:bg-[#999] text-white rounded-xl text-xs font-semibold uppercase tracking-wider transition-colors">
           {saving ? "Salvando..." : "Salvar cirurgia"}
         </Button>
       </div>

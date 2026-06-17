@@ -76,29 +76,30 @@ export default function Cirurgias() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="max-w-3xl mx-auto px-4 py-6 sm:py-10">
-        <div className="flex items-center gap-3 mb-6">
-          <Link to="/" className="text-muted-foreground hover:text-foreground transition-colors">
+    <div className="min-h-screen bg-[#000000]">
+      <div className="max-w-3xl mx-auto px-6 py-8">
+        <div className="flex items-center gap-3 mb-8">
+          <Link to="/" className="text-[#555] hover:text-white transition-colors">
             <ArrowLeft className="w-5 h-5" />
           </Link>
-          <h1 className="text-xl sm:text-2xl font-bold text-foreground font-heading tracking-wide">
-            Gerenciar Cirurgias
-          </h1>
+          <div>
+            <h1 className="text-sm font-extrabold text-white uppercase tracking-[0.15em]">
+              Gerenciar Cirurgias
+            </h1>
+            <p className="text-[11px] text-[#555] mt-0.5">
+              Cadastre tipos de cirurgia e defina exames obrigatórios e limites aceitáveis
+            </p>
+          </div>
         </div>
 
-        <p className="text-sm text-muted-foreground mb-6 font-display italic tracking-wide opacity-70">
-          Cadastre os tipos de cirurgia e defina quais exames são obrigatórios e os limites aceitáveis para cada um.
-        </p>
-
         {/* Tabs */}
-        <div className="flex gap-1 mb-6 bg-muted/50 rounded-2xl p-1.5 backdrop-blur-sm">
+        <div className="flex gap-1 mb-6 bg-[#0a0a0a] rounded-2xl p-1.5 border border-[#1a1a1a]">
           <button
             onClick={() => setActiveTab("surgeries")}
-            className={`flex-1 px-4 py-2 rounded-xl text-sm font-medium transition-all duration-300 ${
+            className={`flex-1 px-4 py-2 rounded-xl text-[11px] font-semibold uppercase tracking-wider transition-colors ${
               activeTab === "surgeries"
-                ? "bg-background text-foreground shadow-lg shadow-black/10"
-                : "text-muted-foreground hover:text-foreground"
+                ? "bg-[#1a1a1a] text-white"
+                : "text-[#555] hover:text-[#a0a0a0]"
             }`}
           >
             <Settings className="w-3.5 h-3.5 inline mr-1.5" />
@@ -106,10 +107,10 @@ export default function Cirurgias() {
           </button>
           <button
             onClick={() => setActiveTab("limits")}
-            className={`flex-1 px-4 py-2 rounded-xl text-sm font-medium transition-all duration-300 ${
+            className={`flex-1 px-4 py-2 rounded-xl text-[11px] font-semibold uppercase tracking-wider transition-colors ${
               activeTab === "limits"
-                ? "bg-background text-foreground shadow-lg shadow-black/10"
-                : "text-muted-foreground hover:text-foreground"
+                ? "bg-[#1a1a1a] text-white"
+                : "text-[#555] hover:text-[#a0a0a0]"
             }`}
           >
             <Plus className="w-3.5 h-3.5 inline mr-1.5" />
@@ -123,7 +124,7 @@ export default function Cirurgias() {
             {!showSurgeryForm && (
               <Button
                 onClick={() => { setEditingSurgery(null); setShowSurgeryForm(true); }}
-                className="mb-6 bg-primary hover:bg-primary/90 text-primary-foreground gap-2 rounded-2xl shadow-lg shadow-primary/10 transition-all duration-300"
+                className="mb-6 bg-[#808080] hover:bg-[#999] text-white gap-2 rounded-xl text-xs font-semibold uppercase tracking-wider transition-colors"
               >
                 <Plus className="w-4 h-4" /> Nova cirurgia
               </Button>
@@ -137,11 +138,11 @@ export default function Cirurgias() {
 
             {loadingSurgeries ? (
               <div className="flex justify-center py-12">
-                <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                <div className="w-5 h-5 border-2 border-[#333] border-t-[#808080] rounded-full animate-spin" />
               </div>
             ) : surgeries.length === 0 ? (
               <div className="text-center py-12">
-                <p className="text-muted-foreground">Nenhuma cirurgia cadastrada ainda.</p>
+                <p className="text-[#555] text-sm">Nenhuma cirurgia cadastrada ainda.</p>
               </div>
             ) : (
               <div className="space-y-3">
@@ -156,16 +157,16 @@ export default function Cirurgias() {
         {/* Limits Tab */}
         {activeTab === "limits" && (
           <>
-            <div className="mb-6 p-4 bg-card/80 backdrop-blur-sm border border-border/50 rounded-2xl shadow-sm">
-              <p className="text-sm text-muted-foreground font-display italic opacity-80">
-                Defina os valores de referência e regras de interpretação que a equipe considera aceitáveis para cada exame. Esses limites serão usados automaticamente na triagem.
+            <div className="mb-6 p-4 bg-[#121212] border border-[#2d2d2d] rounded-2xl">
+              <p className="text-[11px] text-[#a0a0a0]">
+                Defina os valores de referência e regras de interpretação que a equipe considera aceitáveis para cada exame.
               </p>
             </div>
 
             {!showLimitForm && (
               <Button
                 onClick={() => { setEditingLimit(null); setShowLimitForm(true); }}
-                className="mb-6 bg-primary hover:bg-primary/90 text-primary-foreground gap-2 rounded-2xl shadow-lg shadow-primary/10 transition-all duration-300"
+                className="mb-6 bg-[#808080] hover:bg-[#999] text-white gap-2 rounded-xl text-xs font-semibold uppercase tracking-wider transition-colors"
               >
                 <Plus className="w-4 h-4" /> Novo limite
               </Button>
@@ -179,11 +180,11 @@ export default function Cirurgias() {
 
             {loadingLimits ? (
               <div className="flex justify-center py-12">
-                <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                <div className="w-5 h-5 border-2 border-[#333] border-t-[#808080] rounded-full animate-spin" />
               </div>
             ) : examLimits.length === 0 ? (
               <div className="text-center py-12">
-                <p className="text-muted-foreground">Nenhum limite de exame definido ainda.</p>
+                <p className="text-[#555] text-sm">Nenhum limite de exame definido ainda.</p>
               </div>
             ) : (
               <div className="space-y-2">

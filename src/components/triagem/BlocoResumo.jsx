@@ -19,26 +19,26 @@ export default function BlocoResumo({ content, patientName }) {
   if (!content) return null;
 
   return (
-    <div className="bg-card/90 backdrop-blur-sm border border-border/50 rounded-3xl overflow-hidden shadow-lg shadow-black/5">
-      <div className="flex items-center justify-between px-5 py-3 border-b border-primary/10 bg-primary/5">
-        <h3 className="text-sm font-semibold text-primary/90 font-heading tracking-wide">
+    <div className="bg-[#121212] border border-[#2d2d2d] rounded-2xl overflow-hidden">
+      <div className="flex items-center justify-between px-5 py-3 border-b border-[#1a1a1a]">
+        <h3 className="text-[10px] font-bold text-[#808080] uppercase tracking-[0.15em]">
           Resumo para WhatsApp
         </h3>
       </div>
       <div className="p-5">
-        <pre className="text-sm text-foreground/85 whitespace-pre-wrap font-body leading-relaxed">
+        <pre className="text-xs text-[#a0a0a0] whitespace-pre-wrap font-body leading-relaxed">
           {cleanContent}
         </pre>
       </div>
       <div className="px-5 pb-5">
         <Button
           onClick={handleCopy}
-          className="w-full bg-foreground hover:bg-foreground/90 text-background gap-2 h-12 rounded-2xl font-medium shadow-lg shadow-foreground/5 transition-all duration-300"
+          className="w-full bg-[#1a1a1a] hover:bg-[#252525] text-white gap-2 h-10 rounded-xl text-xs font-medium uppercase tracking-wider transition-colors border-0"
         >
           {copied ? (
-            <><Check className="w-4 h-4" /> Copiado</>
+            <><Check className="w-3.5 h-3.5" /> Copiado</>
           ) : (
-            <><Copy className="w-4 h-4" /> Copiar para WhatsApp</>
+            <><Copy className="w-3.5 h-3.5" /> Copiar para WhatsApp</>
           )}
         </Button>
       </div>
