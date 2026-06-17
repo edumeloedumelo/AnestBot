@@ -71,7 +71,7 @@ export default function Triagem() {
     setProgressStatus("analyzing");
     const response = await base44.functions.invoke("analyzeBatch", {
       fileUrls,
-      anamnesis,
+      anamnesis
     });
 
     if (response.data?.error) {
@@ -90,8 +90,8 @@ export default function Triagem() {
       <div className="max-w-2xl mx-auto px-4 py-6 sm:py-10">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-2xl sm:text-3xl font-bold text-foreground tracking-tight">
-            Avaliação Pré-Anestésica
+          <h1 className="text-2xl sm:text-3xl font-bold text-foreground tracking-tight [font-family:'Bungee',_system-ui]">Avaliação Pré-Anestésica
+
           </h1>
           <p className="text-sm text-muted-foreground mt-1.5">
             Apoio à decisão clínica — Suporte Anestésico Pré-Cirúrgico
@@ -102,93 +102,93 @@ export default function Triagem() {
         <div className="flex gap-2 mb-6">
           <Link
             to="/cirurgias"
-            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-3 py-2 rounded-xl bg-card border border-border hover:border-primary/30"
-          >
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-3 py-2 rounded-xl bg-card border border-border hover:border-primary/30">
+            
             <Settings className="w-3.5 h-3.5" />
             Configurações
           </Link>
           <Link
             to="/historico"
-            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-3 py-2 rounded-xl bg-card border border-border hover:border-primary/30"
-          >
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-3 py-2 rounded-xl bg-card border border-border hover:border-primary/30">
+            
             <ClipboardList className="w-3.5 h-3.5" />
             Histórico
           </Link>
         </div>
 
         {/* Shared indicator */}
-        {sharedReceived && !analyzing && !results && (
-          <div className="mb-4 p-3 bg-foreground/5 border border-foreground/20 rounded-xl flex items-center gap-3">
+        {sharedReceived && !analyzing && !results &&
+        <div className="mb-4 p-3 bg-foreground/5 border border-foreground/20 rounded-xl flex items-center gap-3">
             <Share2 className="w-4 h-4 text-foreground/60 flex-shrink-0" />
             <div className="min-w-0">
               <p className="text-sm font-medium text-foreground">Arquivos recebidos via WhatsApp</p>
               <p className="text-xs text-muted-foreground">Pronto para análise</p>
             </div>
           </div>
-        )}
+        }
 
         {/* Form Card */}
-        {!results && (
-          <div className="bg-card rounded-2xl border border-border shadow-sm p-5 sm:p-6 mb-6">
+        {!results &&
+        <div className="bg-card rounded-2xl border border-border shadow-sm p-5 sm:p-6 mb-6">
             <div className="space-y-5">
               <FileUploader
-                files={files}
-                setFiles={setFiles}
-                disabled={analyzing}
-              />
+              files={files}
+              setFiles={setFiles}
+              disabled={analyzing} />
+            
 
               <div className="space-y-2">
                 <Label htmlFor="anamnesis" className="text-sm font-medium text-foreground/80">
                   Anamnese / Observações clínicas
                 </Label>
                 <Textarea
-                  id="anamnesis"
-                  placeholder="Comorbidades, histórico cirúrgico, medicações de uso contínuo, alergias, IMC, idade..."
-                  value={anamnesis}
-                  onChange={(e) => setAnamnesis(e.target.value)}
-                  disabled={analyzing}
-                  rows={3}
-                  className="bg-background border-border resize-none rounded-xl"
-                />
+                id="anamnesis"
+                placeholder="Comorbidades, histórico cirúrgico, medicações de uso contínuo, alergias, IMC, idade..."
+                value={anamnesis}
+                onChange={(e) => setAnamnesis(e.target.value)}
+                disabled={analyzing}
+                rows={3}
+                className="bg-background border-border resize-none rounded-xl" />
+              
                 <p className="text-[11px] text-muted-foreground/60">
                   Opcional · Aplicado a todos os pacientes do lote
                 </p>
               </div>
             </div>
 
-            {error && (
-              <div className="mt-4 p-3 bg-destructive/10 border border-destructive/30 rounded-xl">
+            {error &&
+          <div className="mt-4 p-3 bg-destructive/10 border border-destructive/30 rounded-xl">
                 <p className="text-sm text-destructive">{error}</p>
               </div>
-            )}
+          }
 
             <div className="mt-6">
               <Button
-                onClick={handleAnalyze}
-                disabled={!canAnalyze}
-                className="w-full bg-foreground hover:bg-foreground/90 text-background px-8 h-12 text-sm font-semibold rounded-xl"
-              >
+              onClick={handleAnalyze}
+              disabled={!canAnalyze}
+              className="w-full bg-foreground hover:bg-foreground/90 text-background px-8 h-12 text-sm font-semibold rounded-xl">
+              
                 <Upload className="w-4 h-4 mr-2" />
                 {analyzing ? "Analisando..." : "Analisar exames"}
                 {!analyzing && <ArrowRight className="w-4 h-4 ml-1" />}
               </Button>
             </div>
           </div>
-        )}
+        }
 
         {analyzing && <ProgressIndicator status={progressStatus} />}
 
         {/* Results */}
-        {results && results.length > 0 && (
-          <div className="space-y-6">
+        {results && results.length > 0 &&
+        <div className="space-y-6">
             <div className="flex items-center justify-between">
               <p className="text-sm text-muted-foreground">
                 {results.length} paciente{results.length > 1 ? "s" : ""} encontrado{results.length > 1 ? "s" : ""}
               </p>
             </div>
 
-            {results.map((result, i) => (
-              <div key={i} className="space-y-4">
+            {results.map((result, i) =>
+          <div key={i} className="space-y-4">
                 <div className="flex items-center gap-3 px-1">
                   <div className="w-9 h-9 rounded-xl bg-foreground/10 flex items-center justify-center text-sm font-bold text-foreground">
                     {i + 1}
@@ -202,7 +202,7 @@ export default function Triagem() {
                 <BlocoResumo content={result.blocoResumo} patientName={result.patientName} />
                 <RelatorioTecnico content={result.relatorioTecnico} patientName={result.patientName} />
               </div>
-            ))}
+          )}
 
             <div className="flex justify-center pt-2 pb-10">
               <Button onClick={resetAll} variant="outline" className="gap-2 rounded-xl h-11">
@@ -211,10 +211,10 @@ export default function Triagem() {
               </Button>
             </div>
           </div>
-        )}
+        }
 
-        {results && results.length === 0 && (
-          <div className="text-center py-16">
+        {results && results.length === 0 &&
+        <div className="text-center py-16">
             <p className="text-muted-foreground mb-6">
               Nenhum paciente identificado nos arquivos enviados.
             </p>
@@ -223,8 +223,8 @@ export default function Triagem() {
               Tentar novamente
             </Button>
           </div>
-        )}
+        }
       </div>
-    </div>
-  );
+    </div>);
+
 }
