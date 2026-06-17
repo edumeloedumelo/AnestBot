@@ -1,6 +1,10 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
-const IDENTIFY_SYSTEM_PROMPT = `Você é um assistente médico especializado em triagem pré-anestésica. Sua tarefa é analisar arquivos de exames enviados e identificar pacientes e tipos de exames.
+function buildIdentifyPrompt(surgeries) {
+  const surgeryKeys = surgeries.map(s => `"${s.key}"`).join(', ');
+  const surgeryList = surgeries.map(s => `- **${s.name}** → key: "${s.key}"`).join('\n');
+
+  return `Você é um assistente médico especializado em triagem pré-anestésica. Sua tarefa é analisar arquivos de exames enviados e identificar pacientes e tipos de exames.
 
 ## INSTRUÇÕES
 
@@ -22,7 +26,12 @@ Analise cada arquivo enviado e extraia:
    - USG de parede abdominal
    - Outro (especifique)
 
-3. **Possível tipo de cirurgia** — PRIMEIRO, procure na anamnese (se fornecida) o nome da cirurgia (ex: "prótese de silicone", "mamoplastia de aumento", "abdominoplastia", "lipoaspiração", "lipo HD", "mastopexia", "prótese mamária"). Se a anamnese mencionar a cirurgia, use esse valor. Depois, complemente analisando o conjunto de exames (ex: exames de mama sugerem prótese/mastopexia; exames abdominais sugerem abdominoplastia/lipo). Se não for possível identificar por nenhum meio, marque como "indefinida".
+3. **Possível tipo de cirurgia** — PRIMEIRO, procure na anamnese (se fornecida) o nome da cirurgia. Depois, complemente analisando o conjunto de exames. Use APENAS uma das seguintes keys:
+
+${surgeryList}
+
+Se a cirurgia identificada não corresponder a nenhuma das opções acima OU a anamnese mencionar múltiplas cirurgias, use "combinada".
+Se não for possível identificar por nenhum meio, use "indefinida".
 
 Retorne EXATAMENTE um JSON válido com a seguinte estrutura, sem texto adicional fora do JSON:
 
@@ -30,7 +39,7 @@ Retorne EXATAMENTE um JSON válido com a seguinte estrutura, sem texto adicional
   "patients": [
     {
       "name": "Nome da Paciente",
-      "surgeryType": "protese_mamaria" ou "mastopexia" ou "abdominoplastia" ou "lipoaspiracao" ou "combinada" ou "indefinida",
+      "surgeryType": ${surgeryKeys.length ? surgeryKeys + ' ou "combinada" ou "indefinida"' : '"indefinida"'},
       "exams": [
         {"type": "Hemograma", "fileIndex": 0},
         {"type": "ECG", "fileIndex": 1}
@@ -45,24 +54,20 @@ Regras:
 - fileIndex deve corresponder ao índice (baseado em 0) do arquivo na ordem em que foi enviado
 - Se houver dúvida sobre o nome, coloque o paciente como separado
 - unidentifiedFiles: índices de arquivos que não puderam ser associados a nenhum paciente`;
+}
 
-const TRIAGE_SYSTEM_PROMPT = `Você é um assistente de triagem pré-anestésica para cirurgias plásticas eletivas. Seu raciocínio deve ser extremamente técnico, rigoroso e conservador, baseado nos princípios da anestesiologia moderna (Miller's Anesthesia, 9ª edição), diretrizes da ASA e SBA e literatura perioperatória recente.
+function buildTriagePrompt(surgeries) {
+  let surgeriesSection = '';
+  for (const s of surgeries) {
+    const exams = (s.required_exams || []).join(' · ');
+    surgeriesSection += `### ${s.name} (key: "${s.key}")\n${exams}\n\n`;
+  }
+
+  return `Você é um assistente de triagem pré-anestésica para cirurgias plásticas eletivas. Seu raciocínio deve ser extremamente técnico, rigoroso e conservador, baseado nos princípios da anestesiologia moderna (Miller's Anesthesia, 9ª edição), diretrizes da ASA e SBA e literatura perioperatória recente.
 
 ## CIRURGIAS E EXAMES OBRIGATÓRIOS
 
-### 1. Inclusão de prótese mamária
-Hemograma completo · Coagulograma · Ionograma (Na, K, Cl) · Bioquímica (ureia, creatinina) · Mamografia OU USG de mamas · Sorologias (HIV, Hep B, Hep C) · Beta-HCG · RX de tórax · ECG · Risco cirúrgico
-
-### 2. Mastopexia (com ou sem prótese)
-Igual ao item 1 + Urina tipo I / EAS
-
-### 3. Abdominoplastia
-Hemograma completo · Coagulograma · Ionograma (Na, K, Cl) · Bioquímica (ureia, creatinina) · USG de abdome total · USG de parede abdominal · Sorologias (HIV, Hep B, Hep C) · Beta-HCG · RX de tórax · ECG · Risco cirúrgico
-
-### 4. Lipoaspiração / lipoescultura
-Hemograma completo · Coagulograma · Ionograma (Na, K, Cl) · Bioquímica (ureia, creatinina) · Urina tipo I / EAS · Sorologias (HIV, Hep B, Hep C) · Beta-HCG · RX de tórax · ECG · Risco cirúrgico
-
-### Cirurgias combinadas
+${surgeriesSection}### Cirurgias combinadas
 Exigir TODOS os exames de TODOS os procedimentos associados.
 
 ## REGRAS ABSOLUTAS DE INTERPRETAÇÃO
@@ -102,17 +107,7 @@ Sua resposta deve ter EXATAMENTE duas partes, nesta ordem, separadas por "---PAR
 
 ITEM                  STATUS
 Exames obrigatórios   ✅ Completo / ❌ Incompleto
-Hemograma             ✅ / ⚠️ / ❌
-Coagulograma          ✅ / ⚠️ / ❌
-Ionograma             ✅ / ⚠️ / ❌
-Função renal          ✅ / ⚠️ / ❌
-Sorologias            ✅ / ⚠️ / ❌
-Beta-HCG              ✅ / ⚠️ / ❌
-Urina                 ✅ / ⚠️ / ❌
-ECG                   ✅ / ⚠️ / ❌
-RX tórax              ✅ / ⚠️ / ❌
-Risco cirúrgico       ✅ / ⚠️ / ❌
-Exames específicos    ✅ / ⚠️ / ❌
+[LISTAR CADA EXAME OBRIGATÓRIO COM STATUS ✅ / ⚠️ / ❌]
 
 🚨 ALTERAÇÕES
 * [alteração relevante com detalhes]
@@ -147,6 +142,7 @@ Exames específicos    ✅ / ⚠️ / ❌
 \`\`\`
 
 Classificação final: ✅ Completo sem alertas · ⚠️ Completo com alertas · ❌ Incompleto · 🚨 Pendência crítica`;
+}
 
 // Helpers
 async function fetchFileAsContentBlock(fileUrl, index) {
@@ -229,6 +225,13 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Chave da API Anthropic não configurada' }, { status: 500 });
     }
 
+    // Fetch surgeries from database
+    const surgeries = await base44.asServiceRole.entities.Surgery.list();
+
+    // Build dynamic prompts
+    const IDENTIFY_SYSTEM_PROMPT = buildIdentifyPrompt(surgeries);
+    const TRIAGE_SYSTEM_PROMPT = buildTriagePrompt(surgeries);
+
     // --- FASE 1: Identificar pacientes e exames ---
     console.log(`FASE 1: Identificando pacientes em ${fileUrls.length} arquivos...`);
 
@@ -238,10 +241,7 @@ Deno.serve(async (req) => {
       identifyContext += `\n\n## ANAMNESE FORNECIDA\n${anamnesis}\n\nUse a anamnese acima para identificar o tipo de cirurgia e o nome da(s) paciente(s).`;
     }
     identifyContext += `\n\nRetorne APENAS o JSON.`;
-    identifyBlocks.push({
-      type: 'text',
-      text: identifyContext
-    });
+    identifyBlocks.push({ type: 'text', text: identifyContext });
 
     for (let i = 0; i < fileUrls.length; i++) {
       const block = await fetchFileAsContentBlock(fileUrls[i], i);
@@ -255,10 +255,8 @@ Deno.serve(async (req) => {
 
     const identifyText = await callClaude(IDENTIFY_SYSTEM_PROMPT, identifyBlocks, apiKey, 2048);
 
-    // Parse JSON from Claude response
     let patientGroups;
     try {
-      // Extract JSON from markdown code block if present
       const jsonMatch = identifyText.match(/\{[\s\S]*\}/);
       const jsonStr = jsonMatch ? jsonMatch[0] : identifyText;
       patientGroups = JSON.parse(jsonStr);

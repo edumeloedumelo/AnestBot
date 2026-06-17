@@ -3,7 +3,8 @@ import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { RotateCcw } from "lucide-react";
+import { RotateCcw, Settings } from "lucide-react";
+import { Link } from "react-router-dom";
 import FileUploader from "@/components/triagem/FileUploader";
 import ProgressIndicator from "@/components/triagem/ProgressIndicator";
 import RelatorioTecnico from "@/components/triagem/RelatorioTecnico";
@@ -81,13 +82,22 @@ export default function Triagem() {
     <div className="min-h-screen bg-background">
       <div className="max-w-3xl mx-auto px-4 py-6 sm:py-10">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-2xl sm:text-3xl font-bold text-foreground mb-1">
-            Triagem Pré-Anestésica
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Cirurgias plásticas eletivas — apoio à decisão clínica
-          </p>
+        <div className="mb-8 flex items-start justify-between">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold text-foreground mb-1">
+              Triagem Pré-Anestésica
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              Cirurgias plásticas eletivas — apoio à decisão clínica
+            </p>
+          </div>
+          <Link
+            to="/cirurgias"
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-3 py-1.5 rounded-lg border border-border hover:border-primary/40"
+          >
+            <Settings className="w-3.5 h-3.5" />
+            Cirurgias
+          </Link>
         </div>
 
         {/* Security Notice */}
