@@ -6,7 +6,8 @@ import { Label } from "@/components/ui/label";
 import { RotateCcw } from "lucide-react";
 import FileUploader from "@/components/triagem/FileUploader";
 import ProgressIndicator from "@/components/triagem/ProgressIndicator";
-import PatientResultCard from "@/components/triagem/PatientResultCard";
+import RelatorioTecnico from "@/components/triagem/RelatorioTecnico";
+import BlocoResumo from "@/components/triagem/BlocoResumo";
 import SecurityNotice from "@/components/triagem/SecurityNotice";
 
 export default function Triagem() {
@@ -138,15 +139,36 @@ export default function Triagem() {
 
         {/* Results */}
         {results && results.length > 0 && (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between mb-2">
+          <div className="space-y-8">
+            <div className="flex items-center justify-between">
               <p className="text-sm text-slate-500 dark:text-slate-400">
                 {results.length} paciente{results.length > 1 ? "s" : ""} encontrado{results.length > 1 ? "s" : ""}
               </p>
             </div>
 
             {results.map((result, i) => (
-              <PatientResultCard key={i} result={result} index={i} />
+              <div key={i} className="space-y-4">
+                {/* Patient header */}
+                <div className="flex items-center gap-3 px-1">
+                  <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center text-sm font-bold text-blue-700 dark:text-blue-300">
+                    {i + 1}
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-slate-800 dark:text-slate-100">
+                      {result.patientName}
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      {({protese_mamaria:"Prótese Mamária",mastopexia:"Mastopexia",abdominoplastia:"Abdominoplastia",lipoaspiracao:"Lipoaspiração",combinada:"Combinada",indefinida:"Não identificada"})[result.surgeryType] || result.surgeryType}
+                    </p>
+                  </div>
+                </div>
+
+                {/* WhatsApp Summary Card */}
+                <BlocoResumo content={result.blocoResumo} patientName={result.patientName} />
+
+                {/* Technical Report Card */}
+                <RelatorioTecnico content={result.relatorioTecnico} patientName={result.patientName} />
+              </div>
             ))}
 
             {/* Nova Triagem */}
