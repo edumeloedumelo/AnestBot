@@ -22,7 +22,7 @@ Analise cada arquivo enviado e extraia:
    - USG de parede abdominal
    - Outro (especifique)
 
-3. **Possível tipo de cirurgia** — tente inferir a partir do contexto dos exames (ex: exames de mama sugerem prótese/mastopexia; exames abdominais sugerem abdominoplastia/lipo). Se não for possível inferir, marque como "indefinida".
+3. **Possível tipo de cirurgia** — PRIMEIRO, procure na anamnese (se fornecida) o nome da cirurgia (ex: "prótese de silicone", "mamoplastia de aumento", "abdominoplastia", "lipoaspiração", "lipo HD", "mastopexia", "prótese mamária"). Se a anamnese mencionar a cirurgia, use esse valor. Depois, complemente analisando o conjunto de exames (ex: exames de mama sugerem prótese/mastopexia; exames abdominais sugerem abdominoplastia/lipo). Se não for possível identificar por nenhum meio, marque como "indefinida".
 
 Retorne EXATAMENTE um JSON válido com a seguinte estrutura, sem texto adicional fora do JSON:
 
@@ -233,9 +233,14 @@ Deno.serve(async (req) => {
     console.log(`FASE 1: Identificando pacientes em ${fileUrls.length} arquivos...`);
 
     const identifyBlocks = [];
+    let identifyContext = `Analise os ${fileUrls.length} arquivos abaixo. Identifique o nome do paciente em cada um, o tipo de exame, e agrupe por paciente.`;
+    if (anamnesis?.trim()) {
+      identifyContext += `\n\n## ANAMNESE FORNECIDA\n${anamnesis}\n\nUse a anamnese acima para identificar o tipo de cirurgia e o nome da(s) paciente(s).`;
+    }
+    identifyContext += `\n\nRetorne APENAS o JSON.`;
     identifyBlocks.push({
       type: 'text',
-      text: `Analise os ${fileUrls.length} arquivos abaixo. Identifique o nome do paciente em cada um, o tipo de exame, e agrupe por paciente. Retorne APENAS o JSON.`
+      text: identifyContext
     });
 
     for (let i = 0; i < fileUrls.length; i++) {
