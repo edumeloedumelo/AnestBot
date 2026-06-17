@@ -1,0 +1,46 @@
+{
+  "name": "ExamLimit",
+  "type": "object",
+  "properties": {
+    "exam_name": {
+      "type": "string",
+      "description": "Nome do exame (ex: Hemoglobina)"
+    },
+    "description": {
+      "type": "string",
+      "description": "Regra do limite (ex: \u2265 12 g/dL)"
+    },
+    "rule_type": {
+      "type": "string",
+      "enum": [
+        "min",
+        "max",
+        "range",
+        "flag",
+        "interpretation"
+      ],
+      "description": "Tipo de regra"
+    },
+    "min_value": {
+      "type": "number",
+      "description": "Valor m\u00ednimo aceit\u00e1vel"
+    },
+    "max_value": {
+      "type": "number",
+      "description": "Valor m\u00e1ximo aceit\u00e1vel"
+    },
+    "unit": {
+      "type": "string",
+      "description": "Unidade de medida (ex: g/dL, mg/L, bpm)"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Observa\u00e7\u00f5es cl\u00ednicas adicionais"
+    }
+  },
+  "required": [
+    "exam_name",
+    "description",
+    "rule_type"
+  ]
+}

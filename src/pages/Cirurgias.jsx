@@ -1,44 +1,78 @@
 import { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
-import { Plus, ArrowLeft } from "lucide-react";
+import { Plus, ArrowLeft, Settings } from "lucide-react";
 import { Link } from "react-router-dom";
 import SurgeryCard from "@/components/cirurgias/SurgeryCard";
 import SurgeryForm from "@/components/cirurgias/SurgeryForm";
+import ExamLimitCard from "@/components/cirurgias/ExamLimitCard";
+import ExamLimitForm from "@/components/cirurgias/ExamLimitForm";
 
 export default function Cirurgias() {
   const [surgeries, setSurgeries] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [editing, setEditing] = useState(null);
+  const [examLimits, setExamLimits] = useState([]);
+  const [loadingSurgeries, setLoadingSurgeries] = useState(true);
+  const [loadingLimits, setLoadingLimits] = useState(true);
+  const [showSurgeryForm, setShowSurgeryForm] = useState(false);
+  const [showLimitForm, setShowLimitForm] = useState(false);
+  const [editingSurgery, setEditingSurgery] = useState(null);
+  const [editingLimit, setEditingLimit] = useState(null);
+  const [activeTab, setActiveTab] = useState("surgeries");
 
   const loadSurgeries = async () => {
     const data = await base44.entities.Surgery.list();
     setSurgeries(data);
-    setLoading(false);
+    setLoadingSurgeries(false);
   };
 
-  useEffect(() => { loadSurgeries(); }, []);
+  const loadLimits = async () => {
+    const data = await base44.entities.ExamLimit.list();
+    setExamLimits(data);
+    setLoadingLimits(false);
+  };
 
-  const handleSave = async (data) => {
-    if (editing) {
-      await base44.entities.Surgery.update(editing.id, data);
+  useEffect(() => { loadSurgeries(); loadLimits(); }, []);
+
+  const handleSaveSurgery = async (data) => {
+    if (editingSurgery) {
+      await base44.entities.Surgery.update(editingSurgery.id, data);
     } else {
       await base44.entities.Surgery.create(data);
     }
-    setShowForm(false);
-    setEditing(null);
+    setShowSurgeryForm(false);
+    setEditingSurgery(null);
     loadSurgeries();
   };
 
-  const handleDelete = async (surgery) => {
+  const handleDeleteSurgery = async (surgery) => {
     await base44.entities.Surgery.delete(surgery.id);
     loadSurgeries();
   };
 
-  const handleEdit = (surgery) => {
-    setEditing(surgery);
-    setShowForm(true);
+  const handleEditSurgery = (surgery) => {
+    setEditingSurgery(surgery);
+    setShowSurgeryForm(true);
+  };
+
+  const handleSaveLimit = async (data) => {
+    if (editingLimit) {
+      await base44.entities.ExamLimit.update(editingLimit.id, data);
+    } else {
+      await base44.entities.ExamLimit.create(data);
+    }
+    setShowLimitForm(false);
+    setEditingLimit(null);
+    loadLimits();
+  };
+
+  const handleDeleteLimit = async (limit) => {
+    await base44.entities.ExamLimit.delete(limit.id);
+    loadLimits();
+  };
+
+  const handleEditLimit = (limit) => {
+    setEditingLimit(limit);
+    setShowLimitForm(true);
   };
 
   return (
@@ -54,39 +88,111 @@ export default function Cirurgias() {
         </div>
 
         <p className="text-sm text-muted-foreground mb-6">
-          Cadastre os tipos de cirurgia e defina quais exames são obrigatórios para cada uma. Essas definições serão usadas automaticamente na triagem.
+          Cadastre os tipos de cirurgia e defina quais exames são obrigatórios e os limites aceitáveis para cada um.
         </p>
 
-        {!showForm && (
-          <Button onClick={() => { setEditing(null); setShowForm(true); }} className="mb-6 bg-primary hover:bg-primary/90 text-primary-foreground gap-2">
-            <Plus className="w-4 h-4" /> Nova cirurgia
-          </Button>
+        {/* Tabs */}
+        <div className="flex gap-1 mb-6 bg-muted rounded-lg p-1">
+          <button
+            onClick={() => setActiveTab("surgeries")}
+            className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              activeTab === "surgeries"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Settings className="w-3.5 h-3.5 inline mr-1.5" />
+            Tipos de cirurgia
+          </button>
+          <button
+            onClick={() => setActiveTab("limits")}
+            className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              activeTab === "limits"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Plus className="w-3.5 h-3.5 inline mr-1.5" />
+            Limites de exames
+          </button>
+        </div>
+
+        {/* Surgeries Tab */}
+        {activeTab === "surgeries" && (
+          <>
+            {!showSurgeryForm && (
+              <Button
+                onClick={() => { setEditingSurgery(null); setShowSurgeryForm(true); }}
+                className="mb-6 bg-primary hover:bg-primary/90 text-primary-foreground gap-2"
+              >
+                <Plus className="w-4 h-4" /> Nova cirurgia
+              </Button>
+            )}
+
+            {showSurgeryForm && (
+              <div className="mb-6">
+                <SurgeryForm surgery={editingSurgery} onSave={handleSaveSurgery} onCancel={() => { setShowSurgeryForm(false); setEditingSurgery(null); }} />
+              </div>
+            )}
+
+            {loadingSurgeries ? (
+              <div className="flex justify-center py-12">
+                <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+              </div>
+            ) : surgeries.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-muted-foreground">Nenhuma cirurgia cadastrada ainda.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {surgeries.map((s) => (
+                  <SurgeryCard key={s.id} surgery={s} onEdit={handleEditSurgery} onDelete={handleDeleteSurgery} />
+                ))}
+              </div>
+            )}
+          </>
         )}
 
-        {showForm && (
-          <div className="mb-6">
-            <SurgeryForm
-              surgery={editing}
-              onSave={handleSave}
-              onCancel={() => { setShowForm(false); setEditing(null); }}
-            />
-          </div>
-        )}
+        {/* Limits Tab */}
+        {activeTab === "limits" && (
+          <>
+            <div className="mb-6 p-4 bg-card border border-border rounded-xl">
+              <p className="text-sm text-muted-foreground">
+                Defina os valores de referência e regras de interpretação que a equipe considera aceitáveis para cada exame. Esses limites serão usados automaticamente na triagem.
+              </p>
+            </div>
 
-        {loading ? (
-          <div className="flex justify-center py-12">
-            <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-          </div>
-        ) : surgeries.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-muted-foreground">Nenhuma cirurgia cadastrada ainda.</p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {surgeries.map((s) => (
-              <SurgeryCard key={s.id} surgery={s} onEdit={handleEdit} onDelete={handleDelete} />
-            ))}
-          </div>
+            {!showLimitForm && (
+              <Button
+                onClick={() => { setEditingLimit(null); setShowLimitForm(true); }}
+                className="mb-6 bg-primary hover:bg-primary/90 text-primary-foreground gap-2"
+              >
+                <Plus className="w-4 h-4" /> Novo limite
+              </Button>
+            )}
+
+            {showLimitForm && (
+              <div className="mb-6">
+                <ExamLimitForm limit={editingLimit} onSave={handleSaveLimit} onCancel={() => { setShowLimitForm(false); setEditingLimit(null); }} />
+              </div>
+            )}
+
+            {loadingLimits ? (
+              <div className="flex justify-center py-12">
+                <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+              </div>
+            ) : examLimits.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-muted-foreground">Nenhum limite de exame definido ainda.</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {examLimits.map((l) => (
+                  <ExamLimitCard key={l.id} limit={l} onEdit={handleEditLimit} onDelete={handleDeleteLimit} />
+                ))}
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

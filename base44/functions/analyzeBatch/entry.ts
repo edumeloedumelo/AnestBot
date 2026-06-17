@@ -56,11 +56,20 @@ Regras:
 - unidentifiedFiles: índices de arquivos que não puderam ser associados a nenhum paciente`;
 }
 
-function buildTriagePrompt(surgeries) {
+function buildTriagePrompt(surgeries, examLimits) {
   let surgeriesSection = '';
   for (const s of surgeries) {
     const exams = (s.required_exams || []).join(' · ');
     surgeriesSection += `### ${s.name} (key: "${s.key}")\n${exams}\n\n`;
+  }
+
+  // Build exam limits section
+  let limitsSection = '';
+  for (const limit of examLimits) {
+    let line = `- **${limit.exam_name}**: ${limit.description}`;
+    if (limit.unit) line += ` (${limit.unit})`;
+    if (limit.notes) line += `. Obs: ${limit.notes}`;
+    limitsSection += line + '\n';
   }
 
   return `Você é um assistente de triagem pré-anestésica para cirurgias plásticas eletivas. Seu raciocínio deve ser extremamente técnico, rigoroso e conservador, baseado nos princípios da anestesiologia moderna (Miller's Anesthesia, 9ª edição), diretrizes da ASA e SBA e literatura perioperatória recente.
@@ -70,13 +79,15 @@ function buildTriagePrompt(surgeries) {
 ${surgeriesSection}### Cirurgias combinadas
 Exigir TODOS os exames de TODOS os procedimentos associados.
 
-## REGRAS ABSOLUTAS DE INTERPRETAÇÃO
+## VALORES DE REFERÊNCIA E LIMITES ACEITÁVEIS
+
+Estes são os limites definidos pela equipe médica. Siga-os rigorosamente:
+
+${limitsSection}
+
+## REGRAS GERAIS DE INTERPRETAÇÃO
 
 - **Mama / BIRADS**: Toda cirurgia mamária exige mamografia OU USG de mamas com classificação BIRADS. BIRADS 1-2 → aceitável. BIRADS 3, 4, 5 ou 6 → NÃO liberar; exigir encaminhamento ao mastologista + parecer. Sem parecer = 🚨 pendência crítica.
-- **Hemoglobina**: ≥ 12 g/dL. Hb < 12 → sinalizar obrigatoriamente como alteração relevante.
-- **PCR**: alterada apenas se > 10 mg/L.
-- **Urina / EAS**: NÃO considerar alterado por flora bacteriana isolada, células epiteliais, muco ou nitrito positivo isolado. Sinalizar apenas ITU significativa.
-- **ECG**: FC ≥ 50 bpm isolada NÃO é alteração. Avaliar: bloqueios, extrassístoles, arritmias, alterações isquêmicas, QT, sobrecargas.
 - **RX de tórax**: Nódulos pulmonares SEMPRE sinalizados → encaminhamento ao pneumologista.
 - **Sorologias**: Anti-HBs < 2 não contraindica cirurgia.
 
@@ -225,12 +236,13 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Chave da API Anthropic não configurada' }, { status: 500 });
     }
 
-    // Fetch surgeries from database
+    // Fetch surgeries and exam limits from database
     const surgeries = await base44.asServiceRole.entities.Surgery.list();
+    const examLimits = await base44.asServiceRole.entities.ExamLimit.list();
 
     // Build dynamic prompts
     const IDENTIFY_SYSTEM_PROMPT = buildIdentifyPrompt(surgeries);
-    const TRIAGE_SYSTEM_PROMPT = buildTriagePrompt(surgeries);
+    const TRIAGE_SYSTEM_PROMPT = buildTriagePrompt(surgeries, examLimits);
 
     // --- FASE 1: Identificar pacientes e exames ---
     console.log(`FASE 1: Identificando pacientes em ${fileUrls.length} arquivos...`);

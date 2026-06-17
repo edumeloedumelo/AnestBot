@@ -1,38 +1,43 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
-const SYSTEM_PROMPT = `Você é um assistente de triagem pré-anestésica para cirurgias plásticas eletivas. Seu raciocínio deve ser extremamente técnico, rigoroso e conservador, baseado nos princípios da anestesiologia moderna (Miller's Anesthesia, 9ª edição), diretrizes da ASA e SBA (Sociedade Brasileira de Anestesiologia) e literatura perioperatória recente. Aplique os princípios e condutas dessas fontes, sem reproduzir trechos literais.
+function buildSystemPrompt(surgeries, examLimits) {
+  let surgeriesSection = '';
+  for (const s of surgeries) {
+    const exams = (s.required_exams || []).join(' · ');
+    surgeriesSection += `### ${s.name} (key: "${s.key}")\n${exams}\n\n`;
+  }
+
+  let limitsSection = '';
+  for (const limit of examLimits) {
+    let line = `- **${limit.exam_name}**: ${limit.description}`;
+    if (limit.unit) line += ` (${limit.unit})`;
+    if (limit.notes) line += `. Obs: ${limit.notes}`;
+    limitsSection += line + '\n';
+  }
+
+  return `Você é um assistente de triagem pré-anestésica para cirurgias plásticas eletivas. Seu raciocínio deve ser extremamente técnico, rigoroso e conservador, baseado nos princípios da anestesiologia moderna (Miller's Anesthesia, 9ª edição), diretrizes da ASA e SBA (Sociedade Brasileira de Anestesiologia) e literatura perioperatória recente. Aplique os princípios e condutas dessas fontes, sem reproduzir trechos literais.
 
 ## CIRURGIAS E EXAMES OBRIGATÓRIOS
 
-### 1. Inclusão de prótese mamária
-Hemograma completo · Coagulograma · Ionograma (Na, K, Cl) · Bioquímica (ureia, creatinina) · Mamografia OU USG de mamas · Sorologias (HIV, Hep B, Hep C) · Beta-HCG · RX de tórax · ECG · Risco cirúrgico
-
-### 2. Mastopexia (com ou sem prótese)
-Igual ao item 1 + Urina tipo I / EAS
-
-### 3. Abdominoplastia
-Hemograma completo · Coagulograma · Ionograma (Na, K, Cl) · Bioquímica (ureia, creatinina) · USG de abdome total · USG de parede abdominal · Sorologias (HIV, Hep B, Hep C) · Beta-HCG · RX de tórax · ECG · Risco cirúrgico
-
-### 4. Lipoaspiração / lipoescultura (com ou sem argoplasma)
-Hemograma completo · Coagulograma · Ionograma (Na, K, Cl) · Bioquímica (ureia, creatinina) · Urina tipo I / EAS · Sorologias (HIV, Hep B, Hep C) · Beta-HCG · RX de tórax · ECG · Risco cirúrgico (USG de abdome opcional)
-
-### Cirurgias combinadas
+${surgeriesSection}### Cirurgias combinadas
 Exigir TODOS os exames de TODOS os procedimentos associados.
 
-## REGRAS ABSOLUTAS DE INTERPRETAÇÃO
+## VALORES DE REFERÊNCIA E LIMITES ACEITÁVEIS
 
-- **Mama / BIRADS**: Toda cirurgia mamária exige mamografia OU USG de mamas com classificação BIRADS. BIRADS 1-2 → aceitável. BIRADS 3, 4, 5 ou 6 → NÃO liberar; exigir encaminhamento ao mastologista + parecer. Sem parecer = 🚨 pendência crítica. NUNCA presumir BIRADS.
-- **Hemoglobina**: ≥ 12 g/dL. Hb < 12 → sinalizar obrigatoriamente como alteração relevante, sugerir correção/investigação. Não considerar pré-operatório plenamente adequado.
-- **PCR**: alterada apenas se > 10 mg/L. PCR ≤ 10 não é alteração relevante isolada.
-- **Urina / EAS**: NÃO considerar alterado por flora bacteriana isolada, células epiteliais, muco, contaminação provável ou nitrito positivo isolado. Sinalizar apenas se houver conjunto compatível com ITU significativa (leucocitúria + nitrito + sintomas). Evitar falso positivo.
-- **ECG**: FC ≥ 50 bpm isolada NÃO é alteração. Bradicardia sinusal leve isolada não é alerta. Avaliar: bloqueios, extrassístoles, arritmias, alterações de condução/isquêmicas, QT alterado, sobrecargas, achados estruturais.
-- **RX de tórax**: Nódulos pulmonares SEMPRE sinalizados → encaminhamento ao pneumologista, mesmo se incidental.
+Estes são os limites definidos pela equipe médica. Siga-os rigorosamente:
+
+${limitsSection}
+
+## REGRAS GERAIS DE INTERPRETAÇÃO
+
+- **Mama / BIRADS**: Toda cirurgia mamária exige mamografia OU USG de mamas com classificação BIRADS. BIRADS 1-2 → aceitável. BIRADS 3, 4, 5 ou 6 → NÃO liberar; exigir encaminhamento ao mastologista + parecer. Sem parecer = 🚨 pendência crítica.
+- **RX de tórax**: Nódulos pulmonares SEMPRE sinalizados → encaminhamento ao pneumologista.
 - **Sorologias**: Anti-HBs < 2 não contraindica cirurgia e não é pendência isolada.
 
 ## MEDICAÇÕES
 
 - **GLP-1 / análogos** (Mounjaro/tirzepatida, Ozempic, Wegovy, semaglutida, liraglutida, Saxenda, Victoza, Rybelsus, Trulicity/dulaglutida): suspender 21 dias antes da cirurgia. Sem suspensão adequada → sinalizar risco anestésico (estômago cheio) e sugerir reavaliação/remarcação.
-- Avaliar sempre: anticoagulantes, antiagregantes, AAS, clopidogrel, rivaroxabana, apixabana, dabigatrana, varfarina, heparinas, hipoglicemiantes, insulina, anticoncepcionais, hormônios, corticoides, imunossupressores, psicotrópicos, fitoterápicos com risco hemorrágico. NUNCA orientar suspensão definitiva sem contextualização.
+- Avaliar sempre: anticoagulantes, antiagregantes, AAS, clopidogrel, rivaroxabana, apixabana, dabigatrana, varfarina, heparinas, hipoglicemiantes, insulina, anticoncepcionais, hormônios, corticoides, imunossupressores, psicotrópicos, fitoterápicos. NUNCA orientar suspensão definitiva sem contextualização.
 
 ## EXAMES ILEGÍVEIS
 
@@ -63,17 +68,7 @@ Sua resposta deve ter EXATAMENTE duas partes, nesta ordem, separadas por "---PAR
 
 ITEM                  STATUS
 Exames obrigatórios   ✅ Completo / ❌ Incompleto
-Hemograma             ✅ / ⚠️ / ❌
-Coagulograma          ✅ / ⚠️ / ❌
-Ionograma             ✅ / ⚠️ / ❌
-Função renal          ✅ / ⚠️ / ❌
-Sorologias            ✅ / ⚠️ / ❌
-Beta-HCG              ✅ / ⚠️ / ❌
-Urina                 ✅ / ⚠️ / ❌
-ECG                   ✅ / ⚠️ / ❌
-RX tórax              ✅ / ⚠️ / ❌
-Risco cirúrgico       ✅ / ⚠️ / ❌
-Exames específicos    ✅ / ⚠️ / ❌
+[LISTAR CADA EXAME OBRIGATÓRIO COM STATUS ✅ / ⚠️ / ❌]
 
 🚨 ALERTAS / ALTERAÇÕES
 * [alteração relevante com detalhes]
@@ -113,6 +108,7 @@ Exames específicos    ✅ / ⚠️ / ❌
 Regras do bloco-resumo: texto corrido, sem tabela. Campo vazio = "nenhum/nenhuma". Exames alterados/faltando inclui tanto alterados quanto ausentes. Medicação SEMPRE com tempo de suspensão. Refletir APENAS o identificado — nunca inventar.
 
 Classificação final: ✅ Completo sem alertas · ⚠️ Completo com alertas · ❌ Incompleto · 🚨 Pendência crítica (BIRADS>2 sem mastologista, Hb<12, beta-HCG positivo, exame ilegível, alteração relevante importante, medicação sem suspensão, ECG/risco inconclusivos).`;
+}
 
 Deno.serve(async (req) => {
   try {
@@ -135,10 +131,15 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Chave da API Anthropic não configurada' }, { status: 500 });
     }
 
+    // Fetch surgeries and exam limits from database
+    const surgeries = await base44.asServiceRole.entities.Surgery.list();
+    const examLimits = await base44.asServiceRole.entities.ExamLimit.list();
+
+    const SYSTEM_PROMPT = buildSystemPrompt(surgeries, examLimits);
+
     // Build content blocks for Claude
     const contentBlocks = [];
 
-    // Patient context
     let contextText = `## DADOS DA PACIENTE\n`;
     contextText += `Nome: ${patientName}\n`;
     contextText += `Cirurgia: ${surgeryType}\n`;
@@ -161,7 +162,6 @@ Deno.serve(async (req) => {
           const base64Data = btoa(String.fromCharCode(...new Uint8Array(buffer)));
 
           if (contentType.startsWith('image/')) {
-            // Image files
             const mediaType = contentType.includes('png') ? 'image/png'
               : contentType.includes('webp') ? 'image/webp'
               : contentType.includes('gif') ? 'image/gif'
@@ -169,35 +169,19 @@ Deno.serve(async (req) => {
 
             contentBlocks.push({
               type: 'image',
-              source: {
-                type: 'base64',
-                media_type: mediaType,
-                data: base64Data
-              }
+              source: { type: 'base64', media_type: mediaType, data: base64Data }
             });
           } else if (contentType === 'application/pdf' || fileUrl.toLowerCase().endsWith('.pdf')) {
-            // PDF files
             contentBlocks.push({
               type: 'document',
-              source: {
-                type: 'base64',
-                media_type: 'application/pdf',
-                data: base64Data
-              }
+              source: { type: 'base64', media_type: 'application/pdf', data: base64Data }
             });
           } else {
-            // Text files - try to read as text
             try {
               const textContent = new TextDecoder().decode(buffer);
-              contentBlocks.push({
-                type: 'text',
-                text: `### ARQUIVO DE TEXTO ENVIADO\n${textContent.substring(0, 10000)}`
-              });
+              contentBlocks.push({ type: 'text', text: `### ARQUIVO DE TEXTO ENVIADO\n${textContent.substring(0, 10000)}` });
             } catch {
-              contentBlocks.push({
-                type: 'text',
-                text: `[Arquivo enviado: ${fileUrl.split('/').pop() || 'arquivo'} — tipo: ${contentType || 'desconhecido'}]`
-              });
+              contentBlocks.push({ type: 'text', text: `[Arquivo enviado: ${fileUrl.split('/').pop() || 'arquivo'} — tipo: ${contentType || 'desconhecido'}]` });
             }
           }
         } catch (fileError) {
@@ -206,7 +190,6 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Call Claude API
     const anthropicResponse = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -218,12 +201,7 @@ Deno.serve(async (req) => {
         model: 'claude-sonnet-4-6',
         max_tokens: 4096,
         system: SYSTEM_PROMPT,
-        messages: [
-          {
-            role: 'user',
-            content: contentBlocks
-          }
-        ]
+        messages: [{ role: 'user', content: contentBlocks }]
       })
     });
 
@@ -236,7 +214,6 @@ Deno.serve(async (req) => {
     const result = await anthropicResponse.json();
     const fullText = result.content?.[0]?.text || '';
 
-    // Split into Part 1 and Part 2
     const parts = fullText.split('---PARTE2---');
     const relatorioTecnico = (parts[0] || '').trim();
     const blocoResumo = (parts[1] || '').trim();
