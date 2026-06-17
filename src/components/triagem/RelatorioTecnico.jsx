@@ -14,16 +14,16 @@ export default function RelatorioTecnico({ content, patientName }) {
   if (!content) return null;
 
   return (
-    <div className="bg-card border border-border rounded-xl overflow-hidden">
-      <div className="flex items-center justify-between px-5 py-3 border-b border-border bg-muted/50">
-        <h3 className="text-sm font-semibold text-foreground/80">
-          📋 Relatório Técnico
+    <div className="bg-card/90 backdrop-blur-sm border border-border/50 rounded-3xl overflow-hidden shadow-lg shadow-black/5">
+      <div className="flex items-center justify-between px-5 py-3 border-b border-border/50 bg-muted/30">
+        <h3 className="text-sm font-semibold text-foreground/70 font-heading tracking-wide">
+          Relatório Técnico
         </h3>
         <Button
           variant="ghost"
           size="sm"
           onClick={handleCopy}
-          className="h-8 text-xs gap-1.5 text-muted-foreground hover:text-foreground"
+          className="h-8 text-xs gap-1.5 text-muted-foreground hover:text-foreground rounded-xl transition-all duration-300"
         >
           {copied ? (
             <><Check className="w-3.5 h-3.5" /> Copiado</>

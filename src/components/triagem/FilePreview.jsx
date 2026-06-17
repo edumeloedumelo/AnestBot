@@ -27,7 +27,7 @@ export default function FilePreview({ files, onRemove, disabled }) {
         return (
           <div
             key={`${file.name}-${index}`}
-            className="relative group rounded-lg border border-border bg-card overflow-hidden"
+            className="relative group rounded-2xl border border-border/50 bg-card/80 backdrop-blur-sm overflow-hidden shadow-sm transition-all duration-300 hover:shadow-md"
           >
             {isImage ? (
               <div className="aspect-square flex items-center justify-center bg-muted">

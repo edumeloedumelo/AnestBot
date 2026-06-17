@@ -90,10 +90,10 @@ export default function Triagem() {
       <div className="max-w-2xl mx-auto px-4 py-6 sm:py-10">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-2xl sm:text-3xl font-bold text-foreground tracking-tight [font-family:'Bungee',_system-ui]">Avaliação Pré-Anestésica
-
+          <h1 className="text-2xl sm:text-3xl font-bold text-foreground tracking-tight font-heading">
+            Avaliação Pré-Anestésica
           </h1>
-          <p className="text-sm text-muted-foreground mt-1.5">
+          <p className="text-sm text-muted-foreground mt-1.5 font-display italic tracking-wide opacity-70">
             Apoio à decisão clínica — Suporte Anestésico Pré-Cirúrgico
           </p>
         </div>
@@ -102,15 +102,13 @@ export default function Triagem() {
         <div className="flex gap-2 mb-6">
           <Link
             to="/cirurgias"
-            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-3 py-2 rounded-xl bg-card border border-border hover:border-primary/30">
-            
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-all duration-300 px-3 py-2 rounded-2xl bg-card/80 backdrop-blur-sm border border-border/50 hover:border-primary/40 hover:bg-card shadow-none hover:shadow-lg hover:shadow-primary/5">
             <Settings className="w-3.5 h-3.5" />
             Configurações
           </Link>
           <Link
             to="/historico"
-            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-3 py-2 rounded-xl bg-card border border-border hover:border-primary/30">
-            
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-all duration-300 px-3 py-2 rounded-2xl bg-card/80 backdrop-blur-sm border border-border/50 hover:border-primary/40 hover:bg-card shadow-none hover:shadow-lg hover:shadow-primary/5">
             <ClipboardList className="w-3.5 h-3.5" />
             Histórico
           </Link>
@@ -118,8 +116,10 @@ export default function Triagem() {
 
         {/* Shared indicator */}
         {sharedReceived && !analyzing && !results &&
-        <div className="mb-4 p-3 bg-foreground/5 border border-foreground/20 rounded-xl flex items-center gap-3">
-            <Share2 className="w-4 h-4 text-foreground/60 flex-shrink-0" />
+        <div className="mb-4 p-4 bg-primary/5 border border-primary/15 rounded-2xl flex items-center gap-3 backdrop-blur-sm">
+            <div className="w-9 h-9 rounded-2xl bg-primary/10 flex items-center justify-center flex-shrink-0">
+              <Share2 className="w-4 h-4 text-primary" />
+            </div>
             <div className="min-w-0">
               <p className="text-sm font-medium text-foreground">Arquivos recebidos via WhatsApp</p>
               <p className="text-xs text-muted-foreground">Pronto para análise</p>
@@ -129,7 +129,7 @@ export default function Triagem() {
 
         {/* Form Card */}
         {!results &&
-        <div className="bg-card rounded-2xl border border-border shadow-sm p-5 sm:p-6 mb-6">
+        <div className="bg-card/90 backdrop-blur-sm rounded-3xl border border-border/50 shadow-lg shadow-black/5 p-5 sm:p-6 mb-6">
             <div className="space-y-5">
               <FileUploader
               files={files}
@@ -148,7 +148,7 @@ export default function Triagem() {
                 onChange={(e) => setAnamnesis(e.target.value)}
                 disabled={analyzing}
                 rows={3}
-                className="bg-background border-border resize-none rounded-xl" />
+                className="bg-background/80 border-border/50 resize-none rounded-2xl focus:border-primary/40 transition-all duration-300" />
               
                 <p className="text-[11px] text-muted-foreground/60">
                   Opcional · Aplicado a todos os pacientes do lote
@@ -157,21 +157,20 @@ export default function Triagem() {
             </div>
 
             {error &&
-          <div className="mt-4 p-3 bg-destructive/10 border border-destructive/30 rounded-xl">
-                <p className="text-sm text-destructive">{error}</p>
+          <div className="mt-4 p-4 bg-destructive/5 border border-destructive/20 rounded-2xl backdrop-blur-sm">
+                <p className="text-sm text-destructive font-medium">{error}</p>
               </div>
           }
 
             <div className="mt-6">
               <Button
-              onClick={handleAnalyze}
-              disabled={!canAnalyze}
-              className="w-full bg-foreground hover:bg-foreground/90 text-background px-8 h-12 text-sm font-semibold rounded-xl">
-              
-                <Upload className="w-4 h-4 mr-2" />
-                {analyzing ? "Analisando..." : "Analisar exames"}
-                {!analyzing && <ArrowRight className="w-4 h-4 ml-1" />}
-              </Button>
+                            onClick={handleAnalyze}
+                            disabled={!canAnalyze}
+                            className="w-full bg-foreground hover:bg-foreground/90 text-background px-8 h-12 text-sm font-semibold rounded-2xl shadow-lg shadow-foreground/5 hover:shadow-foreground/10 transition-all duration-300">
+                              <Upload className="w-4 h-4 mr-2" />
+                              {analyzing ? "Analisando..." : "Analisar exames"}
+                              {!analyzing && <ArrowRight className="w-4 h-4 ml-1" />}
+                            </Button>
             </div>
           </div>
         }
@@ -182,7 +181,7 @@ export default function Triagem() {
         {results && results.length > 0 &&
         <div className="space-y-6">
             <div className="flex items-center justify-between">
-              <p className="text-sm text-muted-foreground">
+              <p className="text-xs text-muted-foreground font-medium uppercase tracking-widest">
                 {results.length} paciente{results.length > 1 ? "s" : ""} encontrado{results.length > 1 ? "s" : ""}
               </p>
             </div>
@@ -190,12 +189,12 @@ export default function Triagem() {
             {results.map((result, i) =>
           <div key={i} className="space-y-4">
                 <div className="flex items-center gap-3 px-1">
-                  <div className="w-9 h-9 rounded-xl bg-foreground/10 flex items-center justify-center text-sm font-bold text-foreground">
+                  <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center text-sm font-bold text-primary">
                     {i + 1}
                   </div>
                   <div>
-                    <h3 className="font-semibold text-foreground">{result.patientName}</h3>
-                    <p className="text-xs text-muted-foreground">{result.surgeryType}</p>
+                    <h3 className="font-semibold text-foreground font-heading text-sm tracking-wide">{result.patientName}</h3>
+                    <p className="text-xs text-muted-foreground font-display italic">{result.surgeryType}</p>
                   </div>
                 </div>
 
@@ -205,7 +204,7 @@ export default function Triagem() {
           )}
 
             <div className="flex justify-center pt-2 pb-10">
-              <Button onClick={resetAll} variant="outline" className="gap-2 rounded-xl h-11">
+              <Button onClick={resetAll} variant="outline" className="gap-2 rounded-2xl h-11 border-border/50 hover:border-primary/30 transition-all duration-300">
                 <RotateCcw className="w-4 h-4" />
                 Nova avaliação
               </Button>

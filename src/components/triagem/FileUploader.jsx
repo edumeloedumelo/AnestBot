@@ -60,11 +60,11 @@ export default function FileUploader({ files, setFiles, disabled }) {
         onDragLeave={handleDragLeave}
         onClick={() => !disabled && inputRef.current?.click()}
         className={`
-          relative border-2 border-dashed rounded-2xl px-6 py-10 sm:p-8 text-center cursor-pointer
-          transition-all duration-200 touch-manipulation min-h-[140px] flex flex-col items-center justify-center
+          relative border-2 border-dashed rounded-3xl px-6 py-10 sm:p-8 text-center cursor-pointer
+          transition-all duration-300 touch-manipulation min-h-[140px] flex flex-col items-center justify-center
           ${isDragging
-            ? "border-foreground/60 bg-foreground/5"
-            : "border-border hover:border-foreground/30 bg-muted/30"
+            ? "border-primary/50 bg-primary/5"
+            : "border-border/50 hover:border-primary/30 bg-muted/20"
           }
           ${disabled ? "opacity-50 pointer-events-none" : ""}
         `}
@@ -78,7 +78,7 @@ export default function FileUploader({ files, setFiles, disabled }) {
           className="hidden"
           disabled={disabled}
         />
-        <Upload className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
+        <Upload className="w-10 h-10 text-muted-foreground/40 mx-auto mb-3" />
         <p className="text-sm font-medium text-foreground/80 mb-1">
           Arraste arquivos ou toque para selecionar
         </p>
