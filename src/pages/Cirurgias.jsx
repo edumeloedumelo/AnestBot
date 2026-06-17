@@ -82,22 +82,22 @@ export default function Cirurgias() {
           <Link to="/" className="text-muted-foreground hover:text-foreground transition-colors">
             <ArrowLeft className="w-5 h-5" />
           </Link>
-          <h1 className="text-xl sm:text-2xl font-bold text-foreground">
+          <h1 className="text-xl sm:text-2xl font-bold text-foreground font-heading tracking-wide">
             Gerenciar Cirurgias
           </h1>
         </div>
 
-        <p className="text-sm text-muted-foreground mb-6">
+        <p className="text-sm text-muted-foreground mb-6 font-display italic tracking-wide opacity-70">
           Cadastre os tipos de cirurgia e defina quais exames são obrigatórios e os limites aceitáveis para cada um.
         </p>
 
         {/* Tabs */}
-        <div className="flex gap-1 mb-6 bg-muted rounded-lg p-1">
+        <div className="flex gap-1 mb-6 bg-muted/50 rounded-2xl p-1.5 backdrop-blur-sm">
           <button
             onClick={() => setActiveTab("surgeries")}
-            className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+            className={`flex-1 px-4 py-2 rounded-xl text-sm font-medium transition-all duration-300 ${
               activeTab === "surgeries"
-                ? "bg-background text-foreground shadow-sm"
+                ? "bg-background text-foreground shadow-lg shadow-black/10"
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >
@@ -106,9 +106,9 @@ export default function Cirurgias() {
           </button>
           <button
             onClick={() => setActiveTab("limits")}
-            className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+            className={`flex-1 px-4 py-2 rounded-xl text-sm font-medium transition-all duration-300 ${
               activeTab === "limits"
-                ? "bg-background text-foreground shadow-sm"
+                ? "bg-background text-foreground shadow-lg shadow-black/10"
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >
@@ -123,7 +123,7 @@ export default function Cirurgias() {
             {!showSurgeryForm && (
               <Button
                 onClick={() => { setEditingSurgery(null); setShowSurgeryForm(true); }}
-                className="mb-6 bg-primary hover:bg-primary/90 text-primary-foreground gap-2"
+                className="mb-6 bg-primary hover:bg-primary/90 text-primary-foreground gap-2 rounded-2xl shadow-lg shadow-primary/10 transition-all duration-300"
               >
                 <Plus className="w-4 h-4" /> Nova cirurgia
               </Button>
@@ -156,8 +156,8 @@ export default function Cirurgias() {
         {/* Limits Tab */}
         {activeTab === "limits" && (
           <>
-            <div className="mb-6 p-4 bg-card border border-border rounded-xl">
-              <p className="text-sm text-muted-foreground">
+            <div className="mb-6 p-4 bg-card/80 backdrop-blur-sm border border-border/50 rounded-2xl shadow-sm">
+              <p className="text-sm text-muted-foreground font-display italic opacity-80">
                 Defina os valores de referência e regras de interpretação que a equipe considera aceitáveis para cada exame. Esses limites serão usados automaticamente na triagem.
               </p>
             </div>
@@ -165,7 +165,7 @@ export default function Cirurgias() {
             {!showLimitForm && (
               <Button
                 onClick={() => { setEditingLimit(null); setShowLimitForm(true); }}
-                className="mb-6 bg-primary hover:bg-primary/90 text-primary-foreground gap-2"
+                className="mb-6 bg-primary hover:bg-primary/90 text-primary-foreground gap-2 rounded-2xl shadow-lg shadow-primary/10 transition-all duration-300"
               >
                 <Plus className="w-4 h-4" /> Novo limite
               </Button>

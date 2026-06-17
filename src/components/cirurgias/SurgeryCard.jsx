@@ -6,13 +6,13 @@ export default function SurgeryCard({ surgery, onEdit, onDelete }) {
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className="bg-card border border-border rounded-xl overflow-hidden">
+    <div className="bg-card/80 backdrop-blur-sm border border-border/50 rounded-2xl overflow-hidden shadow-sm transition-all duration-300 hover:shadow-md">
       <button
         onClick={() => setExpanded(!expanded)}
         className="w-full flex items-center justify-between px-5 py-4 hover:bg-muted/30 transition-colors text-left"
       >
         <div>
-          <h3 className="font-semibold text-foreground">{surgery.name}</h3>
+          <h3 className="font-semibold text-foreground font-heading text-sm tracking-wide">{surgery.name}</h3>
           <p className="text-xs text-muted-foreground">{surgery.key}</p>
         </div>
         <div className="flex items-center gap-2">
@@ -41,14 +41,14 @@ export default function SurgeryCard({ surgery, onEdit, onDelete }) {
             )}
           </div>
           <div className="flex gap-2 pt-2">
-            <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); onEdit(surgery); }} className="gap-1.5">
+            <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); onEdit(surgery); }} className="gap-1.5 rounded-2xl">
               <Pencil className="w-3.5 h-3.5" /> Editar
             </Button>
             <Button
               variant="outline"
               size="sm"
               onClick={(e) => { e.stopPropagation(); onDelete(surgery); }}
-              className="gap-1.5 text-destructive hover:text-destructive border-destructive/30 hover:bg-destructive/10"
+              className="gap-1.5 text-destructive hover:text-destructive border-destructive/30 hover:bg-destructive/10 rounded-2xl"
             >
               <Trash2 className="w-3.5 h-3.5" /> Excluir
             </Button>

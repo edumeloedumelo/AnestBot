@@ -56,8 +56,8 @@ export default function Historico() {
             <ArrowLeft className="w-5 h-5" />
           </Link>
           <div>
-            <h1 className="text-xl sm:text-2xl font-bold text-foreground">Histórico de Avaliações</h1>
-            <p className="text-sm text-muted-foreground">Painel administrativo — auditoria e rastreabilidade</p>
+            <h1 className="text-xl sm:text-2xl font-bold text-foreground font-heading tracking-wide">Histórico de Avaliações</h1>
+            <p className="text-sm text-muted-foreground font-display italic tracking-wide opacity-70">Painel administrativo — auditoria e rastreabilidade</p>
           </div>
         </div>
 
@@ -69,7 +69,7 @@ export default function Historico() {
             { label: "Pendentes", value: stats.pending, icon: Clock, color: "text-orange-400", bg: "bg-orange-400/10" },
             { label: "Críticas", value: stats.critical, icon: AlertTriangle, color: "text-red-400", bg: "bg-red-400/10" },
           ].map((s) => (
-            <div key={s.label} className={`${s.bg} border border-border rounded-xl p-4`}>
+            <div key={s.label} className={`${s.bg} border border-border/50 rounded-2xl p-4 backdrop-blur-sm shadow-sm`}>
               <div className="flex items-center gap-2 mb-2">
                 <s.icon className={`w-4 h-4 ${s.color}`} />
                 <span className="text-xs text-muted-foreground">{s.label}</span>
@@ -91,10 +91,10 @@ export default function Historico() {
             <button
               key={f.key}
               onClick={() => setFilter(f.key)}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-medium whitespace-nowrap transition-all duration-300 ${
                 filter === f.key
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-muted text-muted-foreground hover:text-foreground"
+                  ? "bg-primary text-primary-foreground shadow-lg shadow-primary/10"
+                  : "bg-muted/60 text-muted-foreground hover:text-foreground hover:bg-muted"
               }`}
             >
               {f.label}
@@ -115,7 +115,7 @@ export default function Historico() {
               const Icon = config.icon;
               const isExpanded = expanded === t.id;
               return (
-                <div key={t.id} className={`bg-card border ${config.border} rounded-xl overflow-hidden`}>
+                <div key={t.id} className={`bg-card/80 backdrop-blur-sm border ${config.border} rounded-2xl overflow-hidden shadow-sm transition-all duration-300 hover:shadow-md`}>
                   <button
                     onClick={() => setExpanded(isExpanded ? null : t.id)}
                     className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-muted/30 transition-colors"
@@ -141,13 +141,13 @@ export default function Historico() {
                     <div className="px-4 pb-4 border-t border-border">
                       <div className="pt-3">
                         <h4 className="text-xs font-medium text-muted-foreground mb-2">Resumo para WhatsApp</h4>
-                        <pre className="text-sm text-foreground/80 whitespace-pre-wrap font-sans leading-relaxed bg-muted/50 rounded-lg p-3">
+                        <pre className="text-sm text-foreground/80 whitespace-pre-wrap font-body leading-relaxed bg-muted/30 rounded-2xl p-3">
                           {t.bloco_resumo || "Resumo não disponível."}
                         </pre>
                       </div>
                       <details className="mt-3">
                         <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">Ver relatório técnico completo</summary>
-                        <pre className="text-xs text-muted-foreground whitespace-pre-wrap font-mono leading-relaxed bg-muted/50 rounded-lg p-3 mt-2 max-h-64 overflow-auto">
+                        <pre className="text-xs text-muted-foreground whitespace-pre-wrap font-mono leading-relaxed bg-muted/30 rounded-2xl p-3 mt-2 max-h-64 overflow-auto">
                           {t.relatorio_tecnico || "Relatório não disponível."}
                         </pre>
                       </details>

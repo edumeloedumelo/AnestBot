@@ -11,7 +11,7 @@ const ruleTypeLabels = {
 
 export default function ExamLimitCard({ limit, onEdit, onDelete }) {
   return (
-    <div className="bg-card border border-border rounded-lg px-4 py-3 flex items-center justify-between gap-3">
+    <div className="bg-card/80 backdrop-blur-sm border border-border/50 rounded-2xl px-4 py-3 flex items-center justify-between gap-3 shadow-sm transition-all duration-300 hover:shadow-md">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 flex-wrap">
           <h4 className="font-medium text-sm text-foreground">{limit.exam_name}</h4>

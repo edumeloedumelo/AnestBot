@@ -56,7 +56,7 @@ export default function SurgeryForm({ surgery, onSave, onCancel }) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="bg-card border border-border rounded-xl p-5 space-y-4">
+    <form onSubmit={handleSubmit} className="bg-card/80 backdrop-blur-sm border border-border/50 rounded-2xl p-5 space-y-4 shadow-lg shadow-black/5">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label className="text-sm text-foreground/80">Nome da cirurgia</Label>
@@ -64,7 +64,7 @@ export default function SurgeryForm({ surgery, onSave, onCancel }) {
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Ex: Inclusão de prótese mamária"
-            className="bg-background border-border"
+            className="bg-background/80 border-border/50 rounded-2xl focus:border-primary/40 transition-all duration-300"
           />
         </div>
         <div className="space-y-2">
@@ -73,7 +73,7 @@ export default function SurgeryForm({ surgery, onSave, onCancel }) {
             value={key}
             onChange={(e) => setKey(e.target.value)}
             placeholder="Ex: protese_mamaria"
-            className="bg-background border-border"
+            className="bg-background/80 border-border/50 rounded-2xl focus:border-primary/40 transition-all duration-300"
           />
         </div>
       </div>
@@ -85,10 +85,10 @@ export default function SurgeryForm({ surgery, onSave, onCancel }) {
           {EXAM_OPTIONS.map((exam) => (
             <label
               key={exam}
-              className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-colors text-sm ${
+              className={`flex items-center gap-2 px-3 py-2 rounded-2xl border cursor-pointer transition-all duration-300 text-sm ${
                 exams.includes(exam)
-                  ? "border-primary/50 bg-primary/10 text-foreground"
-                  : "border-border bg-background text-muted-foreground hover:border-primary/30"
+                  ? "border-primary/40 bg-primary/10 text-foreground shadow-sm"
+                  : "border-border/50 bg-background/80 text-muted-foreground hover:border-primary/30"
               }`}
             >
               <input
@@ -112,7 +112,7 @@ export default function SurgeryForm({ surgery, onSave, onCancel }) {
           className="bg-background border-border flex-1"
           onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addExam())}
         />
-        <Button type="button" variant="outline" onClick={addExam} size="icon" className="h-9 w-9">
+        <Button type="button" variant="outline" onClick={addExam} size="icon" className="h-9 w-9 rounded-2xl">
           <Plus className="w-4 h-4" />
         </Button>
       </div>
@@ -132,10 +132,10 @@ export default function SurgeryForm({ surgery, onSave, onCancel }) {
       )}
 
       <div className="flex justify-end gap-3 pt-2">
-        <Button type="button" variant="outline" onClick={onCancel}>
+        <Button type="button" variant="outline" onClick={onCancel} className="rounded-2xl">
           Cancelar
         </Button>
-        <Button type="submit" disabled={saving || !name.trim() || !key.trim()} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+        <Button type="submit" disabled={saving || !name.trim() || !key.trim()} className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-2xl shadow-lg shadow-primary/10 transition-all duration-300">
           {saving ? "Salvando..." : "Salvar cirurgia"}
         </Button>
       </div>
