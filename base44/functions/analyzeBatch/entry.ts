@@ -306,11 +306,22 @@ Deno.serve(async (req) => {
       try {
         const triageText = await callClaude(TRIAGE_SYSTEM_PROMPT, triageBlocks, apiKey, 4096);
         const parts = triageText.split('---PARTE2---');
+        const relatorio = (parts[0] || '').trim();
+        const resumo = (parts[1] || '').trim();
+
+        // Extract status
+        let status = 'incomplete';
+        if (relatorio.includes('🚨 Pendência crítica')) status = 'critical_pending';
+        else if (relatorio.includes('✅ Completo sem alertas')) status = 'complete_without_alerts';
+        else if (relatorio.includes('⚠️ Completo com alertas')) status = 'complete_with_alerts';
+        else if (relatorio.includes('❌ Incompleto') || relatorio.includes('❌ Pendente')) status = 'incomplete';
+
         results.push({
           patientName: patient.name,
           surgeryType: patient.surgeryType || 'indefinida',
-          relatorioTecnico: (parts[0] || '').trim(),
-          blocoResumo: (parts[1] || '').trim()
+          relatorioTecnico: relatorio,
+          blocoResumo: resumo,
+          status
         });
       } catch (err) {
         console.error(`Erro na triagem de ${patient.name}:`, err.message);
@@ -318,9 +329,22 @@ Deno.serve(async (req) => {
           patientName: patient.name,
           surgeryType: patient.surgeryType || 'indefinida',
           relatorioTecnico: 'Erro ao processar os exames desta paciente.',
-          blocoResumo: ''
+          blocoResumo: '',
+          status: 'incomplete'
         });
       }
+    }
+
+    // Save results to Triage entity
+    for (const r of results) {
+      await base44.asServiceRole.entities.Triage.create({
+        patient_name: r.patientName,
+        surgery_type: r.surgeryType,
+        status: r.status,
+        relatorio_tecnico: r.relatorioTecnico,
+        bloco_resumo: r.blocoResumo,
+        files_count: fileUrls.length
+      });
     }
 
     return Response.json({

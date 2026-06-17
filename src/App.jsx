@@ -9,6 +9,8 @@ import ScrollToTop from './components/ScrollToTop';
 // Add page imports here
 import Triagem from '@/pages/Triagem';
 import Cirurgias from '@/pages/Cirurgias';
+import Historico from '@/pages/Historico';
+import AdminRoute from '@/components/AdminRoute';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -38,7 +40,8 @@ const AuthenticatedApp = () => {
     <Routes>
       {/* Add your page Route elements here */}
       <Route path="/" element={<Triagem />} />
-      <Route path="/cirurgias" element={<Cirurgias />} />
+      <Route path="/cirurgias" element={<AdminRoute><Cirurgias /></AdminRoute>} />
+      <Route path="/historico" element={<AdminRoute><Historico /></AdminRoute>} />
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );

@@ -60,11 +60,11 @@ export default function FileUploader({ files, setFiles, disabled }) {
         onDragLeave={handleDragLeave}
         onClick={() => !disabled && inputRef.current?.click()}
         className={`
-          relative border-2 border-dashed rounded-xl p-8 text-center cursor-pointer
-          transition-all duration-200
+          relative border-2 border-dashed rounded-2xl px-6 py-10 sm:p-8 text-center cursor-pointer
+          transition-all duration-200 touch-manipulation min-h-[140px] flex flex-col items-center justify-center
           ${isDragging
-            ? "border-primary bg-primary/10"
-            : "border-border hover:border-primary/60 bg-muted/50"
+            ? "border-foreground/60 bg-foreground/5"
+            : "border-border hover:border-foreground/30 bg-muted/30"
           }
           ${disabled ? "opacity-50 pointer-events-none" : ""}
         `}
@@ -80,10 +80,10 @@ export default function FileUploader({ files, setFiles, disabled }) {
         />
         <Upload className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
         <p className="text-sm font-medium text-foreground/80 mb-1">
-          Arraste os arquivos aqui ou clique para selecionar
+          Arraste arquivos ou toque para selecionar
         </p>
         <p className="text-xs text-muted-foreground">
-          .txt, .jpg, .jpeg, .png, .webp, .pdf — até 25MB cada
+          JPEG, PNG, PDF, TXT — até 25MB
         </p>
       </div>
 

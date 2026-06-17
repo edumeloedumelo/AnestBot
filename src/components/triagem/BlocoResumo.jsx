@@ -33,10 +33,10 @@ export default function BlocoResumo({ content, patientName }) {
       <div className="px-5 pb-5">
         <Button
           onClick={handleCopy}
-          className="w-full bg-primary hover:bg-primary/90 text-primary-foreground gap-2 h-11"
+          className="w-full bg-foreground hover:bg-foreground/90 text-background gap-2 h-12 rounded-xl font-medium"
         >
           {copied ? (
-            <><Check className="w-4 h-4" /> Copiado para a área de transferência</>
+            <><Check className="w-4 h-4" /> Copiado</>
           ) : (
             <><Copy className="w-4 h-4" /> Copiar para WhatsApp</>
           )}
