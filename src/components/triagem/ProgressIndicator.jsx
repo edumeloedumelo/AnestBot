@@ -3,8 +3,7 @@ import { Loader2 } from "lucide-react";
 export default function ProgressIndicator({ status }) {
   const steps = [
     { key: "uploading", label: "Enviando arquivos..." },
-    { key: "analyzing", label: "Analisando exames com IA..." },
-    { key: "generating", label: "Gerando relatório..." },
+    { key: "analyzing", label: "Identificando pacientes e analisando exames..." },
   ];
 
   const currentIndex = steps.findIndex((s) => s.key === status);
@@ -45,7 +44,7 @@ export default function ProgressIndicator({ status }) {
       </div>
 
       <p className="text-xs text-slate-400 dark:text-slate-500 mt-6 text-center">
-        Isso pode levar até 60 segundos dependendo da quantidade de arquivos
+        Isso pode levar de 30 segundos a alguns minutos dependendo da quantidade de arquivos e pacientes
       </p>
     </div>
   );

@@ -1,65 +1,56 @@
 import { useState, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { RotateCcw } from "lucide-react";
-import PatientForm from "@/components/triagem/PatientForm";
 import FileUploader from "@/components/triagem/FileUploader";
 import ProgressIndicator from "@/components/triagem/ProgressIndicator";
-import RelatorioTecnico from "@/components/triagem/RelatorioTecnico";
-import BlocoResumo from "@/components/triagem/BlocoResumo";
+import PatientResultCard from "@/components/triagem/PatientResultCard";
 import SecurityNotice from "@/components/triagem/SecurityNotice";
 
 export default function Triagem() {
-  const [patientName, setPatientName] = useState("");
-  const [surgeryType, setSurgeryType] = useState("");
   const [anamnesis, setAnamnesis] = useState("");
   const [files, setFiles] = useState([]);
   const [analyzing, setAnalyzing] = useState(false);
   const [progressStatus, setProgressStatus] = useState("");
   const [error, setError] = useState("");
-  const [result, setResult] = useState(null);
+  const [results, setResults] = useState(null);
 
-  const canAnalyze = patientName.trim() && surgeryType && files.length > 0 && !analyzing;
+  const canAnalyze = files.length > 0 && !analyzing;
 
   const resetAll = useCallback(() => {
-    // Revoke object URLs to free memory
     files.forEach((f) => {
       if (f.preview) URL.revokeObjectURL(f.preview);
     });
-    setPatientName("");
-    setSurgeryType("");
     setAnamnesis("");
     setFiles([]);
     setAnalyzing(false);
     setProgressStatus("");
     setError("");
-    setResult(null);
+    setResults(null);
   }, [files]);
 
   const handleAnalyze = async () => {
     if (!canAnalyze) return;
     setAnalyzing(true);
     setError("");
-    setResult(null);
+    setResults(null);
 
     try {
-      // Step 1: Upload files
+      // Step 1: Upload all files
       setProgressStatus("uploading");
       const fileUrls = [];
-
       for (const file of files) {
         const { file_url } = await base44.integrations.Core.UploadFile({ file });
         fileUrls.push(file_url);
       }
 
-      // Step 2: Analyze
+      // Step 2: Analyze batch - identifies patients and runs triage
       setProgressStatus("analyzing");
-
-      const response = await base44.functions.invoke("analyzePreOp", {
-        patientName,
-        surgeryType,
-        anamnesis,
+      const response = await base44.functions.invoke("analyzeBatch", {
         fileUrls,
+        anamnesis,
       });
 
       if (response.data?.error) {
@@ -68,14 +59,7 @@ export default function Triagem() {
         return;
       }
 
-      // Step 3: Generate
-      setProgressStatus("generating");
-
-      setResult({
-        relatorioTecnico: response.data.relatorioTecnico || "Relatório não gerado.",
-        blocoResumo: response.data.blocoResumo || "Resumo não gerado.",
-      });
-
+      setResults(response.data.results || []);
       setAnalyzing(false);
       setProgressStatus("");
     } catch (err) {
@@ -104,24 +88,29 @@ export default function Triagem() {
         </div>
 
         {/* Form Card */}
-        {!result && (
+        {!results && (
           <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm p-5 sm:p-6 mb-6">
-            <PatientForm
-              patientName={patientName}
-              setPatientName={setPatientName}
-              surgeryType={surgeryType}
-              setSurgeryType={setSurgeryType}
-              anamnesis={anamnesis}
-              setAnamnesis={setAnamnesis}
-              disabled={analyzing}
-            />
-
-            <div className="mt-6">
+            <div className="space-y-4">
               <FileUploader
                 files={files}
                 setFiles={setFiles}
                 disabled={analyzing}
               />
+
+              <div className="space-y-2">
+                <Label htmlFor="anamnesis" className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                  Anamnese / Observações clínicas <span className="text-slate-400 font-normal">(opcional — aplicado a todos os pacientes)</span>
+                </Label>
+                <Textarea
+                  id="anamnesis"
+                  placeholder="Comorbidades, histórico cirúrgico, medicações de uso contínuo, alergias, IMC, idade..."
+                  value={anamnesis}
+                  onChange={(e) => setAnamnesis(e.target.value)}
+                  disabled={analyzing}
+                  rows={3}
+                  className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 resize-none"
+                />
+              </div>
             </div>
 
             {/* Error */}
@@ -148,13 +137,20 @@ export default function Triagem() {
         {analyzing && <ProgressIndicator status={progressStatus} />}
 
         {/* Results */}
-        {result && (
-          <div className="space-y-6">
-            <RelatorioTecnico content={result.relatorioTecnico} patientName={patientName} />
-            <BlocoResumo content={result.blocoResumo} patientName={patientName} />
+        {results && results.length > 0 && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                {results.length} paciente{results.length > 1 ? "s" : ""} encontrado{results.length > 1 ? "s" : ""}
+              </p>
+            </div>
+
+            {results.map((result, i) => (
+              <PatientResultCard key={i} result={result} index={i} />
+            ))}
 
             {/* Nova Triagem */}
-            <div className="flex justify-center pt-2">
+            <div className="flex justify-center pt-4">
               <Button
                 onClick={resetAll}
                 variant="outline"
@@ -164,6 +160,23 @@ export default function Triagem() {
                 Nova triagem
               </Button>
             </div>
+          </div>
+        )}
+
+        {/* No patients found */}
+        {results && results.length === 0 && (
+          <div className="text-center py-12">
+            <p className="text-slate-500 dark:text-slate-400 mb-4">
+              Nenhum paciente identificado nos arquivos enviados.
+            </p>
+            <Button
+              onClick={resetAll}
+              variant="outline"
+              className="gap-2"
+            >
+              <RotateCcw className="w-4 h-4" />
+              Tentar novamente
+            </Button>
           </div>
         )}
       </div>

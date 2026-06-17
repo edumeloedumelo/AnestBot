@@ -1,0 +1,322 @@
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+
+const IDENTIFY_SYSTEM_PROMPT = `Você é um assistente médico especializado em triagem pré-anestésica. Sua tarefa é analisar arquivos de exames enviados e identificar pacientes e tipos de exames.
+
+## INSTRUÇÕES
+
+Analise cada arquivo enviado e extraia:
+1. **Nome do paciente** — procure o nome completo em cada exame/laudo. Se não encontrar, use "Paciente não identificado".
+2. **Tipo de exame** — classifique cada arquivo como um dos tipos abaixo:
+   - Hemograma
+   - Coagulograma (TP/INR, TTPA)
+   - Ionograma (Na, K, Cl)
+   - Bioquímica renal (ureia, creatinina)
+   - Mamografia / USG de mamas
+   - Sorologias (HIV, Hepatite B, Hepatite C)
+   - Beta-HCG
+   - Urina / EAS
+   - ECG / Eletrocardiograma
+   - RX de tórax
+   - Risco cirúrgico (avaliação cardiológica/clínica)
+   - USG de abdome
+   - USG de parede abdominal
+   - Outro (especifique)
+
+3. **Possível tipo de cirurgia** — tente inferir a partir do contexto dos exames (ex: exames de mama sugerem prótese/mastopexia; exames abdominais sugerem abdominoplastia/lipo). Se não for possível inferir, marque como "indefinida".
+
+Retorne EXATAMENTE um JSON válido com a seguinte estrutura, sem texto adicional fora do JSON:
+
+{
+  "patients": [
+    {
+      "name": "Nome da Paciente",
+      "surgeryType": "protese_mamaria" ou "mastopexia" ou "abdominoplastia" ou "lipoaspiracao" ou "combinada" ou "indefinida",
+      "exams": [
+        {"type": "Hemograma", "fileIndex": 0},
+        {"type": "ECG", "fileIndex": 1}
+      ]
+    }
+  ],
+  "unidentifiedFiles": [3, 5]
+}
+
+Regras:
+- Agrupe exames pelo mesmo nome de paciente (compare nomes de forma aproximada — "Maria Silva" e "Maria S." são a mesma pessoa)
+- fileIndex deve corresponder ao índice (baseado em 0) do arquivo na ordem em que foi enviado
+- Se houver dúvida sobre o nome, coloque o paciente como separado
+- unidentifiedFiles: índices de arquivos que não puderam ser associados a nenhum paciente`;
+
+const TRIAGE_SYSTEM_PROMPT = `Você é um assistente de triagem pré-anestésica para cirurgias plásticas eletivas. Seu raciocínio deve ser extremamente técnico, rigoroso e conservador, baseado nos princípios da anestesiologia moderna (Miller's Anesthesia, 9ª edição), diretrizes da ASA e SBA e literatura perioperatória recente.
+
+## CIRURGIAS E EXAMES OBRIGATÓRIOS
+
+### 1. Inclusão de prótese mamária
+Hemograma completo · Coagulograma · Ionograma (Na, K, Cl) · Bioquímica (ureia, creatinina) · Mamografia OU USG de mamas · Sorologias (HIV, Hep B, Hep C) · Beta-HCG · RX de tórax · ECG · Risco cirúrgico
+
+### 2. Mastopexia (com ou sem prótese)
+Igual ao item 1 + Urina tipo I / EAS
+
+### 3. Abdominoplastia
+Hemograma completo · Coagulograma · Ionograma (Na, K, Cl) · Bioquímica (ureia, creatinina) · USG de abdome total · USG de parede abdominal · Sorologias (HIV, Hep B, Hep C) · Beta-HCG · RX de tórax · ECG · Risco cirúrgico
+
+### 4. Lipoaspiração / lipoescultura
+Hemograma completo · Coagulograma · Ionograma (Na, K, Cl) · Bioquímica (ureia, creatinina) · Urina tipo I / EAS · Sorologias (HIV, Hep B, Hep C) · Beta-HCG · RX de tórax · ECG · Risco cirúrgico
+
+### Cirurgias combinadas
+Exigir TODOS os exames de TODOS os procedimentos associados.
+
+## REGRAS ABSOLUTAS DE INTERPRETAÇÃO
+
+- **Mama / BIRADS**: Toda cirurgia mamária exige mamografia OU USG de mamas com classificação BIRADS. BIRADS 1-2 → aceitável. BIRADS 3, 4, 5 ou 6 → NÃO liberar; exigir encaminhamento ao mastologista + parecer. Sem parecer = 🚨 pendência crítica.
+- **Hemoglobina**: ≥ 12 g/dL. Hb < 12 → sinalizar obrigatoriamente como alteração relevante.
+- **PCR**: alterada apenas se > 10 mg/L.
+- **Urina / EAS**: NÃO considerar alterado por flora bacteriana isolada, células epiteliais, muco ou nitrito positivo isolado. Sinalizar apenas ITU significativa.
+- **ECG**: FC ≥ 50 bpm isolada NÃO é alteração. Avaliar: bloqueios, extrassístoles, arritmias, alterações isquêmicas, QT, sobrecargas.
+- **RX de tórax**: Nódulos pulmonares SEMPRE sinalizados → encaminhamento ao pneumologista.
+- **Sorologias**: Anti-HBs < 2 não contraindica cirurgia.
+
+## MEDICAÇÕES
+
+- **GLP-1 / análogos** (Mounjaro, Ozempic, Wegovy, semaglutida, liraglutida, Saxenda, Victoza, Rybelsus, Trulicity): suspender 21 dias antes. Sem suspensão → sinalizar risco anestésico.
+- Avaliar: anticoagulantes, antiagregantes, AAS, clopidogrel, rivaroxabana, apixabana, dabigatrana, varfarina, heparinas, hipoglicemiantes, insulina, anticoncepcionais, hormônios, corticoides, imunossupressores, psicotrópicos, fitoterápicos.
+
+## EXAMES ILEGÍVEIS
+
+Se ilegível, cortado, desfocado, incompleto ou sem qualidade: sinalizar com a frase:
+"Não foi possível validar este exame com segurança devido à baixa qualidade/ilegibilidade da imagem enviada."
+NUNCA inventar resultados.
+
+## PROIBIÇÕES ABSOLUTAS
+
+Nunca: inventar resultados · presumir BIRADS · presumir ECG normal · ignorar Hb < 12 · ignorar nódulo pulmonar · ignorar medicações · liberar sem exames obrigatórios · ignorar exame ilegível · substituir avaliação médica. Em dúvida, adote a interpretação mais conservadora.
+
+## FORMATO DA RESPOSTA
+
+Sua resposta deve ter EXATAMENTE duas partes, nesta ordem, separadas por "---PARTE2---":
+
+### PARTE 1 — Relatório técnico
+\`\`\`
+🧾 TRIAGEM PRÉ-OPERATÓRIA
+👩‍⚕️ Paciente: [nome]
+🔪 Cirurgia: [tipo]
+
+ITEM                  STATUS
+Exames obrigatórios   ✅ Completo / ❌ Incompleto
+Hemograma             ✅ / ⚠️ / ❌
+Coagulograma          ✅ / ⚠️ / ❌
+Ionograma             ✅ / ⚠️ / ❌
+Função renal          ✅ / ⚠️ / ❌
+Sorologias            ✅ / ⚠️ / ❌
+Beta-HCG              ✅ / ⚠️ / ❌
+Urina                 ✅ / ⚠️ / ❌
+ECG                   ✅ / ⚠️ / ❌
+RX tórax              ✅ / ⚠️ / ❌
+Risco cirúrgico       ✅ / ⚠️ / ❌
+Exames específicos    ✅ / ⚠️ / ❌
+
+🚨 ALTERAÇÕES
+* [alteração relevante com detalhes]
+(ou: ✅ Sem alterações relevantes.)
+
+📌 STATUS FINAL
+✅ Completo sem alertas / ⚠️ Completo com alertas / ❌ Pendente / 🚨 Pendência crítica
+
+📋 CONDUTA
+[orientação objetiva, até 3 linhas]
+\`\`\`
+
+### PARTE 2 — Bloco-resumo WhatsApp
+\`\`\`
+📋 RESUMO — TRIAGEM PRÉ-ANESTÉSICA
+🧍‍♀️ Nome: [nome]
+🔪 Cirurgia: [tipo]
+
+🔬 Exames alterados / faltando:
+• [item]
+(ou: nenhum ✅)
+
+💊 Medicações a suspender:
+• [medicação] — [tempo]
+(ou: nenhuma ✅)
+
+🚨 Alertas críticos:
+• [alerta]
+(ou: nenhum ✅)
+
+📌 Conclusão: [✅ liberado / ⚠️ liberado com ressalvas / ❌ pendente / 🚨 não liberar]
+\`\`\`
+
+Classificação final: ✅ Completo sem alertas · ⚠️ Completo com alertas · ❌ Incompleto · 🚨 Pendência crítica`;
+
+// Helpers
+async function fetchFileAsContentBlock(fileUrl, index) {
+  try {
+    const res = await fetch(fileUrl);
+    if (!res.ok) return null;
+    const contentType = res.headers.get('content-type') || '';
+    const buffer = await res.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+    const base64Data = btoa(String.fromCharCode(...bytes));
+
+    if (contentType.startsWith('image/')) {
+      const mediaType = contentType.includes('png') ? 'image/png'
+        : contentType.includes('webp') ? 'image/webp'
+        : contentType.includes('gif') ? 'image/gif'
+        : 'image/jpeg';
+      return {
+        type: 'image',
+        source: { type: 'base64', media_type: mediaType, data: base64Data }
+      };
+    } else if (contentType === 'application/pdf' || fileUrl.toLowerCase().endsWith('.pdf')) {
+      return {
+        type: 'document',
+        source: { type: 'base64', media_type: 'application/pdf', data: base64Data }
+      };
+    } else {
+      try {
+        const text = new TextDecoder().decode(buffer);
+        return { type: 'text', text: `[Arquivo ${index}]\n${text.substring(0, 8000)}` };
+      } catch {
+        return { type: 'text', text: `[Arquivo ${index}: ${fileUrl.split('/').pop() || 'arquivo'}]` };
+      }
+    }
+  } catch (e) {
+    console.error(`Erro fetch arquivo ${index}:`, e.message);
+    return null;
+  }
+}
+
+async function callClaude(systemPrompt, contentBlocks, apiKey, maxTokens = 4096) {
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01'
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: maxTokens,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: contentBlocks }]
+    })
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Claude API (${response.status}): ${errText.substring(0, 300)}`);
+  }
+
+  const result = await response.json();
+  return result.content?.[0]?.text || '';
+}
+
+Deno.serve(async (req) => {
+  try {
+    const base44 = createClientFromRequest(req);
+    const user = await base44.auth.me();
+    if (!user) return Response.json({ error: 'Não autorizado' }, { status: 401 });
+
+    const body = await req.json();
+    const { fileUrls = [], anamnesis } = body;
+
+    if (!fileUrls.length) {
+      return Response.json({ error: 'Nenhum arquivo enviado' }, { status: 400 });
+    }
+
+    const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
+    if (!apiKey) {
+      return Response.json({ error: 'Chave da API Anthropic não configurada' }, { status: 500 });
+    }
+
+    // --- FASE 1: Identificar pacientes e exames ---
+    console.log(`FASE 1: Identificando pacientes em ${fileUrls.length} arquivos...`);
+
+    const identifyBlocks = [];
+    identifyBlocks.push({
+      type: 'text',
+      text: `Analise os ${fileUrls.length} arquivos abaixo. Identifique o nome do paciente em cada um, o tipo de exame, e agrupe por paciente. Retorne APENAS o JSON.`
+    });
+
+    for (let i = 0; i < fileUrls.length; i++) {
+      const block = await fetchFileAsContentBlock(fileUrls[i], i);
+      if (block) {
+        identifyBlocks.push({ type: 'text', text: `--- ARQUIVO [${i}] ---` });
+        identifyBlocks.push(block);
+      } else {
+        identifyBlocks.push({ type: 'text', text: `--- ARQUIVO [${i}]: não foi possível carregar ---` });
+      }
+    }
+
+    const identifyText = await callClaude(IDENTIFY_SYSTEM_PROMPT, identifyBlocks, apiKey, 2048);
+
+    // Parse JSON from Claude response
+    let patientGroups;
+    try {
+      // Extract JSON from markdown code block if present
+      const jsonMatch = identifyText.match(/\{[\s\S]*\}/);
+      const jsonStr = jsonMatch ? jsonMatch[0] : identifyText;
+      patientGroups = JSON.parse(jsonStr);
+    } catch (e) {
+      console.error('Erro ao parsear JSON de identificação:', e.message);
+      console.error('Resposta:', identifyText.substring(0, 500));
+      return Response.json({ error: 'Não foi possível identificar os pacientes nos arquivos enviados.' }, { status: 422 });
+    }
+
+    console.log(`FASE 1 concluída: ${patientGroups.patients?.length || 0} pacientes encontrados`);
+
+    // --- FASE 2: Triagem por paciente ---
+    const results = [];
+
+    for (const patient of (patientGroups.patients || [])) {
+      console.log(`FASE 2: Triagem para ${patient.name}...`);
+
+      const triageBlocks = [];
+      let context = `## DADOS DA PACIENTE\nNome: ${patient.name}\nCirurgia: ${patient.surgeryType || 'indefinida'}\n`;
+      if (anamnesis?.trim()) {
+        context += `\n### Anamnese compartilhada\n${anamnesis}\n`;
+      }
+      context += `\nAnalise os exames abaixo. Siga rigorosamente o protocolo.`;
+      triageBlocks.push({ type: 'text', text: context });
+
+      for (const exam of (patient.exams || [])) {
+        const idx = exam.fileIndex;
+        if (idx >= 0 && idx < fileUrls.length) {
+          triageBlocks.push({ type: 'text', text: `--- ${exam.type || 'Exame'} ---` });
+          const block = await fetchFileAsContentBlock(fileUrls[idx], idx);
+          if (block) triageBlocks.push(block);
+        }
+      }
+
+      try {
+        const triageText = await callClaude(TRIAGE_SYSTEM_PROMPT, triageBlocks, apiKey, 4096);
+        const parts = triageText.split('---PARTE2---');
+        results.push({
+          patientName: patient.name,
+          surgeryType: patient.surgeryType || 'indefinida',
+          relatorioTecnico: (parts[0] || '').trim(),
+          blocoResumo: (parts[1] || '').trim()
+        });
+      } catch (err) {
+        console.error(`Erro na triagem de ${patient.name}:`, err.message);
+        results.push({
+          patientName: patient.name,
+          surgeryType: patient.surgeryType || 'indefinida',
+          relatorioTecnico: 'Erro ao processar os exames desta paciente.',
+          blocoResumo: ''
+        });
+      }
+    }
+
+    return Response.json({
+      success: true,
+      totalFiles: fileUrls.length,
+      totalPatients: results.length,
+      results
+    });
+
+  } catch (error) {
+    console.error('Erro:', error.message);
+    return Response.json({ error: 'Erro interno. Tente novamente.' }, { status: 500 });
+  }
+});
