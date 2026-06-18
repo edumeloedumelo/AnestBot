@@ -65,35 +65,15 @@ export default function Triagem() {
       );
       const fileUrls = uploadResults.map(r => r.file_url);
 
-      // Etapa 2: Identificar pacientes
-      setProgressStatus("identifying");
-      const idResponse = await base44.functions.invoke("identifyPatients", { fileUrls, anamnesis });
-      if (idResponse.data?.error) { setError(idResponse.data.error); return; }
-      const patientGroups = idResponse.data.patients || [];
-      if (!patientGroups.length) {
-        setError("Nenhum paciente identificado nos arquivos.");
+      // Etapa 2: Analisar tudo em uma chamada única
+      setProgressStatus("analyzing");
+      const response = await base44.functions.invoke("fastAnalyze", { fileUrls, anamnesis });
+
+      if (response.data?.error) {
+        setError(response.data.error);
         return;
       }
-
-      // Etapa 3: Triagem de cada paciente em paralelo
-      setProgressStatus("triaging");
-      const triagePromises = patientGroups.map(async (p) => {
-        // Mapear examIndices para URLs
-        const patientUrls = (p.examIndices || []).map(idx => fileUrls[idx]).filter(Boolean);
-        const res = await base44.functions.invoke("triagePatient", {
-          fileUrls: patientUrls,
-          patientName: p.name,
-          surgeryType: p.surgeryType,
-          anamnesis
-        });
-        if (res.data?.error) {
-          return { patientName: p.name, surgeryType: p.surgeryType || 'indefinida', relatorioTecnico: 'Erro: ' + res.data.error, blocoResumo: '', status: 'incomplete' };
-        }
-        return res.data;
-      });
-
-      const triageResults = await Promise.all(triagePromises);
-      setResults(triageResults.filter(r => r != null));
+      setResults([response.data]);
       setProgressStatus("");
     } catch (err) {
       const msg = err?.response?.data?.error || err?.message || "Erro de conexão.";
