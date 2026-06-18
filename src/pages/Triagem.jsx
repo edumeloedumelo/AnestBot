@@ -3,7 +3,7 @@ import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { RotateCcw, Settings, ClipboardList, Upload, ArrowRight, Share2, Activity, Zap } from "lucide-react";
+import { RotateCcw, Settings, ClipboardList, Upload, ArrowRight, Share2, Activity, Zap, Bell } from "lucide-react";
 import { Link } from "react-router-dom";
 import FileUploader from "@/components/triagem/FileUploader";
 import ProgressIndicator from "@/components/triagem/ProgressIndicator";
@@ -19,6 +19,32 @@ export default function Triagem() {
   const [sharedReceived, setSharedReceived] = useState(false);
   const [streamMode, setStreamMode] = useState(false);
   const [streamingResult, setStreamingResult] = useState(null);
+  const [whatsappResults, setWhatsappResults] = useState([]);
+  const [newWhatsappCount, setNewWhatsappCount] = useState(0);
+
+  // Subscribe to new Triage records (from WhatsApp webhook)
+  useEffect(() => {
+    let initialLoad = true;
+
+    const loadRecent = async () => {
+      try {
+        const recent = await base44.entities.Triage.list('-created_date', 20);
+        setWhatsappResults(recent);
+        if (initialLoad) initialLoad = false;
+      } catch {}
+    };
+
+    loadRecent();
+
+    const unsubscribe = base44.entities.Triage.subscribe((event) => {
+      if (event.type === 'create') {
+        setWhatsappResults(prev => [event.data, ...prev]);
+        setNewWhatsappCount(c => c + 1);
+      }
+    });
+
+    return unsubscribe;
+  }, []);
 
   const canAnalyze = files.length > 0 && !analyzing;
 
@@ -349,6 +375,51 @@ export default function Triagem() {
               <RotateCcw className="w-4 h-4" />
               Tentar novamente
             </Button>
+          </div>
+        )}
+
+        {/* WhatsApp Results */}
+        {whatsappResults.length > 0 && !results && (
+          <div className="space-y-6 max-w-3xl mt-10">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-[#25D366]/10 border border-[#25D366]/20 flex items-center justify-center">
+                  <Bell className="w-4 h-4 text-[#25D366]" />
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-white uppercase tracking-[0.1em]">
+                    Análises via WhatsApp
+                  </p>
+                  <p className="text-[10px] text-[#555] uppercase tracking-wider">
+                    {whatsappResults.length} registro{whatsappResults.length > 1 ? 's' : ''} recebido{whatsappResults.length > 1 ? 's' : ''}
+                  </p>
+                </div>
+              </div>
+              {newWhatsappCount > 0 && (
+                <span className="px-3 py-1 rounded-full bg-[#25D366]/15 text-[#25D366] text-[10px] font-bold uppercase tracking-wider animate-pulse">
+                  {newWhatsappCount} novo{newWhatsappCount > 1 ? 's' : ''}
+                </span>
+              )}
+            </div>
+
+            {whatsappResults.map((triage, i) => (
+              <PainelResumo
+                key={triage.id || i}
+                result={{
+                  patientName: triage.patient_name,
+                  surgeryType: triage.surgery_type,
+                  examResults: [],
+                  alerts: (triage.altered_exams || []).map(e => ({ exam: e, rule: 'Alterado', value: 'Verificar', limit: '' })),
+                  finalStatus: triage.status,
+                  conduct: triage.status === 'complete_without_alerts' ? '✅ Paciente apta para cirurgia' :
+                           triage.status === 'complete_with_alerts' ? '⚠️ Paciente requer avaliação adicional' :
+                           triage.status === 'incomplete' ? '❌ Exames faltantes' : '🔴 Pendência crítica',
+                  blocoResumo: triage.bloco_resumo || '',
+                  relatorioTecnico: triage.relatorio_tecnico || '',
+                  missingExams: triage.missing_exams || []
+                }}
+              />
+            ))}
           </div>
         )}
 
