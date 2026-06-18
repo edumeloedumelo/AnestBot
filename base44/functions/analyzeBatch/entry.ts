@@ -63,7 +63,6 @@ function buildTriagePrompt(surgeries, examLimits) {
     surgeriesSection += `### ${s.name} (key: "${s.key}")\n${exams}\n\n`;
   }
 
-  // Build exam limits section
   let limitsSection = '';
   for (const limit of examLimits) {
     let line = `- **${limit.exam_name}**: ${limit.description}`;
@@ -155,42 +154,45 @@ Exames obrigatórios   ✅ Completo / ❌ Incompleto
 Classificação final: ✅ Completo sem alertas · ⚠️ Completo com alertas · ❌ Incompleto · 🚨 Pendência crítica`;
 }
 
-// Helpers
-async function fetchFileAsContentBlock(fileUrl, index) {
-  try {
-    const res = await fetch(fileUrl);
-    if (!res.ok) return null;
+// Download & cache: baixa cada arquivo UMA vez e reusa em todas as fases
+async function fetchAllFiles(fileUrls) {
+  const cache = new Map();
+  const results = [];
+
+  const downloads = fileUrls.map(async (url, i) => {
+    const res = await fetch(url);
+    if (!res.ok) {
+      results[i] = null;
+      return;
+    }
     const contentType = res.headers.get('content-type') || '';
     const buffer = await res.arrayBuffer();
     const bytes = new Uint8Array(buffer);
     const base64Data = btoa(String.fromCharCode(...bytes));
 
+    let block;
     if (contentType.startsWith('image/')) {
       const mediaType = contentType.includes('png') ? 'image/png'
         : contentType.includes('webp') ? 'image/webp'
         : contentType.includes('gif') ? 'image/gif'
         : 'image/jpeg';
-      return {
-        type: 'image',
-        source: { type: 'base64', media_type: mediaType, data: base64Data }
-      };
-    } else if (contentType === 'application/pdf' || fileUrl.toLowerCase().endsWith('.pdf')) {
-      return {
-        type: 'document',
-        source: { type: 'base64', media_type: 'application/pdf', data: base64Data }
-      };
+      block = { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64Data } };
+    } else if (contentType === 'application/pdf' || url.toLowerCase().endsWith('.pdf')) {
+      block = { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64Data } };
     } else {
       try {
         const text = new TextDecoder().decode(buffer);
-        return { type: 'text', text: `[Arquivo ${index}]\n${text.substring(0, 8000)}` };
+        block = { type: 'text', text: `[Arquivo ${i}]\n${text.substring(0, 8000)}` };
       } catch {
-        return { type: 'text', text: `[Arquivo ${index}: ${fileUrl.split('/').pop() || 'arquivo'}]` };
+        block = { type: 'text', text: `[Arquivo ${i}: ${url.split('/').pop() || 'arquivo'}]` };
       }
     }
-  } catch (e) {
-    console.error(`Erro fetch arquivo ${index}:`, e.message);
-    return null;
-  }
+    results[i] = block;
+    cache.set(i, block);
+  });
+
+  await Promise.all(downloads);
+  return results;
 }
 
 async function callClaude(systemPrompt, contentBlocks, apiKey, maxTokens = 4096) {
@@ -236,16 +238,21 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Chave da API Anthropic não configurada' }, { status: 500 });
     }
 
-    // Fetch surgeries and exam limits from database
-    const surgeries = await base44.asServiceRole.entities.Surgery.list();
-    const examLimits = await base44.asServiceRole.entities.ExamLimit.list();
+    // Fetch surgeries and exam limits
+    const [surgeries, examLimits] = await Promise.all([
+      base44.asServiceRole.entities.Surgery.list(),
+      base44.asServiceRole.entities.ExamLimit.list()
+    ]);
 
-    // Build dynamic prompts
     const IDENTIFY_SYSTEM_PROMPT = buildIdentifyPrompt(surgeries);
     const TRIAGE_SYSTEM_PROMPT = buildTriagePrompt(surgeries, examLimits);
 
+    // --- Baixar TODOS os arquivos em paralelo (cache) ---
+    console.log(`Baixando ${fileUrls.length} arquivos em paralelo...`);
+    const fileBlocks = await fetchAllFiles(fileUrls);
+
     // --- FASE 1: Identificar pacientes e exames ---
-    console.log(`FASE 1: Identificando pacientes em ${fileUrls.length} arquivos...`);
+    console.log(`FASE 1: Identificando pacientes...`);
 
     const identifyBlocks = [];
     let identifyContext = `Analise os ${fileUrls.length} arquivos abaixo. Identifique o nome do paciente em cada um, o tipo de exame, e agrupe por paciente.`;
@@ -256,10 +263,9 @@ Deno.serve(async (req) => {
     identifyBlocks.push({ type: 'text', text: identifyContext });
 
     for (let i = 0; i < fileUrls.length; i++) {
-      const block = await fetchFileAsContentBlock(fileUrls[i], i);
-      if (block) {
-        identifyBlocks.push({ type: 'text', text: `--- ARQUIVO [${i}] ---` });
-        identifyBlocks.push(block);
+      identifyBlocks.push({ type: 'text', text: `--- ARQUIVO [${i}] ---` });
+      if (fileBlocks[i]) {
+        identifyBlocks.push(fileBlocks[i]);
       } else {
         identifyBlocks.push({ type: 'text', text: `--- ARQUIVO [${i}]: não foi possível carregar ---` });
       }
@@ -274,18 +280,15 @@ Deno.serve(async (req) => {
       patientGroups = JSON.parse(jsonStr);
     } catch (e) {
       console.error('Erro ao parsear JSON de identificação:', e.message);
-      console.error('Resposta:', identifyText.substring(0, 500));
       return Response.json({ error: 'Não foi possível identificar os pacientes nos arquivos enviados.' }, { status: 422 });
     }
 
     console.log(`FASE 1 concluída: ${patientGroups.patients?.length || 0} pacientes encontrados`);
 
-    // --- FASE 2: Triagem por paciente ---
-    const results = [];
+    // --- FASE 2: Triagem em PARALELO para todos os pacientes ---
+    console.log(`FASE 2: Triagem para ${patientGroups.patients?.length || 0} pacientes em paralelo...`);
 
-    for (const patient of (patientGroups.patients || [])) {
-      console.log(`FASE 2: Triagem para ${patient.name}...`);
-
+    const patientPromises = (patientGroups.patients || []).map(async (patient) => {
       const triageBlocks = [];
       let context = `## DADOS DA PACIENTE\nNome: ${patient.name}\nCirurgia: ${patient.surgeryType || 'indefinida'}\n`;
       if (anamnesis?.trim()) {
@@ -296,56 +299,47 @@ Deno.serve(async (req) => {
 
       for (const exam of (patient.exams || [])) {
         const idx = exam.fileIndex;
-        if (idx >= 0 && idx < fileUrls.length) {
-          triageBlocks.push({ type: 'text', text: `--- ${exam.type || 'Exame'} ---` });
-          const block = await fetchFileAsContentBlock(fileUrls[idx], idx);
-          if (block) triageBlocks.push(block);
+        triageBlocks.push({ type: 'text', text: `--- ${exam.type || 'Exame'} ---` });
+        if (idx >= 0 && idx < fileBlocks.length && fileBlocks[idx]) {
+          triageBlocks.push(fileBlocks[idx]);
+        } else {
+          triageBlocks.push({ type: 'text', text: `[Exame não disponível]` });
         }
       }
 
-      try {
-        const triageText = await callClaude(TRIAGE_SYSTEM_PROMPT, triageBlocks, apiKey, 4096);
-        const parts = triageText.split('---PARTE2---');
-        const relatorio = (parts[0] || '').trim();
-        const resumo = (parts[1] || '').trim();
+      const triageText = await callClaude(TRIAGE_SYSTEM_PROMPT, triageBlocks, apiKey, 4096);
+      const parts = triageText.split('---PARTE2---');
+      const relatorio = (parts[0] || '').trim();
+      const resumo = (parts[1] || '').trim();
 
-        // Extract status
-        let status = 'incomplete';
-        if (relatorio.includes('🚨 Pendência crítica')) status = 'critical_pending';
-        else if (relatorio.includes('✅ Completo sem alertas')) status = 'complete_without_alerts';
-        else if (relatorio.includes('⚠️ Completo com alertas')) status = 'complete_with_alerts';
-        else if (relatorio.includes('❌ Incompleto') || relatorio.includes('❌ Pendente')) status = 'incomplete';
+      let status = 'incomplete';
+      if (relatorio.includes('🚨 Pendência crítica')) status = 'critical_pending';
+      else if (relatorio.includes('✅ Completo sem alertas')) status = 'complete_without_alerts';
+      else if (relatorio.includes('⚠️ Completo com alertas')) status = 'complete_with_alerts';
+      else if (relatorio.includes('❌ Incompleto') || relatorio.includes('❌ Pendente')) status = 'incomplete';
 
-        results.push({
-          patientName: patient.name,
-          surgeryType: patient.surgeryType || 'indefinida',
-          relatorioTecnico: relatorio,
-          blocoResumo: resumo,
-          status
-        });
-      } catch (err) {
-        console.error(`Erro na triagem de ${patient.name}:`, err.message);
-        results.push({
-          patientName: patient.name,
-          surgeryType: patient.surgeryType || 'indefinida',
-          relatorioTecnico: 'Erro ao processar os exames desta paciente.',
-          blocoResumo: '',
-          status: 'incomplete'
-        });
-      }
-    }
+      return {
+        patientName: patient.name,
+        surgeryType: patient.surgeryType || 'indefinida',
+        relatorioTecnico: relatorio,
+        blocoResumo: resumo,
+        status
+      };
+    });
 
-    // Save results to Triage entity
-    for (const r of results) {
-      await base44.asServiceRole.entities.Triage.create({
+    const results = await Promise.all(patientPromises);
+
+    // Save results to Triage entity in parallel
+    await Promise.all(results.map(r =>
+      base44.asServiceRole.entities.Triage.create({
         patient_name: r.patientName,
         surgery_type: r.surgeryType,
         status: r.status,
         relatorio_tecnico: r.relatorioTecnico,
         bloco_resumo: r.blocoResumo,
         files_count: fileUrls.length
-      });
-    }
+      })
+    ));
 
     return Response.json({
       success: true,

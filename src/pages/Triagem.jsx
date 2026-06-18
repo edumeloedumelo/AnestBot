@@ -58,11 +58,10 @@ export default function Triagem() {
     setError("");
     setResults(null);
     setProgressStatus("uploading");
-    const fileUrls = [];
-    for (const file of files) {
-      const { file_url } = await base44.integrations.Core.UploadFile({ file });
-      fileUrls.push(file_url);
-    }
+    // Upload em paralelo — todos os arquivos sobem simultaneamente
+    const uploadPromises = files.map(file => base44.integrations.Core.UploadFile({ file }));
+    const uploadResults = await Promise.all(uploadPromises);
+    const fileUrls = uploadResults.map(r => r.file_url);
     setProgressStatus("analyzing");
     const response = await base44.functions.invoke("analyzeBatch", {
       fileUrls,
