@@ -197,13 +197,32 @@ Deno.serve(async (req) => {
 
     const identifyText = await callClaude(IDENTIFY_PROMPT, identifyBlocks, apiKey, 4096);
 
+    const cleanJson = (raw) => {
+      let s = raw
+        .replace(/```json\s*/g, '').replace(/```\s*/g, '')
+        .replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/,\s*([}\]])/g, '$1')
+        .replace(/\n/g, ' ').replace(/\r/g, '')
+        .trim();
+      const firstBrace = s.indexOf('{');
+      const lastBrace = s.lastIndexOf('}');
+      if (firstBrace >= 0 && lastBrace > firstBrace) {
+        s = s.substring(firstBrace, lastBrace + 1);
+      }
+      return s;
+    };
+
     let patientGroups;
     try {
+      patientGroups = JSON.parse(cleanJson(identifyText));
+    } catch (e1) {
       const jsonMatch = identifyText.match(/\{[\s\S]*\}/);
-      patientGroups = JSON.parse(jsonMatch ? jsonMatch[0] : identifyText);
-    } catch (e) {
-      console.error('JSON inválido:', e.message);
-      return Response.json({ error: 'Não foi possível identificar os pacientes.' }, { status: 422 });
+      try {
+        patientGroups = JSON.parse(cleanJson(jsonMatch ? jsonMatch[0] : identifyText));
+      } catch (e2) {
+        console.error('JSON inválido:', e2.message);
+        return Response.json({ error: 'Não foi possível identificar os pacientes.' }, { status: 422 });
+      }
     }
 
     const patients = patientGroups.patients || [];

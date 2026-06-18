@@ -122,15 +122,34 @@ IMPORTANTE:
     const data = await claudeRes.json();
     const text = (data.content?.[0]?.text || '').trim();
 
-    // Parse JSON (limpa possíveis markdown)
+    // Parse JSON (limpa markdown + repara erros comuns)
     let parsed;
+    const cleanJson = (raw) => {
+      let s = raw
+        .replace(/```json\s*/g, '').replace(/```\s*/g, '')
+        .replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '') // comentários
+        .replace(/,\s*([}\]])/g, '$1') // trailing commas
+        .replace(/\n/g, ' ').replace(/\r/g, '')
+        .trim();
+      // Remove texto antes da primeira { e depois da última }
+      const firstBrace = s.indexOf('{');
+      const lastBrace = s.lastIndexOf('}');
+      if (firstBrace >= 0 && lastBrace > firstBrace) {
+        s = s.substring(firstBrace, lastBrace + 1);
+      }
+      return s;
+    };
+
     try {
-      const clean = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
-      parsed = JSON.parse(clean);
-    } catch {
-      // Fallback: tenta extrair JSON do texto
-      const match = text.match(/\{[\s\S]*\}/);
-      if (match) parsed = JSON.parse(match[0]);
+      parsed = JSON.parse(cleanJson(text));
+    } catch (e1) {
+      // Segunda tentativa: regex extraction com limpeza
+      try {
+        const match = text.match(/\{[\s\S]*\}/);
+        if (match) parsed = JSON.parse(cleanJson(match[0]));
+      } catch (e2) {
+        throw new Error(`JSON inválido: ${e2.message}. Resposta crua: ${text.substring(0, 500)}`);
+      }
     }
 
     if (!parsed || !parsed.patientName) {

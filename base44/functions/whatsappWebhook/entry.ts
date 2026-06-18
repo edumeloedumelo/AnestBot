@@ -67,8 +67,27 @@ function mergePatientGroups(allGroups) {
 }
 
 function extractJson(text) {
-  const match = text.match(/\{[\s\S]*\}/);
-  return match ? JSON.parse(match[0]) : JSON.parse(text);
+  const cleanJson = (raw) => {
+    let s = raw
+      .replace(/```json\s*/g, '').replace(/```\s*/g, '')
+      .replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/,\s*([}\]])/g, '$1')
+      .replace(/\n/g, ' ').replace(/\r/g, '')
+      .trim();
+    const firstBrace = s.indexOf('{');
+    const lastBrace = s.lastIndexOf('}');
+    if (firstBrace >= 0 && lastBrace > firstBrace) {
+      s = s.substring(firstBrace, lastBrace + 1);
+    }
+    return s;
+  };
+
+  try {
+    return JSON.parse(cleanJson(text));
+  } catch {
+    const match = text.match(/\{[\s\S]*\}/);
+    return JSON.parse(cleanJson(match ? match[0] : text));
+  }
 }
 
 Deno.serve(async (req) => {

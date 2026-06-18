@@ -142,7 +142,28 @@ examIndices: índices RELATIVOS aos arquivos deste lote (0, 1, 2...).`;
 
       console.log(`  Sub-bloco ${chunk.start}-${chunk.end - 1}...`);
       const text = await callClaude(systemPrompt, content, apiKey, 2048);
-      const json = JSON.parse((text.match(/\{[\s\S]*\}/) || [text])[0]);
+      
+      const cleanJson = (raw) => {
+        let s = raw
+          .replace(/```json\s*/g, '').replace(/```\s*/g, '')
+          .replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '')
+          .replace(/,\s*([}\]])/g, '$1')
+          .replace(/\n/g, ' ').replace(/\r/g, '')
+          .trim();
+        const firstBrace = s.indexOf('{');
+        const lastBrace = s.lastIndexOf('}');
+        if (firstBrace >= 0 && lastBrace > firstBrace) {
+          s = s.substring(firstBrace, lastBrace + 1);
+        }
+        return s;
+      };
+
+      let json;
+      try {
+        json = JSON.parse(cleanJson(text));
+      } catch {
+        json = JSON.parse(cleanJson((text.match(/\{[\s\S]*\}/) || [text])[0]));
+      }
 
       // Ajustar examIndices: índices relativos → absolutos
       const adjusted = {

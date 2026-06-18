@@ -186,13 +186,27 @@ IMPORTANTE: Gere phase1 PRIMEIRO (antes de analisar os exames), depois phase2. A
               }
             }
 
-            // Parse final completo
+            // Parse final completo (limpa markdown + repara erros comuns)
+            const cleanJson = (raw) => {
+              let s = raw
+                .replace(/```json\s*/g, '').replace(/```\s*/g, '')
+                .replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '')
+                .replace(/,\s*([}\]])/g, '$1')
+                .replace(/\n/g, ' ').replace(/\r/g, '')
+                .trim();
+              const firstBrace = s.indexOf('{');
+              const lastBrace = s.lastIndexOf('}');
+              if (firstBrace >= 0 && lastBrace > firstBrace) {
+                s = s.substring(firstBrace, lastBrace + 1);
+              }
+              return s;
+            };
+
             try {
-              const clean = fullText.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
-              finalResult = JSON.parse(clean);
+              finalResult = JSON.parse(cleanJson(fullText));
             } catch {
               const match = fullText.match(/\{[\s\S]*\}/);
-              if (match) finalResult = JSON.parse(match[0]);
+              if (match) finalResult = JSON.parse(cleanJson(match[0]));
             }
 
             if (!finalResult?.phase1?.patientName) {
