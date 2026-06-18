@@ -3,7 +3,8 @@ import { Loader2 } from "lucide-react";
 export default function ProgressIndicator({ status }) {
   const steps = [
     { key: "uploading", label: "Enviando arquivos..." },
-    { key: "analyzing", label: "Identificando pacientes e analisando exames..." },
+    { key: "identifying", label: "Identificando pacientes com IA..." },
+    { key: "triaging", label: "Analisando exames de cada paciente..." },
   ];
 
   const currentIndex = steps.findIndex((s) => s.key === status);

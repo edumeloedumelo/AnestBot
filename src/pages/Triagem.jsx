@@ -58,22 +58,45 @@ export default function Triagem() {
     setError("");
     setResults(null);
     try {
+      // Etapa 1: Upload em paralelo
       setProgressStatus("uploading");
-      const uploadPromises = files.map(file => base44.integrations.Core.UploadFile({ file }));
-      const uploadResults = await Promise.all(uploadPromises);
+      const uploadResults = await Promise.all(
+        files.map(file => base44.integrations.Core.UploadFile({ file }))
+      );
       const fileUrls = uploadResults.map(r => r.file_url);
 
-      setProgressStatus("analyzing");
-      const response = await base44.functions.invoke("analyzeBatch", { fileUrls, anamnesis });
-
-      if (response.data?.error) {
-        setError(response.data.error);
+      // Etapa 2: Identificar pacientes
+      setProgressStatus("identifying");
+      const idResponse = await base44.functions.invoke("identifyPatients", { fileUrls, anamnesis });
+      if (idResponse.data?.error) { setError(idResponse.data.error); return; }
+      const patientGroups = idResponse.data.patients || [];
+      if (!patientGroups.length) {
+        setError("Nenhum paciente identificado nos arquivos.");
         return;
       }
-      setResults(response.data.results || []);
+
+      // Etapa 3: Triagem de cada paciente em paralelo
+      setProgressStatus("triaging");
+      const triagePromises = patientGroups.map(async (p) => {
+        // Mapear examIndices para URLs
+        const patientUrls = (p.examIndices || []).map(idx => fileUrls[idx]).filter(Boolean);
+        const res = await base44.functions.invoke("triagePatient", {
+          fileUrls: patientUrls,
+          patientName: p.name,
+          surgeryType: p.surgeryType,
+          anamnesis
+        });
+        if (res.data?.error) {
+          return { patientName: p.name, surgeryType: p.surgeryType || 'indefinida', relatorioTecnico: 'Erro: ' + res.data.error, blocoResumo: '', status: 'incomplete' };
+        }
+        return res.data;
+      });
+
+      const triageResults = await Promise.all(triagePromises);
+      setResults(triageResults.filter(r => r != null));
       setProgressStatus("");
     } catch (err) {
-      const msg = err?.response?.data?.error || err?.message || "Erro de conexão. Verifique sua internet e tente novamente.";
+      const msg = err?.response?.data?.error || err?.message || "Erro de conexão.";
       setError(msg);
     } finally {
       setAnalyzing(false);
