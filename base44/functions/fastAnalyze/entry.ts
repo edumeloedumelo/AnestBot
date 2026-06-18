@@ -15,8 +15,8 @@ async function fetchFileBlock(url, i) {
   const contentType = res.headers.get('content-type') || '';
   const buffer = await res.arrayBuffer();
   const base64 = arrayBufferToBase64(buffer);
-  const lower = url.toLowerCase();
-  if (/\.(png|jpg|jpeg|gif|webp)$/i.test(lower.split('?')[0]) || contentType.startsWith('image/')) {
+  const lower = url.toLowerCase().split('?')[0];
+  if (/\.(png|jpg|jpeg|gif|webp)$/i.test(lower) || contentType.startsWith('image/')) {
     const mt = contentType.includes('png') ? 'image/png' : contentType.includes('webp') ? 'image/webp' : contentType.includes('gif') ? 'image/gif' : 'image/jpeg';
     return { type: 'image', source: { type: 'base64', media_type: mt, data: base64 } };
   }
@@ -41,66 +41,61 @@ Deno.serve(async (req) => {
       base44.asServiceRole.entities.ExamLimit.list()
     ]);
 
-    let surgSection = '';
-    for (const s of surgeries) {
-      surgSection += `### ${s.name} (key: "${s.key}")\n${(s.required_exams || []).join(' · ')}\n\n`;
-    }
-    let limSection = '';
-    for (const l of examLimits) {
-      let line = `- **${l.exam_name}**: ${l.description}`;
-      if (l.unit) line += ` (${l.unit})`;
-      if (l.notes) line += `. Obs: ${l.notes}`;
-      limSection += line + '\n';
-    }
-
-    // Prompt único: identifica + analisa em uma tacada
+    // Prompt único com saída JSON estruturada
     const systemPrompt = `Você é um assistente de triagem pré-anestésica para cirurgias plásticas eletivas.
 
-## CIRURGIAS
-${surgeries.map(s => `- **${s.name}** → key: "${s.key}" | Exames: ${(s.required_exams || []).join(', ')}`).join('\n')}
+## CIRURGIAS CADASTRADAS
+${surgeries.map(s => `- **${s.name}** → key: "${s.key}" | Exames obrigatórios: ${(s.required_exams || []).join(', ')}`).join('\n')}
 
-## LIMITES
-${limSection || 'Nenhum limite cadastrado.'}
+## LIMITES CLÍNICOS
+${examLimits.map(l => {
+  let line = `- **${l.exam_name}**: ${l.description}`;
+  if (l.unit) line += ` (${l.unit})`;
+  if (l.min_value != null && l.max_value != null) line += ` → ${l.min_value}–${l.max_value} ${l.unit || ''}`;
+  else if (l.min_value != null) line += ` → ≥ ${l.min_value} ${l.unit || ''}`;
+  else if (l.max_value != null) line += ` → ≤ ${l.max_value} ${l.unit || ''}`;
+  if (l.notes) line += `. Obs: ${l.notes}`;
+  return line;
+}).join('\n')}
 
-## REGRAS
-- BIRADS 3-6 → mastologista. Sem parecer = 🚨 crítica.
-- RX tórax com nódulo → pneumologista.
-- GLP-1 (Ozempic, Mounjaro): suspender 21d.
-- Ilegível/cortado/desfocado: informe. NUNCA invente resultado.
-- Anti-HBs < 2 não contraindica.
+## REGRAS CLÍNICAS
+- BIRADS 3-6 → obrigatório parecer do mastologista. Sem parecer = 🚨 crítica.
+- RX tórax com nódulo → obrigatório pneumologista.
+- GLP-1 (Ozempic, Mounjaro, Wegovy, Saxenda): suspender 21 dias antes.
+- Ilegível/cortado/desfocado: informe "❓ Ilegível". NUNCA invente resultado.
+- Anti-HBs < 2 não contraindica — apenas informe.
+- Se exame obrigatório não foi enviado → status "❌ Não enviado".
 
 ## FORMATO DE RESPOSTA
 
-Retorne EXATAMENTE neste formato (duas partes separadas por ---PARTE2---):
+Retorne APENAS um JSON válido (sem markdown, sem \`\`\`), com esta estrutura exata:
 
-PARTE 1 — Relatório Técnico:
-\`\`\`
-🧾 TRIAGEM PRÉ-OPERATÓRIA
-👩‍⚕️ Paciente: [nome]
-🔪 Cirurgia: [tipo + key entre aspas]
-📋 Exames obrigatórios: [✅/⚠️/❌ por exame]
-🚨 ALTERAÇÕES: [listar ou "✅ Sem alterações"]
-📌 STATUS: ✅ Completo sem alertas / ⚠️ Completo com alertas / ❌ Pendente / 🚨 Pendência crítica
-📋 CONDUTA: [até 3 linhas]
-\`\`\`
+{
+  "patientName": "Nome completo da paciente",
+  "patientInfo": "idade, peso/altura, data da cirurgia se disponível",
+  "surgeryType": "Nome da cirurgia — \\"key\\"",
+  "examResults": [
+    {"exam": "Nome do exame", "status": "✅"|"⚠️"|"❌"|"❓", "value": "resultado resumido (ex: Hb 14,0 — normal)"}
+  ],
+  "alerts": ["Alerta 1", "Alerta 2"],
+  "finalStatus": "✅ Completo sem alertas"|"⚠️ Completo com alertas"|"❌ Pendente"|"🚨 Pendência crítica",
+  "conduct": "Conduta recomendada em até 3 linhas",
+  "blocoResumo": "Resumo curto tipo WhatsApp, máximo 8 linhas, com nome, cirurgia, status, alterados/faltando, suspender, críticos e veredito final",
+  "relatorioTecnico": "Relatório técnico completo em texto corrido"
+}
 
-PARTE 2 — Resumo WhatsApp:
-\`\`\`
-📋 RESUMO — TRIAGEM PRÉ-ANESTÉSICA
-🧍‍♀️ Nome: [nome] | 🔪 Cirurgia: [tipo]
-🔬 Alterados/faltando: [listar ou "nenhum ✅"]
-💊 Suspender: [listar ou "nenhuma ✅"]
-🚨 Críticos: [listar ou "nenhum ✅"]
-📌 [✅ liberado / ⚠️ com ressalvas / ❌ pendente / 🚨 não liberar]
-\`\`\``;
+IMPORTANTE:
+- examResults deve listar TODOS os exames obrigatórios da cirurgia identificada
+- Para exames não enviados: status "❌", value "Não enviado"
+- Para exames enviados mas ilegíveis: status "❓", value "Ilegível"
+- Retorne JSON puro, sem texto antes ou depois.`;
 
     // Baixar todos os arquivos em paralelo
     console.log(`Baixando ${fileUrls.length} arquivos...`);
     const blocks = await Promise.all(fileUrls.map((url, i) => fetchFileBlock(url, i)));
 
-    // Montar mensagem única
     const content = [];
-    content.push({ type: 'text', text: `Analise TODOS os ${fileUrls.length} exames abaixo.${anamnesis.trim() ? '\n\nANAMNESE:\n' + anamnesis : ''}\n\nPrimeiro identifique a paciente e o tipo de cirurgia, depois analise cada exame contra os limites.` });
+    content.push({ type: 'text', text: `Analise TODOS os ${fileUrls.length} exames anexados.${anamnesis.trim() ? '\n\nANAMNESE:\n' + anamnesis : ''}\n\nIdentifique a paciente, o tipo de cirurgia, e para cada exame obrigatório da cirurgia, indique o status (✅ normal, ⚠️ alterado, ❌ não enviado, ❓ ilegível) com o valor resumido. Retorne SOMENTE o JSON.` });
 
     for (let i = 0; i < blocks.length; i++) {
       const b = blocks[i];
@@ -125,38 +120,49 @@ PARTE 2 — Resumo WhatsApp:
     }
 
     const data = await claudeRes.json();
-    const text = data.content?.[0]?.text || '';
-    const parts = text.split('---PARTE2---');
-    const relatorio = (parts[0] || '').trim();
-    const resumo = (parts[1] || '').trim();
+    const text = (data.content?.[0]?.text || '').trim();
 
-    // Extrair nome e cirurgia do relatório
-    const nameMatch = relatorio.match(/Paciente:\s*([^\n]+)/);
-    const surgMatch = relatorio.match(/Cirurgia:\s*([^\n]+)/);
-    const patientName = nameMatch ? nameMatch[1].trim() : 'Paciente';
-    const surgeryType = surgMatch ? surgMatch[1].trim() : 'indefinida';
+    // Parse JSON (limpa possíveis markdown)
+    let parsed;
+    try {
+      const clean = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+      parsed = JSON.parse(clean);
+    } catch {
+      // Fallback: tenta extrair JSON do texto
+      const match = text.match(/\{[\s\S]*\}/);
+      if (match) parsed = JSON.parse(match[0]);
+    }
 
-    // Status
+    if (!parsed || !parsed.patientName) {
+      throw new Error('Resposta da IA não contém JSON válido: ' + text.substring(0, 300));
+    }
+
+    // Determinar status para salvar
     let status = 'incomplete';
-    if (relatorio.includes('🚨 Pendência crítica') || relatorio.includes('não liberar')) status = 'critical_pending';
-    else if (relatorio.includes('✅ Completo sem alertas') || relatorio.includes('✅ liberado')) status = 'complete_without_alerts';
-    else if (relatorio.includes('⚠️ Completo com alertas') || relatorio.includes('⚠️ com ressalvas')) status = 'complete_with_alerts';
+    if (parsed.finalStatus?.includes('crítica') || parsed.finalStatus?.includes('🚨')) status = 'critical_pending';
+    else if (parsed.finalStatus?.includes('sem alertas') || parsed.finalStatus?.includes('✅')) status = 'complete_without_alerts';
+    else if (parsed.finalStatus?.includes('com alertas') || parsed.finalStatus?.includes('⚠️')) status = 'complete_with_alerts';
 
-    // Salvar
+    // Salvar no banco
     await base44.asServiceRole.entities.Triage.create({
-      patient_name: patientName,
-      surgery_type: surgeryType,
+      patient_name: parsed.patientName,
+      surgery_type: parsed.surgeryType || 'indefinida',
       status,
-      relatorio_tecnico: relatorio,
-      bloco_resumo: resumo,
+      relatorio_tecnico: parsed.relatorioTecnico || '',
+      bloco_resumo: parsed.blocoResumo || '',
       files_count: fileUrls.length
     });
 
     return Response.json({
-      patientName,
-      surgeryType,
-      relatorioTecnico: relatorio,
-      blocoResumo: resumo,
+      patientName: parsed.patientName,
+      patientInfo: parsed.patientInfo || '',
+      surgeryType: parsed.surgeryType || 'indefinida',
+      examResults: parsed.examResults || [],
+      alerts: parsed.alerts || [],
+      finalStatus: parsed.finalStatus || '❌ Pendente',
+      conduct: parsed.conduct || '',
+      blocoResumo: parsed.blocoResumo || '',
+      relatorioTecnico: parsed.relatorioTecnico || '',
       status
     });
   } catch (error) {

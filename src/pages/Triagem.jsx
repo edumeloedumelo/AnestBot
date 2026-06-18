@@ -7,8 +7,7 @@ import { RotateCcw, Settings, ClipboardList, Upload, ArrowRight, Share2, Activit
 import { Link } from "react-router-dom";
 import FileUploader from "@/components/triagem/FileUploader";
 import ProgressIndicator from "@/components/triagem/ProgressIndicator";
-import RelatorioTecnico from "@/components/triagem/RelatorioTecnico";
-import BlocoResumo from "@/components/triagem/BlocoResumo";
+import PainelResumo from "@/components/triagem/PainelResumo";
 
 export default function Triagem() {
   const [anamnesis, setAnamnesis] = useState("");
@@ -209,20 +208,7 @@ export default function Triagem() {
             </div>
 
             {results.map((result, i) => (
-              <div key={i} className="space-y-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-[#121212] border border-[#2d2d2d] flex items-center justify-center text-xs font-bold text-[#808080]">
-                    {i + 1}
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-white uppercase tracking-wider">{result.patientName}</h3>
-                    <p className="text-[11px] text-[#a0a0a0]">{result.surgeryType}</p>
-                  </div>
-                </div>
-
-                <BlocoResumo content={result.blocoResumo} patientName={result.patientName} />
-                <RelatorioTecnico content={result.relatorioTecnico} patientName={result.patientName} />
-              </div>
+              <PainelResumo key={i} result={result} />
             ))}
 
             <div className="flex justify-center pt-4 pb-12">
