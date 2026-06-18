@@ -1,5 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+const CHUNK_SIZE = 4; // imagens por lote
+
 function arrayBufferToBase64(buffer) {
   const bytes = new Uint8Array(buffer);
   const chunks = [];
@@ -27,6 +29,59 @@ async function fetchFileAsBlock(url, i) {
   return { type: 'text', text: `[Arquivo ${i}]\n${new TextDecoder().decode(buffer).substring(0, 8000)}` };
 }
 
+async function callClaude(systemPrompt, content, apiKey, maxTokens = 2048) {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+    body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: maxTokens, system: systemPrompt, messages: [{ role: 'user', content }] })
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Claude (${res.status}): ${err.substring(0, 200)}`);
+  }
+  const data = await res.json();
+  return data.content?.[0]?.text || '';
+}
+
+function normalizeName(name) {
+  return name
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // remove acentos
+    .replace(/[^a-z\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function mergePatientGroups(allGroups) {
+  // allGroups: array de {patients: [...]} de cada lote
+  const merged = {}; // key: normalized name → {name, surgeryType, examIndices: []}
+
+  for (const group of allGroups) {
+    for (const p of (group.patients || [])) {
+      const key = normalizeName(p.name || 'paciente nao identificado');
+      if (!merged[key]) {
+        merged[key] = { name: p.name, surgeryType: p.surgeryType || 'indefinida', examIndices: [] };
+      }
+      // Adiciona examIndices (já ajustados para o offset do lote)
+      for (const idx of (p.examIndices || [])) {
+        if (!merged[key].examIndices.includes(idx)) {
+          merged[key].examIndices.push(idx);
+        }
+      }
+      // Cirurgia mais específica prevalece
+      if (p.surgeryType && p.surgeryType !== 'indefinida' && merged[key].surgeryType === 'indefinida') {
+        merged[key].surgeryType = p.surgeryType;
+      }
+    }
+  }
+
+  return Object.values(merged).map(p => ({
+    name: p.name,
+    surgeryType: p.surgeryType,
+    examIndices: p.examIndices.sort((a, b) => a - b)
+  }));
+}
+
 Deno.serve(async (req) => {
   try {
     const body = await req.json();
@@ -41,9 +96,9 @@ Deno.serve(async (req) => {
     const keys = surgeries.map(s => `"${s.key}"`).join(', ');
     const list = surgeries.map(s => `- **${s.name}** → key: "${s.key}"`).join('\n');
 
-    const prompt = `Você é um assistente médico. Analise os arquivos de exames e identifique pacientes e tipos de exame.
+    const systemPrompt = `Você é um assistente médico. Analise os arquivos e identifique pacientes e tipos de exame.
 
-Retorne EXATAMENTE um JSON, sem texto adicional:
+Retorne APENAS JSON:
 {
   "patients": [
     {
@@ -56,39 +111,54 @@ Retorne EXATAMENTE um JSON, sem texto adicional:
 
 Cirurgias: ${list}
 Tipos de exame: Hemograma, Coagulograma, Ionograma, Bioquímica renal, Mamografia/USG mamas, Sorologias, Beta-HCG, Urina/EAS, ECG, RX tórax, Risco cirúrgico, USG abdome, USG parede abdominal, Outro
-Agrupe por nome aproximado. Use anamnese para cirurgia. Na dúvida → "indefinida".`;
+Agrupe por nome aproximado. Use anamnese para cirurgia. Na dúvida → "indefinida".
+examIndices: índices RELATIVOS aos arquivos deste lote (0, 1, 2...).`;
 
-    // Baixar arquivos
+    // Baixar TODOS os arquivos primeiro (em paralelo)
     console.log(`Baixando ${fileUrls.length} arquivos...`);
-    const blocks = await Promise.all(fileUrls.map((url, i) => fetchFileAsBlock(url, i)));
+    const allBlocks = await Promise.all(fileUrls.map((url, i) => fetchFileAsBlock(url, i)));
 
-    // Montar mensagem
-    const content = [];
-    let ctx = `Analise os ${fileUrls.length} arquivos. Identifique nome, tipo de exame e cirurgia.`;
-    if (anamnesis?.trim()) ctx += `\n\nANAMNESE:\n${anamnesis}`;
-    content.push({ type: 'text', text: ctx });
-    for (let i = 0; i < blocks.length; i++) {
-      content.push({ type: 'text', text: `--- ARQUIVO [${i}] ---` });
-      content.push(blocks[i] || { type: 'text', text: `[indisponível]` });
+    // Dividir em sub-blocos
+    const chunks = [];
+    for (let i = 0; i < fileUrls.length; i += CHUNK_SIZE) {
+      chunks.push({ start: i, end: Math.min(i + CHUNK_SIZE, fileUrls.length) });
     }
 
-    console.log('Chamando Claude...');
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 2048, system: prompt, messages: [{ role: 'user', content }] })
-    });
+    console.log(`Processando ${chunks.length} sub-blocos de até ${CHUNK_SIZE} arquivos...`);
+    const allGroups = [];
 
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`Claude (${res.status}): ${err.substring(0, 200)}`);
+    for (const chunk of chunks) {
+      const content = [];
+      let ctx = `Analise os ${chunk.end - chunk.start} arquivos abaixo. Identifique nome, tipo de exame e cirurgia.`;
+      if (chunk.start === 0 && anamnesis?.trim()) {
+        ctx += `\n\nANAMNESE:\n${anamnesis}`;
+      }
+      content.push({ type: 'text', text: ctx });
+
+      for (let i = chunk.start; i < chunk.end; i++) {
+        content.push({ type: 'text', text: `--- ARQUIVO [${i - chunk.start}] ---` });
+        content.push(allBlocks[i] || { type: 'text', text: `[indisponível]` });
+      }
+
+      console.log(`  Sub-bloco ${chunk.start}-${chunk.end - 1}...`);
+      const text = await callClaude(systemPrompt, content, apiKey, 2048);
+      const json = JSON.parse((text.match(/\{[\s\S]*\}/) || [text])[0]);
+
+      // Ajustar examIndices: índices relativos → absolutos
+      const adjusted = {
+        patients: (json.patients || []).map(p => ({
+          ...p,
+          examIndices: (p.examIndices || []).map(idx => idx + chunk.start)
+        }))
+      };
+      allGroups.push(adjusted);
     }
 
-    const data = await res.json();
-    const text = data.content?.[0]?.text || '';
-    const json = JSON.parse((text.match(/\{[\s\S]*\}/) || [text])[0]);
+    // Unir pacientes de todos os sub-blocos
+    const patients = mergePatientGroups(allGroups);
+    console.log(`${patients.length} pacientes encontrados (total de ${fileUrls.length} arquivos em ${chunks.length} sub-blocos)`);
 
-    return Response.json({ patients: json.patients || [] });
+    return Response.json({ patients });
   } catch (error) {
     console.error('Erro:', error.message);
     return Response.json({ error: error.message }, { status: 500 });
