@@ -154,58 +154,21 @@ Exames obrigatórios   ✅ Completo / ❌ Incompleto
 Classificação final: ✅ Completo sem alertas · ⚠️ Completo com alertas · ❌ Incompleto · 🚨 Pendência crítica`;
 }
 
-// Codifica ArrayBuffer para base64 em chunks (evita "Maximum call stack" em arquivos grandes)
-function arrayBufferToBase64(buffer) {
-  const bytes = new Uint8Array(buffer);
-  const chunkSize = 8192;
-  const chunks = [];
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    chunks.push(String.fromCharCode(...bytes.slice(i, i + chunkSize)));
+// Cria content block com URL (sem baixar o arquivo)
+function fileUrlToBlock(url, index) {
+  const lower = url.toLowerCase();
+  const isImage = /\.(png|jpg|jpeg|gif|webp)$/i.test(url.split('?')[0]);
+
+  if (isImage) {
+    return { type: 'image', source: { type: 'url', url } };
   }
-  return btoa(chunks.join(''));
-}
 
-// Download & cache: baixa cada arquivo UMA vez e reusa em todas as fases
-async function fetchAllFiles(fileUrls) {
-  const results = [];
+  if (lower.includes('.pdf') || lower.includes('application/pdf')) {
+    return { type: 'document', source: { type: 'url', url } };
+  }
 
-  const downloads = fileUrls.map(async (url, i) => {
-    try {
-      const res = await fetch(url);
-      if (!res.ok) {
-        results[i] = null;
-        return;
-      }
-      const contentType = res.headers.get('content-type') || '';
-      const buffer = await res.arrayBuffer();
-      const base64Data = arrayBufferToBase64(buffer);
-
-      let block;
-      if (contentType.startsWith('image/')) {
-        const mediaType = contentType.includes('png') ? 'image/png'
-          : contentType.includes('webp') ? 'image/webp'
-          : contentType.includes('gif') ? 'image/gif'
-          : 'image/jpeg';
-        block = { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64Data } };
-      } else if (contentType === 'application/pdf' || url.toLowerCase().endsWith('.pdf')) {
-        block = { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64Data } };
-      } else {
-        try {
-          const text = new TextDecoder().decode(buffer);
-          block = { type: 'text', text: `[Arquivo ${i}]\n${text.substring(0, 8000)}` };
-        } catch {
-          block = { type: 'text', text: `[Arquivo ${i}: ${url.split('/').pop() || 'arquivo'}]` };
-        }
-      }
-      results[i] = block;
-    } catch (e) {
-      console.error(`Erro ao baixar arquivo ${i}:`, e.message);
-      results[i] = null;
-    }
-  });
-
-  await Promise.all(downloads);
-  return results;
+  // Arquivo de texto ou desconhecido — faz download leve
+  return null; // será tratado como texto
 }
 
 async function callClaude(systemPrompt, contentBlocks, apiKey, maxTokens = 4096) {
@@ -251,7 +214,6 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Chave da API Anthropic não configurada' }, { status: 500 });
     }
 
-    // Fetch surgeries and exam limits
     const [surgeries, examLimits] = await Promise.all([
       base44.asServiceRole.entities.Surgery.list(),
       base44.asServiceRole.entities.ExamLimit.list()
@@ -260,12 +222,8 @@ Deno.serve(async (req) => {
     const IDENTIFY_SYSTEM_PROMPT = buildIdentifyPrompt(surgeries);
     const TRIAGE_SYSTEM_PROMPT = buildTriagePrompt(surgeries, examLimits);
 
-    // --- Baixar TODOS os arquivos em paralelo (cache) ---
-    console.log(`Baixando ${fileUrls.length} arquivos em paralelo...`);
-    const fileBlocks = await fetchAllFiles(fileUrls);
-
-    // --- FASE 1: Identificar pacientes e exames ---
-    console.log(`FASE 1: Identificando pacientes...`);
+    // --- FASE 1: Identificar pacientes (usa URLs direto, sem download) ---
+    console.log(`FASE 1: Identificando pacientes em ${fileUrls.length} arquivos...`);
 
     const identifyBlocks = [];
     let identifyContext = `Analise os ${fileUrls.length} arquivos abaixo. Identifique o nome do paciente em cada um, o tipo de exame, e agrupe por paciente.`;
@@ -276,11 +234,10 @@ Deno.serve(async (req) => {
     identifyBlocks.push({ type: 'text', text: identifyContext });
 
     for (let i = 0; i < fileUrls.length; i++) {
-      identifyBlocks.push({ type: 'text', text: `--- ARQUIVO [${i}] ---` });
-      if (fileBlocks[i]) {
-        identifyBlocks.push(fileBlocks[i]);
-      } else {
-        identifyBlocks.push({ type: 'text', text: `--- ARQUIVO [${i}]: não foi possível carregar ---` });
+      const block = fileUrlToBlock(fileUrls[i], i);
+      if (block) {
+        identifyBlocks.push({ type: 'text', text: `--- ARQUIVO [${i}] ---` });
+        identifyBlocks.push(block);
       }
     }
 
@@ -296,12 +253,13 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Não foi possível identificar os pacientes nos arquivos enviados.' }, { status: 422 });
     }
 
-    console.log(`FASE 1 concluída: ${patientGroups.patients?.length || 0} pacientes encontrados`);
+    const patients = patientGroups.patients || [];
+    console.log(`FASE 1 concluída: ${patients.length} pacientes encontrados`);
 
-    // --- FASE 2: Triagem em PARALELO para todos os pacientes ---
-    console.log(`FASE 2: Triagem para ${patientGroups.patients?.length || 0} pacientes em paralelo...`);
+    // --- FASE 2: Triagem em PARALELO (URLs direto, sem download) ---
+    console.log(`FASE 2: Triagem para ${patients.length} pacientes em paralelo...`);
 
-    const patientPromises = (patientGroups.patients || []).map(async (patient) => {
+    const patientPromises = patients.map(async (patient) => {
       const triageBlocks = [];
       let context = `## DADOS DA PACIENTE\nNome: ${patient.name}\nCirurgia: ${patient.surgeryType || 'indefinida'}\n`;
       if (anamnesis?.trim()) {
@@ -312,11 +270,10 @@ Deno.serve(async (req) => {
 
       for (const exam of (patient.exams || [])) {
         const idx = exam.fileIndex;
-        triageBlocks.push({ type: 'text', text: `--- ${exam.type || 'Exame'} ---` });
-        if (idx >= 0 && idx < fileBlocks.length && fileBlocks[idx]) {
-          triageBlocks.push(fileBlocks[idx]);
-        } else {
-          triageBlocks.push({ type: 'text', text: `[Exame não disponível]` });
+        if (idx >= 0 && idx < fileUrls.length) {
+          triageBlocks.push({ type: 'text', text: `--- ${exam.type || 'Exame'} ---` });
+          const block = fileUrlToBlock(fileUrls[idx], idx);
+          if (block) triageBlocks.push(block);
         }
       }
 
@@ -342,7 +299,7 @@ Deno.serve(async (req) => {
 
     const results = await Promise.all(patientPromises);
 
-    // Save results to Triage entity in parallel
+    // Salvar no banco em paralelo
     await Promise.all(results.map(r =>
       base44.asServiceRole.entities.Triage.create({
         patient_name: r.patientName,
