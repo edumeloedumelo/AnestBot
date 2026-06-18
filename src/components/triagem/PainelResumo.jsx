@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Button } from "@/components/ui/button";
-import { Copy, CheckCircle2, ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp } from "lucide-react";
+import BlocoWhatsApp from "@/components/triagem/BlocoWhatsApp";
 
 const statusEmojis = {
   "✅": "text-[#4CAF50]",
@@ -11,14 +12,6 @@ const statusEmojis = {
 
 export default function PainelResumo({ result }) {
   const [expanded, setExpanded] = useState(false);
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = async (text) => {
-    await navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
   const {
     patientName = '',
     patientInfo = '',
@@ -105,28 +98,19 @@ export default function PainelResumo({ result }) {
         </div>
       </div>
 
-      {/* Botão expandir relatório técnico */}
-      <div className="flex items-center gap-2">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setExpanded(!expanded)}
-          className="text-[#808080] hover:text-white text-xs h-8 px-3 rounded-lg bg-[#1a1a1a] border border-[#2d2d2d]"
-        >
-          {expanded ? <ChevronUp className="w-3.5 h-3.5 mr-1.5" /> : <ChevronDown className="w-3.5 h-3.5 mr-1.5" />}
-          {expanded ? 'Ocultar' : 'Relatório técnico completo'}
-        </Button>
+      {/* Bloco WhatsApp — copiar resumo */}
+      <BlocoWhatsApp text={blocoResumo} />
 
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => handleCopy(blocoResumo)}
-          className="text-[#808080] hover:text-white text-xs h-8 px-3 rounded-lg bg-[#1a1a1a] border border-[#2d2d2d]"
-        >
-          {copied ? <CheckCircle2 className="w-3.5 h-3.5 mr-1.5 text-[#4CAF50]" /> : <Copy className="w-3.5 h-3.5 mr-1.5" />}
-          {copied ? 'Copiado' : 'Copiar resumo'}
-        </Button>
-      </div>
+      {/* Botão expandir relatório técnico */}
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => setExpanded(!expanded)}
+        className="text-[#808080] hover:text-white text-xs h-8 px-3 rounded-lg bg-[#1a1a1a] border border-[#2d2d2d]"
+      >
+        {expanded ? <ChevronUp className="w-3.5 h-3.5 mr-1.5" /> : <ChevronDown className="w-3.5 h-3.5 mr-1.5" />}
+        {expanded ? 'Ocultar' : 'Relatório técnico completo'}
+      </Button>
 
       {/* Relatório expandido */}
       {expanded && relatorioTecnico && (
@@ -137,15 +121,6 @@ export default function PainelResumo({ result }) {
         </div>
       )}
 
-      {/* Bloco resumo WhatsApp (sempre visível, mais compacto) */}
-      {blocoResumo && (
-        <div className="bg-[#1a1a1a] border border-[#2d2d2d] rounded-xl p-4">
-          <p className="text-[10px] text-[#808080] uppercase tracking-wider mb-2">📱 Resumo WhatsApp</p>
-          <pre className="text-xs text-[#e0e0e0] whitespace-pre-wrap leading-relaxed font-sans">
-            {blocoResumo}
-          </pre>
-        </div>
-      )}
     </div>
   );
 }
