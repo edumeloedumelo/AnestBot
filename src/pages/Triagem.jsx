@@ -57,24 +57,28 @@ export default function Triagem() {
     setAnalyzing(true);
     setError("");
     setResults(null);
-    setProgressStatus("uploading");
-    // Upload em paralelo — todos os arquivos sobem simultaneamente
-    const uploadPromises = files.map(file => base44.integrations.Core.UploadFile({ file }));
-    const uploadResults = await Promise.all(uploadPromises);
-    const fileUrls = uploadResults.map(r => r.file_url);
-    setProgressStatus("analyzing");
-    const response = await base44.functions.invoke("analyzeBatch", {
-      fileUrls,
-      anamnesis
-    });
-    if (response.data?.error) {
-      setError(response.data.error);
+    try {
+      setProgressStatus("uploading");
+      // Upload em paralelo — todos os arquivos sobem simultaneamente
+      const uploadPromises = files.map(file => base44.integrations.Core.UploadFile({ file }));
+      const uploadResults = await Promise.all(uploadPromises);
+      const fileUrls = uploadResults.map(r => r.file_url);
+      setProgressStatus("analyzing");
+      const response = await base44.functions.invoke("analyzeBatch", {
+        fileUrls,
+        anamnesis
+      });
+      if (response.data?.error) {
+        setError(response.data.error);
+        return;
+      }
+      setResults(response.data.results || []);
+      setProgressStatus("");
+    } catch (err) {
+      setError("Erro de conexão. Verifique sua internet e tente novamente.");
+    } finally {
       setAnalyzing(false);
-      return;
     }
-    setResults(response.data.results || []);
-    setAnalyzing(false);
-    setProgressStatus("");
   };
 
   return (

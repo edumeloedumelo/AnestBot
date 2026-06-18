@@ -154,41 +154,54 @@ Exames obrigatórios   ✅ Completo / ❌ Incompleto
 Classificação final: ✅ Completo sem alertas · ⚠️ Completo com alertas · ❌ Incompleto · 🚨 Pendência crítica`;
 }
 
+// Codifica ArrayBuffer para base64 em chunks (evita "Maximum call stack" em arquivos grandes)
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 8192;
+  const chunks = [];
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    chunks.push(String.fromCharCode(...bytes.slice(i, i + chunkSize)));
+  }
+  return btoa(chunks.join(''));
+}
+
 // Download & cache: baixa cada arquivo UMA vez e reusa em todas as fases
 async function fetchAllFiles(fileUrls) {
-  const cache = new Map();
   const results = [];
 
   const downloads = fileUrls.map(async (url, i) => {
-    const res = await fetch(url);
-    if (!res.ok) {
-      results[i] = null;
-      return;
-    }
-    const contentType = res.headers.get('content-type') || '';
-    const buffer = await res.arrayBuffer();
-    const bytes = new Uint8Array(buffer);
-    const base64Data = btoa(String.fromCharCode(...bytes));
-
-    let block;
-    if (contentType.startsWith('image/')) {
-      const mediaType = contentType.includes('png') ? 'image/png'
-        : contentType.includes('webp') ? 'image/webp'
-        : contentType.includes('gif') ? 'image/gif'
-        : 'image/jpeg';
-      block = { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64Data } };
-    } else if (contentType === 'application/pdf' || url.toLowerCase().endsWith('.pdf')) {
-      block = { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64Data } };
-    } else {
-      try {
-        const text = new TextDecoder().decode(buffer);
-        block = { type: 'text', text: `[Arquivo ${i}]\n${text.substring(0, 8000)}` };
-      } catch {
-        block = { type: 'text', text: `[Arquivo ${i}: ${url.split('/').pop() || 'arquivo'}]` };
+    try {
+      const res = await fetch(url);
+      if (!res.ok) {
+        results[i] = null;
+        return;
       }
+      const contentType = res.headers.get('content-type') || '';
+      const buffer = await res.arrayBuffer();
+      const base64Data = arrayBufferToBase64(buffer);
+
+      let block;
+      if (contentType.startsWith('image/')) {
+        const mediaType = contentType.includes('png') ? 'image/png'
+          : contentType.includes('webp') ? 'image/webp'
+          : contentType.includes('gif') ? 'image/gif'
+          : 'image/jpeg';
+        block = { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64Data } };
+      } else if (contentType === 'application/pdf' || url.toLowerCase().endsWith('.pdf')) {
+        block = { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64Data } };
+      } else {
+        try {
+          const text = new TextDecoder().decode(buffer);
+          block = { type: 'text', text: `[Arquivo ${i}]\n${text.substring(0, 8000)}` };
+        } catch {
+          block = { type: 'text', text: `[Arquivo ${i}: ${url.split('/').pop() || 'arquivo'}]` };
+        }
+      }
+      results[i] = block;
+    } catch (e) {
+      console.error(`Erro ao baixar arquivo ${i}:`, e.message);
+      results[i] = null;
     }
-    results[i] = block;
-    cache.set(i, block);
   });
 
   await Promise.all(downloads);
