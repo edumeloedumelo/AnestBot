@@ -3,7 +3,7 @@ import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { RotateCcw, Settings, ClipboardList, Upload, ArrowRight, Share2, Activity } from "lucide-react";
+import { RotateCcw, Settings, ClipboardList, Upload, ArrowRight, Share2, Activity, Zap } from "lucide-react";
 import { Link } from "react-router-dom";
 import FileUploader from "@/components/triagem/FileUploader";
 import ProgressIndicator from "@/components/triagem/ProgressIndicator";
@@ -17,6 +17,8 @@ export default function Triagem() {
   const [error, setError] = useState("");
   const [results, setResults] = useState(null);
   const [sharedReceived, setSharedReceived] = useState(false);
+  const [streamMode, setStreamMode] = useState(false);
+  const [streamingResult, setStreamingResult] = useState(null);
 
   const canAnalyze = files.length > 0 && !analyzing;
 
@@ -49,6 +51,7 @@ export default function Triagem() {
     setProgressStatus("");
     setError("");
     setResults(null);
+    setStreamingResult(null);
   }, [files]);
 
   const handleAnalyze = async () => {
@@ -56,23 +59,27 @@ export default function Triagem() {
     setAnalyzing(true);
     setError("");
     setResults(null);
+    setStreamingResult(null);
+
     try {
-      // Etapa 1: Upload em paralelo
       setProgressStatus("uploading");
       const uploadResults = await Promise.all(
         files.map(file => base44.integrations.Core.UploadFile({ file }))
       );
       const fileUrls = uploadResults.map(r => r.file_url);
+      setProgressStatus("");
 
-      // Etapa 2: Analisar tudo em uma chamada única
-      setProgressStatus("analyzing");
-      const response = await base44.functions.invoke("fastAnalyze", { fileUrls, anamnesis });
-
-      if (response.data?.error) {
-        setError(response.data.error);
-        return;
+      if (streamMode) {
+        await handleStreamingAnalyze(fileUrls);
+      } else {
+        setProgressStatus("analyzing");
+        const response = await base44.functions.invoke("fastAnalyze", { fileUrls, anamnesis });
+        if (response.data?.error) {
+          setError(response.data.error);
+          return;
+        }
+        setResults([response.data]);
       }
-      setResults([response.data]);
       setProgressStatus("");
     } catch (err) {
       const msg = err?.response?.data?.error || err?.message || "Erro de conexão.";
@@ -80,6 +87,91 @@ export default function Triagem() {
     } finally {
       setAnalyzing(false);
     }
+  };
+
+  const handleStreamingAnalyze = async (fileUrls) => {
+    const config = await base44.getConfig();
+    const url = `${config.serverUrl}/fn/${config.appId}/fastAnalyzeStream`;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fileUrls, anamnesis })
+    });
+
+    if (!response.ok) {
+      const err = await response.text();
+      setError(`Erro ${response.status}: ${err.substring(0, 200)}`);
+      return;
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const data = line.slice(6).trim();
+        if (!data) continue;
+
+        try {
+          const event = JSON.parse(data);
+
+          if (event.type === 'progress') {
+            setProgressStatus('analyzing');
+          } else if (event.type === 'phase1') {
+            setStreamingResult({
+              patientName: event.patientName,
+              patientInfo: event.patientInfo,
+              surgeryType: event.surgeryType,
+              examResults: [],
+              alerts: [],
+              finalStatus: '',
+              conduct: '',
+              blocoResumo: '',
+              relatorioTecnico: '',
+              _phase: 'identifying'
+            });
+          } else if (event.type === 'phase2_partial') {
+            setStreamingResult(prev => ({
+              ...(prev || {}),
+              examResults: event.examResults || [],
+              alerts: event.alerts || [],
+              finalStatus: event.finalStatus || '',
+              conduct: event.conduct || '',
+              blocoResumo: event.blocoResumo || '',
+              relatorioTecnico: event.relatorioTecnico || '',
+              _phase: 'partial'
+            }));
+          } else if (event.type === 'complete') {
+            setResults([{
+              patientName: event.patientName,
+              patientInfo: event.patientInfo,
+              surgeryType: event.surgeryType,
+              examResults: event.examResults,
+              alerts: event.alerts,
+              finalStatus: event.finalStatus,
+              conduct: event.conduct,
+              blocoResumo: event.blocoResumo,
+              relatorioTecnico: event.relatorioTecnico
+            }]);
+            setStreamingResult(null);
+          } else if (event.type === 'error') {
+            setError(event.error);
+          }
+        } catch {}
+      }
+    }
+
+    reader.releaseLock();
   };
 
   return (
@@ -119,7 +211,7 @@ export default function Triagem() {
         </header>
 
         {/* Shared indicator */}
-        {sharedReceived && !analyzing && !results && (
+        {sharedReceived && !analyzing && !results && !streamingResult && (
           <div className="mb-6 p-4 bg-[#121212] border border-[#2d2d2d] rounded-2xl flex items-center gap-3">
             <Share2 className="w-4 h-4 text-[#808080]" />
             <div>
@@ -130,7 +222,7 @@ export default function Triagem() {
         )}
 
         {/* Two-column layout */}
-        {!results && (
+        {!results && !streamingResult && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Main column */}
             <div className="lg:col-span-2 space-y-6">
@@ -165,16 +257,31 @@ export default function Triagem() {
                 </div>
               )}
 
-              {/* Analyze button */}
-              <Button
-                onClick={handleAnalyze}
-                disabled={!canAnalyze}
-                className="w-full bg-[#808080] hover:bg-[#999] text-white h-12 text-xs font-bold uppercase tracking-[0.2em] rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {analyzing ? "Analisando..." : (
-                  <><Upload className="w-4 h-4 mr-2" /> Analisar exames <ArrowRight className="w-4 h-4 ml-2" /></>
-                )}
-              </Button>
+              {/* Mode toggle + Analyze button */}
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setStreamMode(!streamMode)}
+                  disabled={analyzing}
+                  className={`flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider px-4 py-3 rounded-xl border transition-all flex-shrink-0
+                    ${streamMode
+                      ? 'bg-[#FFC107]/10 border-[#FFC107]/30 text-[#FFC107]'
+                      : 'bg-[#121212] border-[#2d2d2d] text-[#555] hover:border-[#555] hover:text-[#808080]'
+                    } disabled:opacity-50 disabled:cursor-not-allowed`}
+                >
+                  <Zap className="w-3.5 h-3.5" />
+                  Turbo
+                </button>
+                <Button
+                  onClick={handleAnalyze}
+                  disabled={!canAnalyze}
+                  className={`flex-1 text-white h-12 text-xs font-bold uppercase tracking-[0.2em] rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed
+                    ${streamMode ? 'bg-[#FFC107] hover:bg-[#FFD54F] text-black' : 'bg-[#808080] hover:bg-[#999]'}`}
+                >
+                  {analyzing ? "Analisando..." : (
+                    <><Upload className="w-4 h-4 mr-2" /> Analisar exames <ArrowRight className="w-4 h-4 ml-2" /></>
+                  )}
+                </Button>
+              </div>
             </div>
 
             {/* Sidebar — Pacientes */}
@@ -196,7 +303,20 @@ export default function Triagem() {
           </div>
         )}
 
-        {analyzing && <ProgressIndicator status={progressStatus} />}
+        {/* Streaming partial result */}
+        {streamingResult && (
+          <div className="space-y-6 max-w-3xl">
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-[#FFC107] animate-pulse" />
+              <p className="text-[10px] text-[#FFC107] font-semibold uppercase tracking-[0.2em]">
+                Processando em tempo real...
+              </p>
+            </div>
+            <PainelResumo result={streamingResult} />
+          </div>
+        )}
+
+        {analyzing && !streamingResult && !results && <ProgressIndicator status={progressStatus} />}
 
         {/* Results */}
         {results && results.length > 0 && (
