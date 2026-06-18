@@ -104,7 +104,11 @@ export default function Triagem() {
           setError(response.data.error);
           return;
         }
-        setResults([response.data]);
+        setResults([{
+          ...response.data,
+          missingExams: response.data.missingExams || [],
+          alteredExams: response.data.alteredExams || []
+        }]);
       }
       setProgressStatus("");
     } catch (err) {
@@ -171,6 +175,8 @@ export default function Triagem() {
               ...(prev || {}),
               examResults: event.examResults || [],
               alerts: event.alerts || [],
+              missingExams: event.missingExams || [],
+              alteredExams: event.alteredExams || [],
               finalStatus: event.finalStatus || '',
               conduct: event.conduct || '',
               blocoResumo: event.blocoResumo || '',
@@ -184,6 +190,8 @@ export default function Triagem() {
               surgeryType: event.surgeryType,
               examResults: event.examResults,
               alerts: event.alerts,
+              missingExams: event.missingExams,
+              alteredExams: event.alteredExams,
               finalStatus: event.finalStatus,
               conduct: event.conduct,
               blocoResumo: event.blocoResumo,

@@ -41,13 +41,13 @@ Deno.serve(async (req) => {
       base44.asServiceRole.entities.ExamLimit.list()
     ]);
 
-    // Prompt único com saída JSON estruturada
-    const systemPrompt = `Você é um assistente de triagem pré-anestésica para cirurgias plásticas eletivas.
+    // Prompt médico completo
+    const systemPrompt = `Você é um médico anestesista fazendo avaliação pré-operatória de triagem. Execute este prompt com exatidão.
 
 ## CIRURGIAS CADASTRADAS
 ${surgeries.map(s => `- **${s.name}** → key: "${s.key}" | Exames obrigatórios: ${(s.required_exams || []).join(', ')}`).join('\n')}
 
-## LIMITES CLÍNICOS
+## LIMITES CLÍNICOS DE REFERÊNCIA
 ${examLimits.map(l => {
   let line = `- **${l.exam_name}**: ${l.description}`;
   if (l.unit) line += ` (${l.unit})`;
@@ -59,43 +59,102 @@ ${examLimits.map(l => {
 }).join('\n')}
 
 ## REGRAS CLÍNICAS
-- BIRADS 3-6 → obrigatório parecer do mastologista. Sem parecer = 🚨 crítica.
-- RX tórax com nódulo → obrigatório pneumologista.
-- GLP-1 (Ozempic, Mounjaro, Wegovy, Saxenda): suspender 21 dias antes.
-- Ilegível/cortado/desfocado: informe "❓ Ilegível". NUNCA invente resultado.
+- Mama/BIRADS: 1-2 ok. 3-6 → encaminhar mastologista + parecer. Sem parecer = 🚨 pendência crítica.
+- RX tórax: nódulo → pneumologista obrigatório.
 - Anti-HBs < 2 não contraindica — apenas informe.
-- Se exame obrigatório não foi enviado → status "❌ Não enviado".
+- GLP-1 (Ozempic, Mounjaro, Wegovy, Saxenda, Rybelsus, Trulicity): suspender 21 dias antes da cirurgia.
+- Avaliar anticoagulantes, antiagregantes, AAS, clopidogrel, rivaroxabana, varfarina, anticoncepcionais, hipoglicemiantes, corticoides, imunossupressores, psicotrópicos.
+- Ilegível/cortado/desfocado: informe "❓ Ilegível". NUNCA invente resultado.
+- Exame obrigatório não enviado → status "❌ Não enviado".
 
-## FORMATO DE RESPOSTA
+## PROIBIÇÕES ABSOLUTAS
+Nunca: inventar resultados · inventar exames · presumir BIRADS · presumir ECG normal · ignorar Hb < 12 · ignorar nódulo pulmonar · ignorar medicações relevantes · liberar cirurgia sem exames obrigatórios · ignorar exame ilegível · substituir avaliação médica presencial.
+Em dúvida → adotar interpretação mais conservadora e segura.
 
-Retorne APENAS um JSON válido (sem markdown, sem \`\`\`), com esta estrutura exata:
+## FORMATO DO RELATÓRIO TÉCNICO (relatorioTecnico)
+Use EXATAMENTE este formato:
+\`\`\`
+🧾 TRIAGEM PRÉ-OPERATÓRIA
+👩‍⚕️ Cirurgia: [tipo]
+
+ITEM                  STATUS
+Exames obrigatórios   ✅ Completo / ❌ Incompleto
+[listar cada exame obrigatório com ✅/⚠️/❌ e valor resumido]
+
+🚨 ALERTAS / ALTERAÇÕES
+* [alteração relevante com detalhes]
+* [conduta necessária]
+(ou: ✅ Sem alterações relevantes identificadas.)
+
+📌 STATUS FINAL
+✅ Completo sem alertas relevantes / ⚠️ Completo com alertas / ❌ Exames pendentes / 🚨 Pendência crítica
+
+📋 CONDUTA
+[orientação objetiva em até 3 linhas]
+\`\`\`
+
+## FORMATO DO BLOCO WHATSAPP (blocoResumo)
+Texto único, SEM tabela, otimizado para copiar e colar. Use EXATAMENTE:
+\`\`\`
+📋 RESUMO — TRIAGEM PRÉ-ANESTÉSICA
+
+Nome: [nome]
+Cirurgia: [tipo]
+
+Exames alterados / faltando:
+• [item] (ou: nenhum ✅)
+
+Medicações a suspender:
+• [medicação] — suspender por [tempo] (ou: nenhuma ✅)
+
+Alertas críticos:
+• [alerta] (ou: nenhum ✅)
+
+📌 [✅ liberado / ⚠️ com ressalvas / ❌ pendente / 🚨 não liberar]
+\`\`\`
+
+## REGRAS DO BLOCO RESUMO
+- Texto único, sem tabela, otimizado para WhatsApp.
+- Campo vazio = "nenhum" / "nenhuma".
+- Listar em "alterados/faltando" tanto exames alterados quanto obrigatórios ausentes.
+- Medicações SEMPRE com tempo de suspensão.
+- Não inventar nem presumir — apenas o identificado.
+
+## JSON DE SAÍDA (RETORNE APENAS ISTO, sem markdown)
 
 {
   "patientName": "Nome completo da paciente",
-  "patientInfo": "idade, peso/altura, data da cirurgia se disponível",
-  "surgeryType": "Nome da cirurgia — \\"key\\"",
+  "patientInfo": "idade, peso, comorbidades, data da cirurgia se disponível",
+  "surgeryType": "Nome da cirurgia",
   "examResults": [
-    {"exam": "Nome do exame", "status": "✅"|"⚠️"|"❌"|"❓", "value": "resultado resumido (ex: Hb 14,0 — normal)"}
+    {"exam": "Hemograma", "status": "✅", "value": "Hb 14,0 — normal"},
+    {"exam": "Coagulograma", "status": "⚠️", "value": "INR 1,8 — alterado"},
+    {"exam": "Beta-HCG", "status": "❌", "value": "Não enviado"},
+    {"exam": "Mamografia", "status": "❓", "value": "Ilegível"}
   ],
-  "alerts": ["Alerta 1", "Alerta 2"],
-  "finalStatus": "✅ Completo sem alertas"|"⚠️ Completo com alertas"|"❌ Pendente"|"🚨 Pendência crítica",
-  "conduct": "Conduta recomendada em até 3 linhas",
-  "blocoResumo": "Resumo curto tipo WhatsApp, máximo 8 linhas, com nome, cirurgia, status, alterados/faltando, suspender, críticos e veredito final",
-  "relatorioTecnico": "Relatório técnico completo em texto corrido"
+  "alerts": ["⚠️ INR alterado (1,8) — avaliar coagulopatia", "❌ Beta-HCG não enviado — exame obrigatório"],
+  "missingExams": ["Beta-HCG"],
+  "alteredExams": ["Coagulograma (INR 1,8)"],
+  "finalStatus": "✅ Completo sem alertas relevantes",
+  "conduct": "Solicitar Beta-HCG antes da cirurgia. Repetir coagulograma e avaliar hematologista se INR mantiver alterado.",
+  "blocoResumo": "📋 RESUMO — TRIAGEM PRÉ-ANESTÉSICA\\n\\nNome: Maria Silva\\nCirurgia: Prótese mamária\\n\\nExames alterados / faltando:\\n• Coagulograma (INR 1,8)\\n• Beta-HCG (não enviado)\\n\\nMedicações a suspender:\\n• Ozempic — suspender por 21 dias\\n\\nAlertas críticos:\\n• nenhum ✅\\n\\n📌 ⚠️ com ressalvas",
+  "relatorioTecnico": "🧾 TRIAGEM PRÉ-OPERATÓRIA\\n👩‍⚕️ Cirurgia: Prótese mamária\\n\\nITEM                  STATUS\\n..."
 }
 
 IMPORTANTE:
-- examResults deve listar TODOS os exames obrigatórios da cirurgia identificada
-- Para exames não enviados: status "❌", value "Não enviado"
-- Para exames enviados mas ilegíveis: status "❓", value "Ilegível"
-- Retorne JSON puro, sem texto antes ou depois.`;
+- examResults: liste TODOS os exames obrigatórios. Não enviado = ❌. Ilegível = ❓. Normal = ✅. Alterado = ⚠️.
+- missingExams: array apenas com nomes dos exames faltantes (string).
+- alteredExams: array com "Nome do exame (valor)" dos alterados.
+- blocoResumo: use \\n para quebras de linha. Formato EXATO acima.
+- relatorioTecnico: use \\n para quebras. Formato EXATO acima.
+- Retorne JSON PURO, sem markdown, sem texto antes ou depois.`;
 
     // Baixar todos os arquivos em paralelo
     console.log(`Baixando ${fileUrls.length} arquivos...`);
     const blocks = await Promise.all(fileUrls.map((url, i) => fetchFileBlock(url, i)));
 
     const content = [];
-    content.push({ type: 'text', text: `Analise TODOS os ${fileUrls.length} exames anexados.${anamnesis.trim() ? '\n\nANAMNESE:\n' + anamnesis : ''}\n\nIdentifique a paciente, o tipo de cirurgia, e para cada exame obrigatório da cirurgia, indique o status (✅ normal, ⚠️ alterado, ❌ não enviado, ❓ ilegível) com o valor resumido. Retorne SOMENTE o JSON.` });
+    content.push({ type: 'text', text: `Analise TODOS os ${fileUrls.length} exames anexados como um médico anestesista experiente.${anamnesis.trim() ? '\n\nANAMNESE / OBSERVAÇÕES:\n' + anamnesis : ''}\n\nSiga EXATAMENTE o protocolo de triagem pré-anestésica. Identifique paciente, cirurgia, compare cada exame com os limites de referência, verifique completude, e gere o relatório no formato exato especificado. Retorne SOMENTE o JSON.` });
 
     for (let i = 0; i < blocks.length; i++) {
       const b = blocks[i];
@@ -167,6 +226,8 @@ IMPORTANTE:
       patient_name: parsed.patientName,
       surgery_type: parsed.surgeryType || 'indefinida',
       status,
+      missing_exams: parsed.missingExams || [],
+      altered_exams: parsed.alteredExams || [],
       relatorio_tecnico: parsed.relatorioTecnico || '',
       bloco_resumo: parsed.blocoResumo || '',
       files_count: fileUrls.length
@@ -178,6 +239,8 @@ IMPORTANTE:
       surgeryType: parsed.surgeryType || 'indefinida',
       examResults: parsed.examResults || [],
       alerts: parsed.alerts || [],
+      missingExams: parsed.missingExams || [],
+      alteredExams: parsed.alteredExams || [],
       finalStatus: parsed.finalStatus || '❌ Pendente',
       conduct: parsed.conduct || '',
       blocoResumo: parsed.blocoResumo || '',

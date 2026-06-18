@@ -18,6 +18,8 @@ export default function PainelResumo({ result }) {
     surgeryType = '',
     examResults = [],
     alerts = [],
+    missingExams = [],
+    alteredExams = [],
     finalStatus = '',
     conduct = '',
     blocoResumo = '',
@@ -46,6 +48,34 @@ export default function PainelResumo({ result }) {
             </div>
           </div>
         </div>
+
+        {/* Resumo rápido: faltantes + alterados */}
+        {(missingExams.length > 0 || alteredExams.length > 0) && (
+          <div className="border-t border-[#2d2d2d] px-5 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              {missingExams.length > 0 && (
+                <div>
+                  <h3 className="text-[11px] font-bold text-[#FF5252] uppercase tracking-wider mb-2">❌ Faltantes</h3>
+                  <ul className="space-y-1">
+                    {missingExams.map((e, i) => (
+                      <li key={i} className="text-xs text-[#e0e0e0]">{e}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {alteredExams.length > 0 && (
+                <div>
+                  <h3 className="text-[11px] font-bold text-[#FFC107] uppercase tracking-wider mb-2">⚠️ Alterados</h3>
+                  <ul className="space-y-1">
+                    {alteredExams.map((e, i) => (
+                      <li key={i} className="text-xs text-[#e0e0e0]">{e}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Tabela de exames */}
         <div className="border-t border-[#2d2d2d]">

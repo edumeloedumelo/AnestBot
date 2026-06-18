@@ -41,13 +41,13 @@ Deno.serve(async (req) => {
       base44.asServiceRole.entities.ExamLimit.list()
     ]);
 
-    // Construir prompt
-    const systemPrompt = `Você é um assistente de triagem pré-anestésica para cirurgias plásticas eletivas.
+    // Construir prompt médico completo
+    const systemPrompt = `Você é um médico anestesista fazendo avaliação pré-operatória de triagem. Execute este prompt com exatidão.
 
 ## CIRURGIAS CADASTRADAS
 ${surgeries.map(s => `- **${s.name}** → key: "${s.key}" | Exames obrigatórios: ${(s.required_exams || []).join(', ')}`).join('\n')}
 
-## LIMITES CLÍNICOS
+## LIMITES CLÍNICOS DE REFERÊNCIA
 ${examLimits.map(l => {
   let line = `- **${l.exam_name}**: ${l.description}`;
   if (l.unit) line += ` (${l.unit})`;
@@ -58,39 +58,67 @@ ${examLimits.map(l => {
   return line;
 }).join('\n')}
 
-## REGRAS
-- BIRADS 3-6 → parecer do mastologista obrigatório. Sem parecer = 🚨 crítica.
-- RX tórax com nódulo → pneumologista obrigatório.
-- GLP-1: suspender 21 dias antes.
-- Ilegível/cortado/desfocado: informe "❓ Ilegível". NUNCA invente.
+## REGRAS CLÍNICAS
+- Mama/BIRADS: 1-2 ok. 3-6 → encaminhar mastologista + parecer. Sem parecer = 🚨 pendência crítica.
+- RX tórax: nódulo → pneumologista obrigatório.
+- Anti-HBs < 2 não contraindica — apenas informe.
+- GLP-1 (Ozempic, Mounjaro, Wegovy, Saxenda, Rybelsus, Trulicity): suspender 21 dias.
+- Avaliar anticoagulantes, antiagregantes, AAS, clopidogrel, rivaroxabana, varfarina, anticoncepcionais, hipoglicemiantes, corticoides, imunossupressores, psicotrópicos.
+- Ilegível/cortado/desfocado: "❓ Ilegível". NUNCA invente.
 - Exame obrigatório não enviado → "❌ Não enviado".
 
-## FORMATO DE RESPOSTA
-Retorne APENAS JSON válido (sem markdown):
+## PROIBIÇÕES ABSOLUTAS
+Nunca: inventar resultados · inventar exames · presumir BIRADS · presumir ECG normal · ignorar Hb < 12 · ignorar nódulo pulmonar · ignorar medicações relevantes · liberar cirurgia sem exames obrigatórios · ignorar exame ilegível · substituir avaliação médica presencial. Em dúvida → interpretação mais conservadora.
+
+## FORMATO DO RELATÓRIO (relatorioTecnico)
+\`\`\`
+🧾 TRIAGEM PRÉ-OPERATÓRIA
+👩‍⚕️ Cirurgia: [tipo]
+ITEM                  STATUS
+[listar cada exame obrigatório com ✅/⚠️/❌]
+🚨 ALERTAS / ALTERAÇÕES
+* [alteração]
+📌 STATUS FINAL: [✅/⚠️/❌/🚨]
+📋 CONDUTA: [até 3 linhas]
+\`\`\`
+
+## FORMATO BLOCO WHATSAPP (blocoResumo)
+\`\`\`
+📋 RESUMO — TRIAGEM PRÉ-ANESTÉSICA
+Nome: [nome] | Cirurgia: [tipo]
+Exames alterados / faltando: • [item] (ou: nenhum ✅)
+Medicações a suspender: • [medicação] — [tempo] (ou: nenhuma ✅)
+Alertas críticos: • [alerta] (ou: nenhum ✅)
+📌 [✅ liberado / ⚠️ com ressalvas / ❌ pendente / 🚨 não liberar]
+\`\`\`
+
+## JSON DE SAÍDA — Gere phase1 PRIMEIRO, depois phase2:
 {
   "phase1": {
-    "patientName": "Nome",
-    "patientInfo": "idade, peso/altura, data",
-    "surgeryType": "Cirurgia — key"
+    "patientName": "Nome completo",
+    "patientInfo": "idade, peso, comorbidades, data cirurgia",
+    "surgeryType": "Nome da cirurgia"
   },
   "phase2": {
-    "examResults": [{"exam":"...", "status":"✅|⚠️|❌|❓", "value":"..."}],
-    "alerts": ["..."],
-    "finalStatus": "✅ Completo sem alertas|⚠️ Completo com alertas|❌ Pendente|🚨 Pendência crítica",
-    "conduct": "...",
-    "blocoResumo": "...",
-    "relatorioTecnico": "..."
+    "examResults": [{"exam":"...", "status":"✅|⚠️|❌|❓", "value":"resultado resumido"}],
+    "alerts": ["⚠️ Alerta com detalhe"],
+    "missingExams": ["Exame faltante"],
+    "alteredExams": ["Exame alterado (valor)"],
+    "finalStatus": "✅ Completo sem alertas relevantes",
+    "conduct": "Conduta em até 3 linhas",
+    "blocoResumo": "📋 RESUMO... (use \\n para quebras)",
+    "relatorioTecnico": "🧾 TRIAGEM... (use \\n para quebras)"
   }
 }
 
-IMPORTANTE: Gere phase1 PRIMEIRO (antes de analisar os exames), depois phase2. Assim consigo exibir o paciente enquanto os exames são processados.`;
+IMPORTANTE: Gere phase1 PRIMEIRO (identificação) e só depois phase2 (análise dos exames). Retorne JSON puro, sem markdown.`;
 
     // Baixar arquivos
     console.log(`Baixando ${fileUrls.length} arquivos...`);
     const blocks = await Promise.all(fileUrls.map((url, i) => fetchFileBlock(url, i)));
 
     const content = [];
-    content.push({ type: 'text', text: `Analise TODOS os ${fileUrls.length} exames.${anamnesis.trim() ? '\n\nANAMNESE:\n' + anamnesis : ''}\n\nRetorne SOMENTE o JSON com phase1 e phase2.` });
+    content.push({ type: 'text', text: `Analise TODOS os ${fileUrls.length} exames como médico anestesista.${anamnesis.trim() ? '\n\nANAMNESE / OBSERVAÇÕES:\n' + anamnesis : ''}\n\nSiga EXATAMENTE o protocolo. Identifique paciente e cirurgia (phase1), depois analise cada exame (phase2). Retorne SOMENTE o JSON.` });
     for (let i = 0; i < blocks.length; i++) {
       const b = blocks[i];
       if (!b) continue;
@@ -228,6 +256,8 @@ IMPORTANTE: Gere phase1 PRIMEIRO (antes de analisar os exames), depois phase2. A
               patient_name: p1.patientName,
               surgery_type: p1.surgeryType || 'indefinida',
               status,
+              missing_exams: p2.missingExams || [],
+              altered_exams: p2.alteredExams || [],
               relatorio_tecnico: p2.relatorioTecnico || '',
               bloco_resumo: p2.blocoResumo || '',
               files_count: fileUrls.length
@@ -241,6 +271,8 @@ IMPORTANTE: Gere phase1 PRIMEIRO (antes de analisar os exames), depois phase2. A
               surgeryType: p1.surgeryType || '',
               examResults: p2.examResults || [],
               alerts: p2.alerts || [],
+              missingExams: p2.missingExams || [],
+              alteredExams: p2.alteredExams || [],
               finalStatus: p2.finalStatus || '❌ Pendente',
               conduct: p2.conduct || '',
               blocoResumo: p2.blocoResumo || '',
