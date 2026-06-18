@@ -64,8 +64,8 @@ export default function FileUploader({ files, setFiles, disabled }) {
       <div
         onDrop={handleDrop}
         onDragOver={(e) => e.preventDefault()}
-        className={`border-2 border-dashed rounded-2xl p-10 text-center cursor-pointer transition-colors
-          ${disabled ? "opacity-40 cursor-not-allowed border-[#1a1a1a]" : "border-[#2d2d2d] hover:border-[#555]"}
+        className={`border-2 border-dashed rounded-2xl p-6 sm:p-10 text-center cursor-pointer transition-colors
+          ${disabled ? "opacity-40 cursor-not-allowed border-[#1a1a1a]" : "border-[#2d2d2d] hover:border-[#555] active:border-[#808080]"}
           bg-[#0a0a0a]`}
         onClick={() => !disabled && document.getElementById("file-input")?.click()}
       >
@@ -76,14 +76,17 @@ export default function FileUploader({ files, setFiles, disabled }) {
         <p className="text-[11px] text-[#555]">
           Arraste arquivos ou toque para selecionar
         </p>
-        <p className="text-[10px] text-[#444] mt-2">
+        <p className="text-[10px] text-[#555] mt-2">
+          No celular: escolha "Câmera" ou "Galeria"
+        </p>
+        <p className="text-[10px] text-[#444] mt-1">
           JPEG, PNG, PDF, TXT — até 25MB
         </p>
         <input
           id="file-input"
           type="file"
           multiple
-          accept=".jpg,.jpeg,.png,.pdf,.txt,.webp,.xlsx,.xls,.csv"
+          accept="image/*,.pdf,.txt,.webp,.xlsx,.xls,.csv"
           onChange={handleSelect}
           className="hidden"
           disabled={disabled}

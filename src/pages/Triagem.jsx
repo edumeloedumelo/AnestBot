@@ -202,36 +202,36 @@ export default function Triagem() {
 
   return (
     <div className="min-h-screen bg-[#000000]">
-      <div className="max-w-6xl mx-auto px-6 py-8">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
         {/* Header */}
-        <header className="flex items-center justify-between mb-10">
-          <div className="flex items-center gap-4">
-            <div className="w-9 h-9 rounded-xl bg-[#121212] border border-[#2d2d2d] flex items-center justify-center">
+        <header className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8 sm:mb-10">
+          <div className="flex items-center gap-3 sm:gap-4">
+            <div className="w-9 h-9 rounded-xl bg-[#121212] border border-[#2d2d2d] flex items-center justify-center flex-shrink-0">
               <Activity className="w-5 h-5 text-[#808080]" />
             </div>
             <div>
               <h1 className="text-sm font-extrabold text-white tracking-[0.15em] uppercase">
                 Avaliação Pré-Anestésica
               </h1>
-              <p className="text-[11px] text-[#a0a0a0] mt-0.5">
+              <p className="text-[10px] sm:text-[11px] text-[#a0a0a0] mt-0.5 hidden sm:block">
                 Apoio à decisão clínica — Suporte Anestésico Pré-Cirúrgico
               </p>
             </div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 w-full sm:w-auto">
             <Link
               to="/cirurgias"
-              className="flex items-center gap-2 text-[11px] font-medium text-[#a0a0a0] hover:text-white transition-colors px-4 py-2 rounded-full bg-[#121212] border border-[#2d2d2d] uppercase tracking-wider"
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 text-[11px] font-medium text-[#a0a0a0] hover:text-white transition-colors px-3 py-2.5 rounded-full bg-[#121212] border border-[#2d2d2d] uppercase tracking-wider"
             >
               <Settings className="w-3.5 h-3.5" />
-              Configurações
+              <span className="sm:inline">Configurações</span>
             </Link>
             <Link
               to="/historico"
-              className="flex items-center gap-2 text-[11px] font-medium text-[#a0a0a0] hover:text-white transition-colors px-4 py-2 rounded-full bg-[#121212] border border-[#2d2d2d] uppercase tracking-wider"
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 text-[11px] font-medium text-[#a0a0a0] hover:text-white transition-colors px-3 py-2.5 rounded-full bg-[#121212] border border-[#2d2d2d] uppercase tracking-wider"
             >
               <ClipboardList className="w-3.5 h-3.5" />
-              Histórico
+              <span className="sm:inline">Histórico</span>
             </Link>
           </div>
         </header>
@@ -288,23 +288,23 @@ export default function Triagem() {
                 <button
                   onClick={() => setStreamMode(!streamMode)}
                   disabled={analyzing}
-                  className={`flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider px-4 py-3 rounded-xl border transition-all flex-shrink-0
+                  className={`flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider px-3 py-3.5 rounded-xl border transition-all flex-shrink-0
                     ${streamMode
                       ? 'bg-[#FFC107]/10 border-[#FFC107]/30 text-[#FFC107]'
                       : 'bg-[#121212] border-[#2d2d2d] text-[#555] hover:border-[#555] hover:text-[#808080]'
                     } disabled:opacity-50 disabled:cursor-not-allowed`}
                 >
                   <Zap className="w-3.5 h-3.5" />
-                  Turbo
+                  <span className="hidden sm:inline">Turbo</span>
                 </button>
                 <Button
                   onClick={handleAnalyze}
                   disabled={!canAnalyze}
-                  className={`flex-1 text-white h-12 text-xs font-bold uppercase tracking-[0.2em] rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed
+                  className={`flex-1 h-14 text-sm font-bold uppercase tracking-[0.2em] rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed
                     ${streamMode ? 'bg-[#FFC107] hover:bg-[#FFD54F] text-black' : 'bg-[#808080] hover:bg-[#999]'}`}
                 >
                   {analyzing ? "Analisando..." : (
-                    <><Upload className="w-4 h-4 mr-2" /> Analisar exames <ArrowRight className="w-4 h-4 ml-2" /></>
+                    <><Upload className="w-5 h-5 mr-2" /> Analisar exames</>
                   )}
                 </Button>
               </div>
