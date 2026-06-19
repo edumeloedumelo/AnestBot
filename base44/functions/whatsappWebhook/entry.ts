@@ -206,7 +206,8 @@ Retorne via output_analysis. Ultra-compacto.`;
       if (anamnesis?.trim()) {
         analyzeContent.push({ type: 'text', text: `ANAMNESE:\n${anamnesis}\n` });
       }
-      analyzeContent.push({ type: 'text', text: `Analise os ${patientBlocks.length} exames abaixo para a paciente **${patient.name}**.` });
+      const isSingleDoc = patientBlocks.length === 1;
+      analyzeContent.push({ type: 'text', text: `${isSingleDoc ? '⚠️ Arquivo único: LEIA TODAS AS PÁGINAS — pode conter múltiplos exames.\n\n' : ''}Analise os ${patientBlocks.length} exames abaixo para a paciente **${patient.name}**. Extraia CADA exame individualmente.` });
       for (let i = 0; i < patientBlocks.length; i++) {
         analyzeContent.push({ type: 'text', text: `--- EXAME [${i}] ---` });
         analyzeContent.push(patientBlocks[i] || { type: 'text', text: '[indisponível]' });
@@ -228,7 +229,7 @@ Retorne via output_analysis. Ultra-compacto.`;
           required: ['patientName', 'finalStatus']
         }
       }];
-      const analyzeResult = await callClaude(analyzePrompt, analyzeContent, apiKey, 2048, analyzeTools, { type: 'tool', name: 'output_analysis' });
+      const analyzeResult = await callClaude(analyzePrompt, analyzeContent, apiKey, 3072, analyzeTools, { type: 'tool', name: 'output_analysis' });
       if (!analyzeResult) throw new Error('IA não gerou análise para ' + patient.name);
 
       // Save Triage record

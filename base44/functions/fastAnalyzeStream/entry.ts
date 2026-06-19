@@ -89,7 +89,8 @@ FORMATO: output_triage. Resposta ultra-compacta. blocoResumo = texto único pron
     const blocks = await Promise.all(fileUrls.map((url, i) => fetchFileBlock(url, i)));
 
     const content = [];
-    content.push({ type: 'text', text: `Analise ${fileUrls.length} exame(s).${anamnesis.trim() ? ' Anamnese: ' + anamnesis.substring(0, 500) : ''}\n\nDevolva APENAS via output_triage. Seja direto e conciso.` });
+    const isSinglePdf = fileUrls.length === 1;
+    content.push({ type: 'text', text: `${isSinglePdf ? '⚠️ Arquivo único: LEIA TODAS AS PÁGINAS — pode conter múltiplos exames dentro do PDF.\n\n' : ''}Analise ${fileUrls.length} arquivo(s).${anamnesis.trim() ? ' Anamnese: ' + anamnesis.substring(0, 500) : ''}\n\nExtraia CADA exame individualmente. Confira valores, unidade e data. Devolva via output_triage. Direto e conciso.` });
 
     for (let i = 0; i < blocks.length; i++) {
       const b = blocks[i];
@@ -106,7 +107,7 @@ FORMATO: output_triage. Resposta ultra-compacta. blocoResumo = texto único pron
       headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: 2048,
+        max_tokens: 3072,
         system: systemPrompt,
         messages: [{ role: 'user', content }],
         tools: [{
