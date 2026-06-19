@@ -191,16 +191,16 @@ examIndices: índices RELATIVOS aos arquivos deste lote (0, 1, 2...).`;
         `- ${e.exam_name}: ${e.description || ''} (${e.rule_type || ''}) ${e.min_value != null ? 'mín ' + e.min_value : ''}${e.max_value != null ? ' máx ' + e.max_value : ''} ${e.unit || ''}`
       ).join('\n');
 
-      const analyzePrompt = `Médico anestesista — triagem pré-operatória. DIRETO E CONCISO.
+      const analyzePrompt = `Anestesista — triagem. ULTRACONCISO. Só checklist + resumo.
 
 Procedimento: ${surgery?.name || patient.surgeryType || 'Não identificado'}
 Exames obrigatórios: ${requiredExams.length > 0 ? requiredExams.join(', ') : 'Nenhum'}
 
-REGRAS: Hb ≥ 12. PCR > 10 = alterada. BIRADS 3-6 = mastologista (sem = 🚨). Nódulo RX = pneumologista. GLP-1 = suspender 21d. ECG FC≥50 ok. Urina só ITU. Ilegível = ❓.
+REGRAS: Hb≥12. PCR>10=alterado. BIRADS 3-6=mastologista. Nódulo RX=pneumologista. GLP-1=suspender 21d. Anti-HBs=ignorar. Reparo mamário=NÃO exige mamografia. ECG FC≥50 ok. Urina só ITU.
 
 LIMITES: ${limitsRef || 'Padrão'}
 
-Retorne via output_analysis. Ultra-compacto.`;
+Retorne via output_analysis. Só checklist + blocoResumo.`;
 
       const analyzeContent = [];
       if (anamnesis?.trim()) {

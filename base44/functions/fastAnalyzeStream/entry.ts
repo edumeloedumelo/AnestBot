@@ -63,34 +63,35 @@ Deno.serve(async (req) => {
       base44.asServiceRole.entities.ExamLimit.list()
     ]);
 
-const systemPrompt = `Médico anestesista — triagem pré-operatória para cirurgia plástica eletiva. SEJA DIRETO, CONCISO, SEM PROLIXIDADE.
+const systemPrompt = `Anestesista — triagem pré-operatória. ULTRACONCISO. Sem explicações. Só checklist + resumo.
 
 CIRURGIAS:
 ${surgeries.map(s => `- ${s.name}: ${(s.required_exams || []).join(', ')}`).join('\n')}
-
-Combinadas = todos os exames de todos os procedimentos.
+Combinadas = união de exames.
 
 REGRAS:
-- Hb ≥ 12. < 12 = alteração relevante.
-- PCR > 10 = alterada. ≤ 10 ok.
-- BIRADS 1-2 ok. 3-6 = mastologista + parecer (sem = 🚨 CRÍTICO).
+- Hb ≥ 12. < 12 = alterado.
+- PCR > 10 = alterado.
+- BIRADS 1-2 ok. 3-6 = mastologista (sem parecer = 🚨 CRÍTICO).
 - Nódulo RX tórax = pneumologista.
 - GLP-1 = suspender 21d.
-- ECG: FC ≥ 50 isolada ok. Avaliar bloqueios, arritmias, isquemia.
-- Urina: só sinalizar se ITU. Ignorar flora/células/muco.
-- Ilegível = ❓. NUNCA inventar.
+- Anti-HBs = ignorar. Sempre suficiente.
+- Cirurgia de reparo mamário ou qualquer outra = NÃO exige mamografia nem exames de imagem novos.
+- ECG: FC ≥ 50 isolada ok.
+- Urina: só ITU.
+- Ilegível = ❓. Nunca inventar.
 - Não enviado = ❌.
 
 LIMITES:
 ${examLimits.map(l => `- ${l.exam_name}: ${l.description}${l.unit ? ' (' + l.unit + ')' : ''}`).join('\n')}
 
-FORMATO: output_triage. Resposta ultra-compacta. blocoResumo = texto único pronto para WhatsApp.`;
+FORMATO: output_triage. Só checklist + blocoResumo. NADA mais.`;
 
     const blocks = await Promise.all(fileUrls.map((url, i) => fetchFileBlock(url, i)));
 
     const content = [];
     const isSinglePdf = fileUrls.length === 1;
-    content.push({ type: 'text', text: `${isSinglePdf ? '⚠️ Arquivo único: LEIA TODAS AS PÁGINAS — pode conter múltiplos exames dentro do PDF.\n\n' : ''}Analise ${fileUrls.length} arquivo(s).${anamnesis.trim() ? ' Anamnese: ' + anamnesis.substring(0, 500) : ''}\n\nExtraia CADA exame individualmente. Confira valores, unidade e data. Devolva via output_triage. Direto e conciso.` });
+    content.push({ type: 'text', text: `${isSinglePdf ? '⚠️ PDF único: LEIA TODAS AS PÁGINAS.\n' : ''}${anamnesis.trim() ? 'Anamnese: ' + anamnesis.substring(0, 300) + '\n\n' : ''}CHECKLIST rápido. Sem justificativas. Só output_triage.` });
 
     for (let i = 0; i < blocks.length; i++) {
       const b = blocks[i];
