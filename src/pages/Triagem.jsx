@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { appParams } from "@/lib/app-params";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -97,20 +98,29 @@ export default function Triagem() {
       setProgressStatus("");
 
       if (streamMode) {
-        await handleStreamingAnalyze(fileUrls);
-      } else {
-        setProgressStatus("analyzing");
-        const response = await base44.functions.invoke("fastAnalyze", { fileUrls, anamnesis });
-        if (response.data?.error) {
-          setError(response.data.error);
+        try {
+          await handleStreamingAnalyze(fileUrls);
+          // Se o streaming gerou resultado completo, encerra
           return;
+        } catch (streamErr) {
+          // Fallback: streaming falhou, tenta modo normal automaticamente
+          console.warn('Streaming falhou, usando modo normal:', streamErr.message);
         }
-        setResults([{
-          ...response.data,
-          missingExams: response.data.missingExams || [],
-          alteredExams: response.data.alteredExams || []
-        }]);
       }
+
+      // Modo normal (ou fallback do streaming)
+      setProgressStatus("analyzing");
+      const response = await base44.functions.invoke("fastAnalyze", { fileUrls, anamnesis });
+      if (response.data?.error) {
+        setError(response.data.error);
+        return;
+      }
+      setResults([{
+        ...response.data,
+        missingExams: response.data.missingExams || [],
+        alteredExams: response.data.alteredExams || []
+      }]);
+      setStreamingResult(null);
       setProgressStatus("");
     } catch (err) {
       const msg = err?.response?.data?.error || err?.message || "Erro de conexão.";
@@ -121,8 +131,7 @@ export default function Triagem() {
   };
 
   const handleStreamingAnalyze = async (fileUrls) => {
-    const config = await base44.getConfig();
-    const url = `${config.serverUrl}/fn/${config.appId}/fastAnalyzeStream`;
+    const url = `${appParams.appBaseUrl}/fn/${appParams.appId}/fastAnalyzeStream`;
 
     const response = await fetch(url, {
       method: 'POST',
@@ -132,8 +141,7 @@ export default function Triagem() {
 
     if (!response.ok) {
       const err = await response.text();
-      setError(`Erro ${response.status}: ${err.substring(0, 200)}`);
-      return;
+      throw new Error(`Stream indisponível (${response.status}). Tentando modo normal...`);
     }
 
     const reader = response.body.getReader();
@@ -200,7 +208,7 @@ export default function Triagem() {
             }]);
             setStreamingResult(null);
           } else if (event.type === 'error') {
-            setError(event.error);
+            throw new Error(event.error || 'Erro no streaming');
           }
         } catch {}
       }
