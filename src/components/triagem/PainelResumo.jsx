@@ -161,22 +161,26 @@ export default function PainelResumo({ result }) {
       </div>
 
       {/* Relatório técnico completo */}
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => setExpanded(!expanded)}
-        className="text-[#666] hover:text-white text-[10px] h-8 px-3 rounded-lg bg-[#1a1a1a] border border-[#2d2d2d] uppercase tracking-wider"
-      >
-        {expanded ? <ChevronUp className="w-3 h-3 mr-1.5" /> : <ChevronDown className="w-3 h-3 mr-1.5" />}
-        {expanded ? 'Ocultar' : 'Relatório técnico completo'}
-      </Button>
+      {relatorioTecnico && relatorioTecnico.trim() && (
+        <>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setExpanded(!expanded)}
+            className="text-[#666] hover:text-white text-[10px] h-8 px-3 rounded-lg bg-[#1a1a1a] border border-[#2d2d2d] uppercase tracking-wider"
+          >
+            {expanded ? <ChevronUp className="w-3 h-3 mr-1.5" /> : <ChevronDown className="w-3 h-3 mr-1.5" />}
+            {expanded ? 'Ocultar' : 'Relatório técnico completo'}
+          </Button>
 
-      {expanded && relatorioTecnico && (
-        <div className="bg-[#1a1a1a] border border-[#2d2d2d] rounded-2xl p-5">
-          <pre className="text-xs text-[#cccccc] whitespace-pre-wrap leading-relaxed font-sans">
-            {relatorioTecnico}
-          </pre>
-        </div>
+          {expanded && (
+            <div className="bg-[#1a1a1a] border border-[#2d2d2d] rounded-2xl p-5">
+              <pre className="text-xs text-[#cccccc] whitespace-pre-wrap leading-relaxed font-sans">
+                {relatorioTecnico}
+              </pre>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

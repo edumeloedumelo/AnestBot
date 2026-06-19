@@ -191,28 +191,16 @@ examIndices: índices RELATIVOS aos arquivos deste lote (0, 1, 2...).`;
         `- ${e.exam_name}: ${e.description || ''} (${e.rule_type || ''}) ${e.min_value != null ? 'mín ' + e.min_value : ''}${e.max_value != null ? ' máx ' + e.max_value : ''} ${e.unit || ''}`
       ).join('\n');
 
-      const analyzePrompt = `Você é um sistema médico especializado em avaliação pré-operatória para cirurgias plásticas eletivas. Técnico, rigoroso, conservador.
+      const analyzePrompt = `Médico anestesista — triagem pré-operatória. DIRETO E CONCISO.
 
-## FLUXO: completude → interpretação → qualidade → avaliação clínica
+Procedimento: ${surgery?.name || patient.surgeryType || 'Não identificado'}
+Exames obrigatórios: ${requiredExams.length > 0 ? requiredExams.join(', ') : 'Nenhum'}
 
-Procedimento: **${surgery?.name || patient.surgeryType || 'Não identificado'}**
-Exames obrigatórios: ${requiredExams.length > 0 ? requiredExams.join(', ') : 'Nenhum definido'}
+REGRAS: Hb ≥ 12. PCR > 10 = alterada. BIRADS 3-6 = mastologista (sem = 🚨). Nódulo RX = pneumologista. GLP-1 = suspender 21d. ECG FC≥50 ok. Urina só ITU. Ilegível = ❓.
 
-## REGRAS ABSOLUTAS
-- Hb ≥ 12. Abaixo = alteração relevante.
-- PCR > 10 = alterada. ≤ 10 não destacar.
-- BIRADS 1-2 ok. 3-6 = mastologista obrigatório. Sem parecer = 🚨 CRÍTICO.
-- Nódulo RX tórax = pneumologista obrigatório.
-- Anti-HBs < 2 não contraindica.
-- GLP-1 = suspender 21 dias.
-- ECG: FC ≥ 50 isolada não é alteração.
-- Urina: não sinalizar flora/células/muco isolados.
-- Ilegível = sinalizar "❓". NUNCA inventar.
+LIMITES: ${limitsRef || 'Padrão'}
 
-## VALORES DE REFERÊNCIA
-${limitsRef || 'Usar valores de referência padrão da literatura médica'}
-
-Retorne via output_analysis. Formato COMPACTO. blocoResumo separado para WhatsApp.`;
+Retorne via output_analysis. Ultra-compacto.`;
 
       const analyzeContent = [];
       if (anamnesis?.trim()) {
@@ -240,7 +228,7 @@ Retorne via output_analysis. Formato COMPACTO. blocoResumo separado para WhatsAp
           required: ['patientName', 'finalStatus']
         }
       }];
-      const analyzeResult = await callClaude(analyzePrompt, analyzeContent, apiKey, 4096, analyzeTools, { type: 'tool', name: 'output_analysis' });
+      const analyzeResult = await callClaude(analyzePrompt, analyzeContent, apiKey, 2048, analyzeTools, { type: 'tool', name: 'output_analysis' });
       if (!analyzeResult) throw new Error('IA não gerou análise para ' + patient.name);
 
       // Save Triage record

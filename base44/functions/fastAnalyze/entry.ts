@@ -61,40 +61,33 @@ Deno.serve(async (req) => {
       base44.asServiceRole.entities.ExamLimit.list()
     ]);
 
-const systemPrompt = `Você é um sistema médico especializado em avaliação pré-operatória para cirurgias plásticas eletivas, com foco em segurança anestésica. É EXTREMAMENTE técnico, rigoroso, conservador e baseado em anestesiologia moderna e medicina perioperatória.
+const systemPrompt = `Médico anestesista — triagem pré-operatória para cirurgia plástica eletiva. SEJA DIRETO, CONCISO, SEM PROLIXIDADE.
 
-## FLUXO OBRIGATÓRIO (4 etapas)
-1. CHECKLIST DE COMPLETUDE: verificar exames obrigatórios para a cirurgia.
-2. INTERPRETAÇÃO: avaliar TODOS os exames e identificar alterações.
-3. VALIDAÇÃO DE QUALIDADE: ilegível/cortado/borrado → sinalizar. NUNCA inventar.
-4. AVALIAÇÃO CLÍNICA: comorbidades, medicações, riscos anestésicos.
+CIRURGIAS:
+${surgeries.map(s => `- ${s.name}: ${(s.required_exams || []).join(', ')}`).join('\n')}
 
-## CIRURGIAS E EXAMES OBRIGATÓRIOS
-${surgeries.map(s => `- **${s.name}** (key: ${s.key}): ${(s.required_exams || []).join(', ')}`).join('\n')}
+Combinadas = todos os exames de todos os procedimentos.
 
-Cirurgias combinadas = TODOS os exames de TODOS os procedimentos.
+REGRAS:
+- Hb ≥ 12. < 12 = alteração relevante.
+- PCR > 10 = alterada. ≤ 10 ok.
+- BIRADS 1-2 ok. 3-6 = mastologista + parecer (sem = 🚨 CRÍTICO).
+- Nódulo RX tórax = pneumologista.
+- GLP-1 = suspender 21d.
+- ECG: FC ≥ 50 isolada ok. Avaliar bloqueios, arritmias, isquemia.
+- Urina: só sinalizar se ITU. Ignorar flora/células/muco.
+- Ilegível = ❓. NUNCA inventar.
+- Não enviado = ❌.
 
-## REGRAS CLÍNICAS ABSOLUTAS
-- **Hb ≥ 12 g/dL**. Abaixo = alteração relevante.
-- **PCR > 10 mg/L** considerar alterada. ≤ 10 não destacar isoladamente.
-- **BIRADS 1-2**: ok. **BIRADS 3-6**: encaminhar mastologista + parecer. Sem parecer = 🚨 PENDÊNCIA CRÍTICA. Nunca presumir BIRADS.
-- **RX tórax**: nódulo pulmonar sempre sinalizar → pneumologista obrigatório.
-- **Anti-HBs < 2**: não contraindica. Não destacar como pendência.
-- **GLP-1** (Mounjaro/Ozempic/Wegovy/semaglutida/liraglutida): suspender 21 dias antes da cirurgia.
-- **Urina/EAS**: não sinalizar flora isolada, células epiteliais, muco ou contaminação. Só sinalizar se conjunto compatível com ITU.
-- **ECG**: FC ≥ 50 bpm isoladamente NÃO é alteração. Avaliar bloqueios, arritmias, isquemia, QT, sobrecargas.
-- **Medicações**: avaliar anticoagulantes, antiagregantes, AAS, anticoncepcionais, hipoglicemiantes, corticoides, imunossupressores, psicotrópicos.
-- **Exames ilegíveis**: sinalizar "❓ Ilegível — solicitar novo envio". NUNCA inventar.
-- **Exame obrigatório não enviado**: "❌ Não enviado".
-- **PROIBIDO**: inventar resultados, presumir BIRADS/ECG, ignorar Hb<12, ignorar nódulo, liberar sem exames obrigatórios.
+LIMITES:
+${examLimits.map(l => `- ${l.exam_name}: ${l.description}${l.unit ? ' (' + l.unit + ')' : ''}`).join('\n')}
 
-## FORMATO DA RESPOSTA (COMPACTO E OBJETIVO)
-Sua resposta deve ser RESUMIDA, em formato checklist/tabela, fácil de copiar para WhatsApp. SEMPRE gere o bloco_resumo separado para cópia rápida. NUNCA gere textos longos. Destacar apenas achados relevantes.`;
+FORMATO: output_triage. Resposta ultra-compacta. blocoResumo = texto único pronto para WhatsApp.`;
 
     const blocks = await Promise.all(fileUrls.map((url, i) => fetchFileBlock(url, i)));
 
     const content = [];
-    content.push({ type: 'text', text: `Analise os ${fileUrls.length} exames anexados.${anamnesis.trim() ? '\n\nANAMNESE:\n' + anamnesis : ''}\n\nSiga o fluxo: completude → interpretação → qualidade → avaliação clínica. Use output_triage.` });
+    content.push({ type: 'text', text: `Analise ${fileUrls.length} exame(s).${anamnesis.trim() ? ' Anamnese: ' + anamnesis.substring(0, 500) : ''}\n\nDevolva APENAS via output_triage. Seja direto e conciso.` });
 
     for (let i = 0; i < blocks.length; i++) {
       const b = blocks[i];
@@ -107,12 +100,12 @@ Sua resposta deve ser RESUMIDA, em formato checklist/tabela, fácil de copiar pa
       headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: 4096,
+        max_tokens: 2048,
         system: systemPrompt,
         messages: [{ role: 'user', content }],
         tools: [{
           name: 'output_triage',
-          description: 'Resultado da triagem pré-anestésica',
+          description: 'Triagem pré-anestésica',
           input_schema: {
             type: 'object',
             properties: {
@@ -125,11 +118,9 @@ Sua resposta deve ser RESUMIDA, em formato checklist/tabela, fácil de copiar pa
               alteredExams: { type: 'array', items: { type: 'string' } },
               finalStatus: { type: 'string' },
               conduct: { type: 'string' },
-              blocoResumo: { type: 'string' },
-              relatorioTecnico: { type: 'string' },
-              medicationsToSuspend: { type: 'array', items: { type: 'object', properties: { medication: { type: 'string' }, reason: { type: 'string' }, period: { type: 'string' } } } }
+              blocoResumo: { type: 'string' }
             },
-            required: ['patientName', 'surgeryType', 'finalStatus']
+            required: ['patientName', 'surgeryType', 'finalStatus', 'examResults', 'blocoResumo']
           }
         }],
         tool_choice: { type: 'tool', name: 'output_triage' }
@@ -162,7 +153,7 @@ Sua resposta deve ser RESUMIDA, em formato checklist/tabela, fácil de copiar pa
       status,
       missing_exams: parsed.missingExams || [],
       altered_exams: parsed.alteredExams || [],
-      relatorio_tecnico: parsed.relatorioTecnico || '',
+      relatorio_tecnico: '',
       bloco_resumo: parsed.blocoResumo || '',
       files_count: fileUrls.length
     });
@@ -178,7 +169,7 @@ Sua resposta deve ser RESUMIDA, em formato checklist/tabela, fácil de copiar pa
       finalStatus: parsed.finalStatus || '❌ Pendente',
       conduct: parsed.conduct || '',
       blocoResumo: parsed.blocoResumo || '',
-      relatorioTecnico: parsed.relatorioTecnico || '',
+      relatorioTecnico: '',
       status
     });
   } catch (error) {
