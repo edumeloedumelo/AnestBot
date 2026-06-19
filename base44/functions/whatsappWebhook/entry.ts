@@ -191,50 +191,28 @@ examIndices: índices RELATIVOS aos arquivos deste lote (0, 1, 2...).`;
         `- ${e.exam_name}: ${e.description || ''} (${e.rule_type || ''}) ${e.min_value != null ? 'mín ' + e.min_value : ''}${e.max_value != null ? ' máx ' + e.max_value : ''} ${e.unit || ''}`
       ).join('\n');
 
-      const analyzePrompt = `Você é um médico especialista em avaliação pré-anestésica para cirurgias plásticas eletivas.
+      const analyzePrompt = `Você é um sistema médico especializado em avaliação pré-operatória para cirurgias plásticas eletivas. Técnico, rigoroso, conservador.
 
-REGRAS INEGOCIÁVEIS:
-1. Compare CADA exame com seus valores de referência. NÃO ignore exames com valores alterados.
-2. Se um exame obrigatório estiver ausente, marque-o como faltante e o status final DEVE ser "incomplete".
-3. NÃO marque exames com valores alterados como "ok" ou "normal".
-4. Para cada exame alterado, gere um ALERTA claro.
-5. Siga a conduta baseada na QUANTIDADE de exames alterados e na GRAVIDADE das alterações.
+## FLUXO: completude → interpretação → qualidade → avaliação clínica
 
 Procedimento: **${surgery?.name || patient.surgeryType || 'Não identificado'}**
 Exames obrigatórios: ${requiredExams.length > 0 ? requiredExams.join(', ') : 'Nenhum definido'}
 
-VALORES DE REFERÊNCIA:
+## REGRAS ABSOLUTAS
+- Hb ≥ 12. Abaixo = alteração relevante.
+- PCR > 10 = alterada. ≤ 10 não destacar.
+- BIRADS 1-2 ok. 3-6 = mastologista obrigatório. Sem parecer = 🚨 CRÍTICO.
+- Nódulo RX tórax = pneumologista obrigatório.
+- Anti-HBs < 2 não contraindica.
+- GLP-1 = suspender 21 dias.
+- ECG: FC ≥ 50 isolada não é alteração.
+- Urina: não sinalizar flora/células/muco isolados.
+- Ilegível = sinalizar "❓". NUNCA inventar.
+
+## VALORES DE REFERÊNCIA
 ${limitsRef || 'Usar valores de referência padrão da literatura médica'}
 
-STATUS FINAL (use exatamente um destes):
-- "complete_without_alerts": todos exames obrigatórios presentes e NORMAIS
-- "complete_with_alerts": exames presentes mas com ALTERAÇÕES
-- "incomplete": exames obrigatórios FALTANDO
-
-CONDUTA:
-- Sem alertas e sem faltantes: "✅ Paciente apta para cirurgia. Prosseguir conforme protocolo."
-- Até 2 alertas leves: "⚠️ Paciente requer avaliação adicional. Solicitar [exames]."
-- 3+ alertas ou alerta grave: "❌ Contraindicada para cirurgia eletiva no momento. Encaminhar para [especialidade]."
-- Exames faltantes: "📋 Exames pendentes: [lista]. Solicitar antes da avaliação."
-
-RETORNE APENAS JSON:
-{
-  "patientName": "Nome",
-  "patientInfo": "idade, IMC, comorbidades",
-  "surgeryType": "${patient.surgeryType || 'indefinida'}",
-  "examResults": [
-    {"exam": "Hemoglobina", "result": "12.5 g/dL", "reference": "12-16 g/dL", "status": "normal", "notes": ""}
-  ],
-  "alerts": [
-    {"exam": "Hemoglobina", "rule": "Mínimo 12 g/dL", "value": "10.2 g/dL", "limit": "≥ 12 g/dL", "severity": "moderada"}
-  ],
-  "finalStatus": "complete_without_alerts",
-  "conduct": "✅ Paciente apta...",
-  "blocoResumo": "Resumo curto para WhatsApp (máx 300 caracteres)",
-  "relatorioTecnico": "Relatório técnico completo para o prontuário",
-  "missingExams": ["Beta-HCG"],
-  "alteredExams": ["Hemoglobina"]
-}`;
+Retorne via output_analysis. Formato COMPACTO. blocoResumo separado para WhatsApp.`;
 
       const analyzeContent = [];
       if (anamnesis?.trim()) {
@@ -253,10 +231,11 @@ RETORNE APENAS JSON:
           type: 'object',
           properties: {
             patientName: { type: 'string' }, patientInfo: { type: 'string' }, surgeryType: { type: 'string' },
-            examResults: { type: 'array', items: { type: 'object', properties: { exam: { type: 'string' }, result: { type: 'string' }, reference: { type: 'string' }, status: { type: 'string' }, notes: { type: 'string' } }, required: ['exam', 'result', 'status'] } },
-            alerts: { type: 'array', items: { type: 'object', properties: { exam: { type: 'string' }, rule: { type: 'string' }, value: { type: 'string' }, limit: { type: 'string' }, severity: { type: 'string' } } } },
-            finalStatus: { type: 'string' }, conduct: { type: 'string' }, blocoResumo: { type: 'string' }, relatorioTecnico: { type: 'string' },
-            missingExams: { type: 'array', items: { type: 'string' } }, alteredExams: { type: 'array', items: { type: 'string' } }
+            examResults: { type: 'array', items: { type: 'object', properties: { exam: { type: 'string' }, status: { type: 'string', description: '✅/⚠️/❌/❓' }, value: { type: 'string' } }, required: ['exam', 'status', 'value'] } },
+            alerts: { type: 'array', items: { type: 'object', properties: { severity: { type: 'string', description: '❌/⚠️/ℹ️' }, text: { type: 'string' } }, required: ['severity', 'text'] } },
+            finalStatus: { type: 'string' }, conduct: { type: 'string' }, blocoResumo: { type: 'string', description: 'Bloco RESUMO WhatsApp: nome, alterados/faltando, medicações, alertas críticos. Compacto.' }, relatorioTecnico: { type: 'string' },
+            missingExams: { type: 'array', items: { type: 'string' } }, alteredExams: { type: 'array', items: { type: 'string' } },
+            medicationsToSuspend: { type: 'array', items: { type: 'object', properties: { medication: { type: 'string' }, period: { type: 'string' } } } }
           },
           required: ['patientName', 'finalStatus']
         }

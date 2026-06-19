@@ -131,7 +131,8 @@ export default function Triagem() {
         finalStatus: result.finalStatus || '',
         conduct: result.conduct || '',
         blocoResumo: result.blocoResumo || '',
-        relatorioTecnico: result.relatorioTecnico || ''
+        relatorioTecnico: result.relatorioTecnico || '',
+        medicationsToSuspend: result.medicationsToSuspend || []
       }]);
       setStreamingResult(null);
       setProgressStatus("");
@@ -355,14 +356,21 @@ export default function Triagem() {
                   patientName: triage.patient_name,
                   surgeryType: triage.surgery_type,
                   examResults: [],
-                  alerts: (triage.altered_exams || []).map(e => ({ exam: e, rule: 'Alterado', value: 'Verificar', limit: '' })),
-                  finalStatus: triage.status,
-                  conduct: triage.status === 'complete_without_alerts' ? '✅ Paciente apta para cirurgia' :
-                           triage.status === 'complete_with_alerts' ? '⚠️ Paciente requer avaliação adicional' :
-                           triage.status === 'incomplete' ? '❌ Exames faltantes' : '🔴 Pendência crítica',
+                  alerts: triage.altered_exams?.length ? triage.altered_exams.map(e => ({
+                    severity: '⚠️',
+                    text: `${e} — alterado`
+                  })) : [],
+                  finalStatus: triage.status === 'complete_without_alerts' ? '✅ Completo sem alertas' :
+                               triage.status === 'complete_with_alerts' ? '⚠️ Completo com alertas' :
+                               triage.status === 'incomplete' ? '❌ Exames pendentes' : '🚨 Pendência crítica',
+                  conduct: triage.status === 'complete_without_alerts' ? '✅ Paciente apta para cirurgia. Prosseguir conforme protocolo.' :
+                           triage.status === 'complete_with_alerts' ? '⚠️ Paciente requer avaliação adicional.' :
+                           triage.status === 'incomplete' ? '❌ Exames obrigatórios faltantes. Solicitar antes da avaliação.' : '🚨 Pendência crítica — não liberar sem resolução.',
                   blocoResumo: triage.bloco_resumo || '',
                   relatorioTecnico: triage.relatorio_tecnico || '',
-                  missingExams: triage.missing_exams || []
+                  missingExams: triage.missing_exams || [],
+                  alteredExams: triage.altered_exams || [],
+                  medicationsToSuspend: []
                 }}
               />
             ))}

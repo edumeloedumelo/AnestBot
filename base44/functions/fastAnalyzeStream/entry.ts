@@ -63,38 +63,41 @@ Deno.serve(async (req) => {
       base44.asServiceRole.entities.ExamLimit.list()
     ]);
 
-    const systemPrompt = `Você é um médico anestesista experiente fazendo avaliação pré-operatória de triagem.
+const systemPrompt = `Você é um sistema médico especializado em avaliação pré-operatória para cirurgias plásticas eletivas, com foco em segurança anestésica. É EXTREMAMENTE técnico, rigoroso, conservador e baseado em anestesiologia moderna e medicina perioperatória.
 
-## CIRURGIAS CADASTRADAS
-${surgeries.map(s => `- **${s.name}** → key: "${s.key}" | Exames obrigatórios: ${(s.required_exams || []).join(', ')}`).join('\n')}
+## FLUXO OBRIGATÓRIO (4 etapas)
+1. CHECKLIST DE COMPLETUDE: verificar exames obrigatórios para a cirurgia.
+2. INTERPRETAÇÃO: avaliar TODOS os exames e identificar alterações.
+3. VALIDAÇÃO DE QUALIDADE: ilegível/cortado/borrado → sinalizar. NUNCA inventar.
+4. AVALIAÇÃO CLÍNICA: comorbidades, medicações, riscos anestésicos.
 
-## LIMITES CLÍNICOS DE REFERÊNCIA
-${examLimits.map(l => {
-  let line = `- **${l.exam_name}**: ${l.description}`;
-  if (l.unit) line += ` (${l.unit})`;
-  if (l.min_value != null && l.max_value != null) line += ` → ${l.min_value}–${l.max_value} ${l.unit || ''}`;
-  else if (l.min_value != null) line += ` → ≥ ${l.min_value} ${l.unit || ''}`;
-  else if (l.max_value != null) line += ` → ≤ ${l.max_value} ${l.unit || ''}`;
-  if (l.notes) line += `. Obs: ${l.notes}`;
-  return line;
-}).join('\n')}
+## CIRURGIAS E EXAMES OBRIGATÓRIOS
+${surgeries.map(s => `- **${s.name}** (key: ${s.key}): ${(s.required_exams || []).join(', ')}`).join('\n')}
 
-## REGRAS CLÍNICAS
-- Mama/BIRADS: 1-2 ok. 3-6 → encaminhar mastologista + parecer. Sem parecer = 🚨 pendência crítica.
-- RX tórax: nódulo → pneumologista obrigatório.
-- Anti-HBs < 2 não contraindica — apenas informe.
-- GLP-1: suspender 21 dias antes da cirurgia.
-- Avaliar anticoagulantes, antiagregantes, anticoncepcionais, hipoglicemiantes, corticoides, imunossupressores, psicotrópicos.
-- Ilegível/cortado/desfocado: "❓ Ilegível". NUNCA invente.
-- Exame obrigatório não enviado → "❌ Não enviado".
-- PROIBIDO: inventar resultados, presumir BIRADS, ignorar Hb<12, ignorar nódulo, liberar sem exames obrigatórios.
-- Em dúvida → interpretação conservadora.`;
+Cirurgias combinadas = TODOS os exames de TODOS os procedimentos.
+
+## REGRAS CLÍNICAS ABSOLUTAS
+- **Hb ≥ 12 g/dL**. Abaixo = alteração relevante.
+- **PCR > 10 mg/L** considerar alterada. ≤ 10 não destacar isoladamente.
+- **BIRADS 1-2**: ok. **BIRADS 3-6**: encaminhar mastologista + parecer. Sem parecer = 🚨 PENDÊNCIA CRÍTICA. Nunca presumir BIRADS.
+- **RX tórax**: nódulo pulmonar sempre sinalizar → pneumologista obrigatório.
+- **Anti-HBs < 2**: não contraindica. Não destacar como pendência.
+- **GLP-1** (Mounjaro/Ozempic/Wegovy/semaglutida/liraglutida): suspender 21 dias antes da cirurgia.
+- **Urina/EAS**: não sinalizar flora isolada, células epiteliais, muco ou contaminação. Só sinalizar se conjunto compatível com ITU.
+- **ECG**: FC ≥ 50 bpm isoladamente NÃO é alteração. Avaliar bloqueios, arritmias, isquemia, QT, sobrecargas.
+- **Medicações**: avaliar anticoagulantes, antiagregantes, AAS, anticoncepcionais, hipoglicemiantes, corticoides, imunossupressores, psicotrópicos.
+- **Exames ilegíveis**: sinalizar "❓ Ilegível — solicitar novo envio". NUNCA inventar.
+- **Exame obrigatório não enviado**: "❌ Não enviado".
+- **PROIBIDO**: inventar resultados, presumir BIRADS/ECG, ignorar Hb<12, ignorar nódulo, liberar sem exames obrigatórios.
+
+## FORMATO DA RESPOSTA (COMPACTO E OBJETIVO)
+Sua resposta deve ser RESUMIDA, em formato checklist/tabela, fácil de copiar para WhatsApp. SEMPRE gere o bloco_resumo separado para cópia rápida. NUNCA gere textos longos. Destacar apenas achados relevantes.`;
 
     // Baixar arquivos
     const blocks = await Promise.all(fileUrls.map((url, i) => fetchFileBlock(url, i)));
 
     const content = [];
-    content.push({ type: 'text', text: `Analise TODOS os ${fileUrls.length} exames anexados como médico anestesista.${anamnesis.trim() ? '\n\nANAMNESE:\n' + anamnesis : ''}\n\nIdentifique paciente, cirurgia, compare com os limites de referência, verifique completude dos exames obrigatórios. Use a função output_triage para retornar o resultado.` });
+    content.push({ type: 'text', text: `Analise os ${fileUrls.length} exames anexados.${anamnesis.trim() ? '\n\nANAMNESE:\n' + anamnesis : ''}\n\nSiga o fluxo obrigatório: completude → interpretação → qualidade → avaliação clínica. Seja técnico, rigoroso e conservador. Use output_triage para retornar.` });
 
     for (let i = 0; i < blocks.length; i++) {
       const b = blocks[i];
@@ -116,32 +119,22 @@ ${examLimits.map(l => {
         messages: [{ role: 'user', content }],
         tools: [{
           name: 'output_triage',
-          description: 'Retorna o resultado completo da triagem pré-anestésica',
+          description: 'Resultado da triagem pré-anestésica',
           input_schema: {
             type: 'object',
             properties: {
               patientName: { type: 'string', description: 'Nome completo da paciente' },
-              patientInfo: { type: 'string', description: 'Idade, peso, comorbidades, data da cirurgia' },
+              patientInfo: { type: 'string', description: 'Idade, peso, altura, comorbidades, data da cirurgia' },
               surgeryType: { type: 'string', description: 'Nome da cirurgia identificada' },
-              examResults: {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  properties: {
-                    exam: { type: 'string' },
-                    status: { type: 'string', description: '✅/⚠️/❌/❓' },
-                    value: { type: 'string' }
-                  },
-                  required: ['exam', 'status', 'value']
-                }
-              },
-              alerts: { type: 'array', items: { type: 'string' } },
+              examResults: { type: 'array', items: { type: 'object', properties: { exam: { type: 'string' }, status: { type: 'string', description: '✅/⚠️/❌/❓' }, value: { type: 'string' } }, required: ['exam', 'status', 'value'] } },
+              alerts: { type: 'array', items: { type: 'object', properties: { severity: { type: 'string', description: '❌ critico / ⚠️ alerta / ℹ️ informativo' }, text: { type: 'string', description: 'Descrição do alerta' } }, required: ['severity', 'text'] } },
               missingExams: { type: 'array', items: { type: 'string' } },
               alteredExams: { type: 'array', items: { type: 'string' } },
-              finalStatus: { type: 'string', description: '✅ Completo sem alertas / ⚠️ Completo com alertas / ❌ Pendente / 🚨 Pendência crítica' },
-              conduct: { type: 'string', description: 'Conduta recomendada' },
-              blocoResumo: { type: 'string', description: 'Resumo formatado para WhatsApp' },
-              relatorioTecnico: { type: 'string', description: 'Relatório técnico completo' }
+              finalStatus: { type: 'string', description: '✅ Completo sem alertas / ⚠️ Completo com alertas / ❌ Exames pendentes / 🚨 Pendência crítica' },
+              conduct: { type: 'string', description: 'Conduta objetiva em até 3 linhas' },
+              blocoResumo: { type: 'string', description: 'Bloco RESUMO para WhatsApp: nome, exames alterados/faltando, medicações a suspender, alertas críticos. Formato compacto, bullets, texto único sem tabela.' },
+              relatorioTecnico: { type: 'string', description: 'Relatório técnico no formato da tabela ITEM|STATUS + alertas + status final + conduta' },
+              medicationsToSuspend: { type: 'array', items: { type: 'object', properties: { medication: { type: 'string' }, reason: { type: 'string' }, period: { type: 'string' } } } }
             },
             required: ['patientName', 'surgeryType', 'finalStatus', 'examResults', 'alerts', 'missingExams', 'alteredExams', 'conduct', 'blocoResumo', 'relatorioTecnico']
           }

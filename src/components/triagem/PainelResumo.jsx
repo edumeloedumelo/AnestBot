@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Button } from "@/components/ui/button";
-import { ChevronDown, ChevronUp } from "lucide-react";
-import BlocoWhatsApp from "@/components/triagem/BlocoWhatsApp";
+import { ChevronDown, ChevronUp, Copy, Check } from "lucide-react";
 
 const statusEmojis = {
   "✅": "text-[#4CAF50]",
@@ -10,8 +9,18 @@ const statusEmojis = {
   "❓": "text-[#9E9E9E]",
 };
 
+const severityIcons = {
+  "❌": "❌",
+  "⚠️": "⚠️",
+  "ℹ️": "ℹ️",
+  "critico": "❌",
+  "alerta": "⚠️",
+  "informativo": "ℹ️",
+};
+
 export default function PainelResumo({ result }) {
   const [expanded, setExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
   const {
     patientName = '',
     patientInfo = '',
@@ -24,75 +33,77 @@ export default function PainelResumo({ result }) {
     conduct = '',
     blocoResumo = '',
     relatorioTecnico = '',
+    medicationsToSuspend = [],
   } = result;
 
   const statusColor = finalStatus.includes('✅') ? 'text-[#4CAF50]' :
     finalStatus.includes('⚠️') ? 'text-[#FFC107]' :
     finalStatus.includes('🚨') ? 'text-[#FF5252]' : 'text-[#FF5252]';
 
+  const getSeverityIcon = (alert) => {
+    if (typeof alert === 'string') return '⚠️';
+    const s = alert.severity || '';
+    if (s.includes('❌') || s === 'critico') return '❌';
+    if (s.includes('⚠️') || s === 'alerta') return '⚠️';
+    return 'ℹ️';
+  };
+
+  const getSeverityColor = (alert) => {
+    if (typeof alert === 'string') return 'text-[#FFC107]';
+    const s = alert.severity || '';
+    if (s.includes('❌') || s === 'critico') return 'text-[#FF5252]';
+    if (s.includes('⚠️') || s === 'alerta') return 'text-[#FFC107]';
+    return 'text-[#64B5F6]';
+  };
+
+  const getAlertText = (alert) => {
+    if (typeof alert === 'string') return alert;
+    return alert.text || alert.exam || '';
+  };
+
+  const handleCopyResumo = async () => {
+    try {
+      await navigator.clipboard.writeText(blocoResumo);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {}
+  };
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {/* Card principal */}
       <div className="bg-[#1a1a1a] border border-[#2d2d2d] rounded-2xl overflow-hidden">
         {/* Cabeçalho */}
-        <div className="px-5 pt-5 pb-4">
-          <h2 className="text-base font-bold text-white mb-3">📋 TRIAGEM PRÉ-OPERATÓRIA</h2>
-          <div className="space-y-2 text-sm text-[#e0e0e0]">
+        <div className="px-5 pt-4 pb-4">
+          <h2 className="text-sm font-bold text-white uppercase tracking-[0.1em] mb-3">📋 TRIAGEM PRÉ-OPERATÓRIA</h2>
+          <div className="space-y-1.5 text-xs text-[#b3b3b3]">
             <div className="flex items-start gap-2">
-              <span>👱‍♀️</span>
-              <span className="leading-relaxed">Cirurgia: {surgeryType}</span>
+              <span>👩‍⚕️</span>
+              <span>Cirurgia: <span className="text-white">{surgeryType}</span></span>
             </div>
             <div className="flex items-start gap-2">
-              <span>👤</span>
-              <span className="leading-relaxed">{patientName}{patientInfo ? `, ${patientInfo}` : ''}</span>
+              <span>🧑</span>
+              <span className="text-white">{patientName}{patientInfo ? ` — ${patientInfo}` : ''}</span>
             </div>
           </div>
         </div>
 
-        {/* Resumo rápido: faltantes + alterados */}
-        {(missingExams.length > 0 || alteredExams.length > 0) && (
-          <div className="border-t border-[#2d2d2d] px-5 py-4">
-            <div className="grid grid-cols-2 gap-4">
-              {missingExams.length > 0 && (
-                <div>
-                  <h3 className="text-[11px] font-bold text-[#FF5252] uppercase tracking-wider mb-2">❌ Faltantes</h3>
-                  <ul className="space-y-1">
-                    {missingExams.map((e, i) => (
-                      <li key={i} className="text-xs text-[#e0e0e0]">{e}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {alteredExams.length > 0 && (
-                <div>
-                  <h3 className="text-[11px] font-bold text-[#FFC107] uppercase tracking-wider mb-2">⚠️ Alterados</h3>
-                  <ul className="space-y-1">
-                    {alteredExams.map((e, i) => (
-                      <li key={i} className="text-xs text-[#e0e0e0]">{e}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
         {/* Tabela de exames */}
         <div className="border-t border-[#2d2d2d]">
-          <div className="px-5 py-3 flex items-center text-xs font-bold text-white uppercase tracking-wider bg-[#1e1e1e]">
+          <div className="px-5 py-2.5 flex items-center text-[10px] font-bold text-white uppercase tracking-wider bg-[#222]">
             <span className="flex-1">ITEM</span>
-            <span className="w-32 text-right">STATUS</span>
+            <span className="w-28 text-right">STATUS</span>
           </div>
           {examResults.map((row, i) => (
             <div
               key={i}
-              className={`px-5 py-3 flex items-center text-sm border-t border-[#222] ${
-                i % 2 === 0 ? 'bg-[#161616]' : 'bg-[#1a1a1a]'
+              className={`px-5 py-2.5 flex items-center text-xs border-t border-[#222] ${
+                i % 2 === 0 ? 'bg-[#181818]' : 'bg-[#1a1a1a]'
               }`}
             >
-              <span className="flex-1 text-[#e0e0e0]">{row.exam}</span>
-              <span className={`w-32 text-right text-xs ${statusEmojis[row.status] || 'text-[#e0e0e0]'}`}>
-                {row.status} {row.value}
+              <span className="flex-1 text-[#cccccc]">{row.exam}</span>
+              <span className={`w-28 text-right text-xs font-medium ${statusEmojis[row.status] || 'text-[#cccccc]'}`}>
+                {row.status} {row.value && <span className="text-[#888] ml-1">{row.value}</span>}
               </span>
             </div>
           ))}
@@ -101,14 +112,12 @@ export default function PainelResumo({ result }) {
         {/* Alertas */}
         {alerts.length > 0 && (
           <div className="border-t border-[#2d2d2d] px-5 py-4">
-            <h3 className="text-sm font-bold text-white mb-2">🚨 ALERTAS / ALTERAÇÕES</h3>
-            <ul className="space-y-1.5">
+            <h3 className="text-xs font-bold text-white uppercase tracking-wider mb-3">🚨 ALERTAS / ALTERAÇÕES</h3>
+            <ul className="space-y-2.5">
               {alerts.map((a, i) => (
-                <li key={i} className="text-xs text-[#e0e0e0] leading-relaxed flex items-start gap-1.5">
-                  <span className="text-[#FF5252] mt-0.5">•</span>
-                  <span>
-                    {typeof a === 'string' ? a : `${a.exam || a.rule || ''}${a.value ? ` (${a.value})` : ''}${a.limit ? ` — ${a.limit}` : ''}`}
-                  </span>
+                <li key={i} className={`text-xs leading-relaxed flex items-start gap-2 ${getSeverityColor(a)}`}>
+                  <span className="mt-px flex-shrink-0">{getSeverityIcon(a)}</span>
+                  <span className="text-[#cccccc]">{getAlertText(a)}</span>
                 </li>
               ))}
             </ul>
@@ -118,41 +127,57 @@ export default function PainelResumo({ result }) {
         {/* Status final + Conduta */}
         <div className="border-t border-[#2d2d2d] px-5 py-4 space-y-3">
           <div>
-            <h3 className="text-sm font-bold text-white mb-1">📌 STATUS FINAL</h3>
+            <h3 className="text-xs font-bold text-white uppercase tracking-wider mb-1.5">📌 STATUS FINAL</h3>
             <p className={`text-sm font-bold ${statusColor}`}>{finalStatus}</p>
           </div>
           {conduct && (
             <div>
-              <h3 className="text-sm font-bold text-white mb-1">📋 CONDUTA</h3>
-              <p className="text-xs text-[#e0e0e0] leading-relaxed">{conduct}</p>
+              <h3 className="text-xs font-bold text-white uppercase tracking-wider mb-1.5">📋 CONDUTA</h3>
+              <p className="text-xs text-[#cccccc] leading-relaxed">{conduct}</p>
             </div>
           )}
         </div>
       </div>
 
-      {/* Bloco WhatsApp — copiar resumo */}
-      <BlocoWhatsApp text={blocoResumo} />
+      {/* Bloco Resumo — fácil de copiar */}
+      <div className="bg-[#1a1a1a] border border-[#2d2d2d] rounded-2xl overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-3 bg-[#222]">
+          <h3 className="text-[10px] font-bold text-white uppercase tracking-[0.15em]">📋 RESUMO PARA WHATSAPP</h3>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleCopyResumo}
+            className="h-7 px-3 text-[10px] text-[#888] hover:text-white rounded-lg"
+          >
+            {copied ? <Check className="w-3.5 h-3.5 mr-1 text-[#4CAF50]" /> : <Copy className="w-3.5 h-3.5 mr-1" />}
+            {copied ? 'Copiado' : 'Copiar'}
+          </Button>
+        </div>
+        <div className="px-5 py-4">
+          <pre className="text-xs text-[#cccccc] whitespace-pre-wrap leading-relaxed font-sans select-all">
+            {blocoResumo}
+          </pre>
+        </div>
+      </div>
 
-      {/* Botão expandir relatório técnico */}
+      {/* Relatório técnico completo */}
       <Button
         variant="ghost"
         size="sm"
         onClick={() => setExpanded(!expanded)}
-        className="text-[#808080] hover:text-white text-xs h-8 px-3 rounded-lg bg-[#1a1a1a] border border-[#2d2d2d]"
+        className="text-[#666] hover:text-white text-[10px] h-8 px-3 rounded-lg bg-[#1a1a1a] border border-[#2d2d2d] uppercase tracking-wider"
       >
-        {expanded ? <ChevronUp className="w-3.5 h-3.5 mr-1.5" /> : <ChevronDown className="w-3.5 h-3.5 mr-1.5" />}
+        {expanded ? <ChevronUp className="w-3 h-3 mr-1.5" /> : <ChevronDown className="w-3 h-3 mr-1.5" />}
         {expanded ? 'Ocultar' : 'Relatório técnico completo'}
       </Button>
 
-      {/* Relatório expandido */}
       {expanded && relatorioTecnico && (
         <div className="bg-[#1a1a1a] border border-[#2d2d2d] rounded-2xl p-5">
-          <pre className="text-xs text-[#e0e0e0] whitespace-pre-wrap leading-relaxed font-sans">
+          <pre className="text-xs text-[#cccccc] whitespace-pre-wrap leading-relaxed font-sans">
             {relatorioTecnico}
           </pre>
         </div>
       )}
-
     </div>
   );
 }
