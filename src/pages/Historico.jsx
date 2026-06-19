@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { Link } from "react-router-dom";
 import { ArrowLeft, Clock, AlertTriangle, CheckCircle, XCircle, Users, ClipboardList, Loader2 } from "lucide-react";
+import ClearHistoryButton from "@/components/historico/ClearHistoryButton";
 
 const STATUS_CONFIG = {
   complete_without_alerts: { label: "Completo", icon: CheckCircle, color: "text-[#4ade80]", bg: "bg-[#4ade80]/10", border: "border-[#4ade80]/20" },
@@ -59,6 +60,11 @@ export default function Historico() {
             <h1 className="text-sm font-extrabold text-white uppercase tracking-[0.15em]">Histórico de Avaliações</h1>
             <p className="text-[11px] text-[#555] mt-0.5">Painel administrativo — auditoria e rastreabilidade</p>
           </div>
+          {triages.length > 0 && (
+            <div className="ml-auto">
+              <ClearHistoryButton onCleared={() => setTriages([])} />
+            </div>
+          )}
         </div>
 
         {/* Stats Cards */}

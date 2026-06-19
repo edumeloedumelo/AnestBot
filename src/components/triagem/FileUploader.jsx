@@ -1,15 +1,15 @@
-import { Upload } from "lucide-react";
+import { useState } from "react";
+import { Upload, AlertCircle } from "lucide-react";
 
 export default function FileUploader({ files, setFiles, disabled }) {
-  const ALLOWED_TYPES = [
-    "image/jpeg", "image/png", "application/pdf",
-    "text/plain", "image/webp", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    "application/vnd.ms-excel", "text/csv"
-  ];
+  const [errors, setErrors] = useState([]);
+  const ALLOWED_EXT = ["jpg", "jpeg", "png", "webp", "gif", "heic", "heif", "pdf", "txt", "csv", "xlsx", "xls"];
   const MAX_SIZE = 25 * 1024 * 1024;
 
   const validateFile = (file) => {
-    if (!ALLOWED_TYPES.includes(file.type)) {
+    const ext = (file.name.split(".").pop() || "").toLowerCase();
+    const typeOk = file.type.startsWith("image/") || file.type === "application/pdf" || file.type.startsWith("text/");
+    if (!typeOk && !ALLOWED_EXT.includes(ext)) {
       return { valid: false, error: `Tipo não suportado: ${file.name}` };
     }
     if (file.size > MAX_SIZE) {
@@ -34,12 +34,14 @@ export default function FileUploader({ files, setFiles, disabled }) {
 
   const addFiles = (newFiles) => {
     const valid = [];
+    const errs = [];
     for (const f of newFiles) {
       const result = validateFile(f);
-      if (!result.valid) continue;
-      Object.defineProperty(f, 'preview', { value: URL.createObjectURL(f), writable: true });
+      if (!result.valid) { errs.push(result.error); continue; }
+      Object.defineProperty(f, 'preview', { value: URL.createObjectURL(f), writable: true, configurable: true });
       valid.push(f);
     }
+    setErrors(errs);
     setFiles((prev) => [...prev, ...valid]);
   };
 
@@ -92,6 +94,18 @@ export default function FileUploader({ files, setFiles, disabled }) {
           disabled={disabled}
         />
       </div>
+
+      {/* Rejected files */}
+      {errors.length > 0 && (
+        <div className="space-y-1.5">
+          {errors.map((err, i) => (
+            <div key={i} className="flex items-center gap-2 text-[11px] text-[#ff4444]">
+              <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+              <span>{err}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* File list */}
       {files.length > 0 && (
