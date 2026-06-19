@@ -18,7 +18,7 @@ export default function Triagem() {
   const [error, setError] = useState("");
   const [results, setResults] = useState(null);
   const [sharedReceived, setSharedReceived] = useState(false);
-  const [streamMode, setStreamMode] = useState(false);
+  const [streamMode, setStreamMode] = useState(true);
   const [streamingResult, setStreamingResult] = useState(null);
   const [whatsappResults, setWhatsappResults] = useState([]);
   const [newWhatsappCount, setNewWhatsappCount] = useState(0);
@@ -299,12 +299,12 @@ export default function Triagem() {
                   disabled={analyzing}
                   className={`flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider px-3 py-3.5 rounded-xl border transition-all flex-shrink-0
                     ${streamMode
-                      ? 'bg-[#FFC107]/10 border-[#FFC107]/30 text-[#FFC107]'
+                      ? 'bg-[#FFC107]/15 border-[#FFC107]/40 text-[#FFC107] shadow-[0_0_12px_rgba(255,193,7,0.08)]'
                       : 'bg-[#121212] border-[#2d2d2d] text-[#555] hover:border-[#555] hover:text-[#808080]'
                     } disabled:opacity-50 disabled:cursor-not-allowed`}
                 >
-                  <Zap className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Turbo</span>
+                  <Zap className={`w-3.5 h-3.5 ${streamMode ? 'text-[#FFC107]' : ''}`} />
+                  <span className="hidden sm:inline">{streamMode ? 'Turbo ativo' : 'Turbo'}</span>
                 </button>
                 <Button
                   onClick={handleAnalyze}
