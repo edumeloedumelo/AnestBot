@@ -29,17 +29,25 @@ async function fetchFileAsBlock(url, i) {
   return { type: 'text', text: `[Arquivo ${i}]\n${new TextDecoder().decode(buffer).substring(0, 8000)}` };
 }
 
-async function callClaude(systemPrompt, content, apiKey, maxTokens = 4096) {
+async function callClaude(systemPrompt, content, apiKey, maxTokens = 4096, tools = null, toolChoice = null) {
+  const body = { model: 'claude-sonnet-4-6', max_tokens: maxTokens, system: systemPrompt, messages: [{ role: 'user', content }] };
+  if (tools) { body.tools = tools; body.tool_choice = toolChoice; }
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: maxTokens, system: systemPrompt, messages: [{ role: 'user', content }] })
+    body: JSON.stringify(body)
   });
   if (!res.ok) {
     const err = await res.text();
     throw new Error(`Claude (${res.status}): ${err.substring(0, 200)}`);
   }
   const data = await res.json();
+  // Se há tool_use configurado, retorna o input da tool; senão retorna texto
+  if (tools) {
+    const toolBlock = (data.content || []).find(c => c.type === 'tool_use');
+    if (toolBlock) return toolBlock.input;
+    return null;
+  }
   return data.content?.[0]?.text || '';
 }
 
@@ -66,40 +74,7 @@ function mergePatientGroups(allGroups) {
   return Object.values(merged).map(p => ({ name: p.name, surgeryType: p.surgeryType, examIndices: p.examIndices.sort((a, b) => a - b) }));
 }
 
-function extractJson(text) {
-  const cleanJson = (raw) => {
-    let s = raw
-      .replace(/```json\s*/g, '').replace(/```\s*/g, '')
-      .replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '')
-      .replace(/,\s*([}\]])/g, '$1')
-      .replace(/\n/g, ' ').replace(/\r/g, '')
-      .trim();
-    const firstBrace = s.indexOf('{');
-    const lastBrace = s.lastIndexOf('}');
-    if (firstBrace >= 0 && lastBrace > firstBrace) {
-      s = s.substring(firstBrace, lastBrace + 1);
-    }
-    // Corrige vírgulas faltando entre elementos
-    s = s.replace(/"\s+(?=")/g, (m) => m.includes(',') ? m : '", "');
-    s = s.replace(/\}\s+\{/g, '}, {');
-    s = s.replace(/\]\s+"/g, '], "');
-    s = s.replace(/"\s+\{/g, '", {');
-    s = s.replace(/\}\s+"/g, '}, "');
-    s = s.replace(/"\s+\[/g, '", [');
-    return s;
-  };
 
-  try {
-    return JSON.parse(cleanJson(text));
-  } catch (e1) {
-    try {
-      const match = text.match(/\{[\s\S]*\}/);
-      return JSON.parse(cleanJson(match ? match[0] : text));
-    } catch (e2) {
-      throw new Error(`JSON inválido: ${e2.message}`);
-    }
-  }
-}
 
 Deno.serve(async (req) => {
   try {
@@ -162,8 +137,19 @@ examIndices: índices RELATIVOS aos arquivos deste lote (0, 1, 2...).`;
         content.push(allBlocks[i] || { type: 'text', text: `[indisponível]` });
       }
 
-      const text = await callClaude(identifyPrompt, content, apiKey, 2048);
-      const json = extractJson(text);
+      const identifyTools = [{
+        name: 'output_patients',
+        description: 'Lista de pacientes identificados nos arquivos',
+        input_schema: {
+          type: 'object',
+          properties: {
+            patients: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, surgeryType: { type: 'string' }, examIndices: { type: 'array', items: { type: 'integer' } } }, required: ['name', 'surgeryType', 'examIndices'] } }
+          },
+          required: ['patients']
+        }
+      }];
+      const json = await callClaude(identifyPrompt, content, apiKey, 2048, identifyTools, { type: 'tool', name: 'output_patients' });
+      if (!json) throw new Error('IA não identificou pacientes');
 
       const adjusted = {
         patients: (json.patients || []).map(p => ({
@@ -260,8 +246,23 @@ RETORNE APENAS JSON:
         analyzeContent.push(patientBlocks[i] || { type: 'text', text: '[indisponível]' });
       }
 
-      const analyzeText = await callClaude(analyzePrompt, analyzeContent, apiKey, 4096);
-      const analyzeResult = extractJson(analyzeText);
+      const analyzeTools = [{
+        name: 'output_analysis',
+        description: 'Resultado da análise pré-anestésica',
+        input_schema: {
+          type: 'object',
+          properties: {
+            patientName: { type: 'string' }, patientInfo: { type: 'string' }, surgeryType: { type: 'string' },
+            examResults: { type: 'array', items: { type: 'object', properties: { exam: { type: 'string' }, result: { type: 'string' }, reference: { type: 'string' }, status: { type: 'string' }, notes: { type: 'string' } }, required: ['exam', 'result', 'status'] } },
+            alerts: { type: 'array', items: { type: 'object', properties: { exam: { type: 'string' }, rule: { type: 'string' }, value: { type: 'string' }, limit: { type: 'string' }, severity: { type: 'string' } } } },
+            finalStatus: { type: 'string' }, conduct: { type: 'string' }, blocoResumo: { type: 'string' }, relatorioTecnico: { type: 'string' },
+            missingExams: { type: 'array', items: { type: 'string' } }, alteredExams: { type: 'array', items: { type: 'string' } }
+          },
+          required: ['patientName', 'finalStatus']
+        }
+      }];
+      const analyzeResult = await callClaude(analyzePrompt, analyzeContent, apiKey, 4096, analyzeTools, { type: 'tool', name: 'output_analysis' });
+      if (!analyzeResult) throw new Error('IA não gerou análise para ' + patient.name);
 
       // Save Triage record
       await sr.entities.Triage.create({
