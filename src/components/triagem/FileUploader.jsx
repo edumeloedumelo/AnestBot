@@ -4,7 +4,7 @@ import { Upload, AlertCircle } from "lucide-react";
 export default function FileUploader({ files, setFiles, disabled }) {
   const [errors, setErrors] = useState([]);
   const ALLOWED_EXT = ["jpg", "jpeg", "png", "webp", "gif", "heic", "heif", "pdf", "txt", "csv", "xlsx", "xls"];
-  const MAX_SIZE = 25 * 1024 * 1024;
+  const MAX_SIZE = 150 * 1024 * 1024;
 
   const validateFile = (file) => {
     const ext = (file.name.split(".").pop() || "").toLowerCase();
@@ -13,7 +13,7 @@ export default function FileUploader({ files, setFiles, disabled }) {
       return { valid: false, error: `Tipo não suportado: ${file.name}` };
     }
     if (file.size > MAX_SIZE) {
-      return { valid: false, error: `Arquivo muito grande (máx 25MB): ${file.name}` };
+      return { valid: false, error: `Arquivo muito grande (máx 150MB): ${file.name}` };
     }
     return { valid: true };
   };
@@ -82,7 +82,7 @@ export default function FileUploader({ files, setFiles, disabled }) {
           No celular: escolha "Câmera" ou "Galeria"
         </p>
         <p className="text-[10px] text-[#444] mt-1">
-          JPEG, PNG, PDF, TXT — até 25MB
+          JPEG, PNG, PDF, TXT — até 150MB
         </p>
         <input
           id="file-input"
