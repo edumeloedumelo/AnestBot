@@ -52,7 +52,7 @@ async function fetchFileBlock(url, i) {
 Deno.serve(async (req) => {
   try {
     const body = await req.json();
-    const { fileUrls = [], anamnesis = '' } = body;
+    const { fileUrls = [], anamnesis = '', stream: useStream = false } = body;
     if (!fileUrls.length) return Response.json({ error: 'Nenhum arquivo' }, { status: 400 });
 
     const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
@@ -149,7 +149,65 @@ IMPORTANTE: Gere phase1 PRIMEIRO (identificação) e só depois phase2 (análise
       content.push(b);
     }
 
-    // Criar stream SSE
+    // 🔹 MODO NÃO-STREAMING: chamada direta via SDK
+    if (!useStream) {
+      console.log('Chamando Claude (não-streaming)...');
+      const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 4096, system: systemPrompt, messages: [{ role: 'user', content }] })
+      });
+
+      if (!claudeRes.ok) {
+        const err = await claudeRes.text();
+        return Response.json({ error: `Claude (${claudeRes.status}): ${err.substring(0, 200)}` }, { status: 500 });
+      }
+
+      const data = await claudeRes.json();
+      const text = (data.content?.[0]?.text || '').trim();
+
+      // Parse JSON
+      let finalResult;
+      const repairAndParse = (raw) => {
+        let s = raw.replace(/```json\s*/g, '').replace(/```\s*/g, '').replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/,\s*([}\]])/g, '$1').replace(/\n/g, ' ').replace(/\r/g, '').trim();
+        const firstBrace = s.indexOf('{');
+        const lastBrace = s.lastIndexOf('}');
+        if (firstBrace >= 0 && lastBrace > firstBrace) s = s.substring(firstBrace, lastBrace + 1);
+        s = s.replace(/"\s+(?=")/g, (m) => m.includes(',') ? m : '", "');
+        s = s.replace(/\}\s+\{/g, '}, {');
+        s = s.replace(/\]\s+"/g, '], "');
+        s = s.replace(/"\s+\{/g, '", {');
+        s = s.replace(/\}\s+"/g, '}, "');
+        s = s.replace(/"\s+\[/g, '", [');
+        return JSON.parse(s);
+      };
+
+      try { finalResult = repairAndParse(text); } catch { const m = text.match(/\{[\s\S]*\}/); if (m) finalResult = repairAndParse(m[0]); }
+      if (!finalResult?.phase1?.patientName) return Response.json({ error: 'IA não retornou dados válidos' }, { status: 500 });
+
+      const p1 = finalResult.phase1;
+      const p2 = finalResult.phase2 || {};
+      let status = 'incomplete';
+      const fs = p2.finalStatus || '';
+      if (fs.includes('crítica') || fs.includes('🚨')) status = 'critical_pending';
+      else if (fs.includes('sem alertas') || fs.includes('✅')) status = 'complete_without_alerts';
+      else if (fs.includes('com alertas') || fs.includes('⚠️')) status = 'complete_with_alerts';
+
+      await base44.asServiceRole.entities.Triage.create({
+        patient_name: p1.patientName, surgery_type: p1.surgeryType || 'indefinida', status,
+        missing_exams: p2.missingExams || [], altered_exams: p2.alteredExams || [],
+        relatorio_tecnico: p2.relatorioTecnico || '', bloco_resumo: p2.blocoResumo || '', files_count: fileUrls.length
+      });
+
+      return Response.json({
+        patientName: p1.patientName, patientInfo: p1.patientInfo || '', surgeryType: p1.surgeryType || '',
+        examResults: p2.examResults || [], alerts: p2.alerts || [], missingExams: p2.missingExams || [],
+        alteredExams: p2.alteredExams || [], finalStatus: p2.finalStatus || '❌ Pendente', conduct: p2.conduct || '',
+        blocoResumo: p2.blocoResumo || '', relatorioTecnico: p2.relatorioTecnico || '', status
+      });
+    }
+
+    // 🔹 MODO STREAMING: SSE para frontend
     let bodyCancelled = false;
     let finalResult = null;
 

@@ -1,6 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
-import { appParams } from "@/lib/app-params";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -97,28 +96,40 @@ export default function Triagem() {
       const fileUrls = uploadResults.map(r => r.file_url);
       setProgressStatus("");
 
-      if (streamMode) {
-        try {
-          await handleStreamingAnalyze(fileUrls);
-          // Se o streaming gerou resultado completo, encerra
-          return;
-        } catch (streamErr) {
-          // Fallback: streaming falhou, tenta modo normal automaticamente
-          console.warn('Streaming falhou, usando modo normal:', streamErr.message);
-        }
-      }
-
-      // Modo normal (ou fallback do streaming)
+      // Usa sempre o SDK para máxima confiabilidade
       setProgressStatus("analyzing");
-      const response = await base44.functions.invoke("fastAnalyze", { fileUrls, anamnesis });
+
+      const fnName = streamMode ? "fastAnalyzeStream" : "fastAnalyze";
+      const response = await base44.functions.invoke(fnName, { fileUrls, anamnesis });
+
       if (response.data?.error) {
         setError(response.data.error);
         return;
       }
+
+      // fastAnalyzeStream pode retornar { phase1, phase2 } ou flat
+      const data = response.data;
+      let result;
+      if (data.phase1 && data.phase2) {
+        result = { ...data.phase1, ...data.phase2 };
+      } else if (data.phase1) {
+        result = { ...data.phase1, ...data };
+      } else {
+        result = data;
+      }
+
       setResults([{
-        ...response.data,
-        missingExams: response.data.missingExams || [],
-        alteredExams: response.data.alteredExams || []
+        patientName: result.patientName || '',
+        patientInfo: result.patientInfo || '',
+        surgeryType: result.surgeryType || '',
+        examResults: result.examResults || [],
+        alerts: result.alerts || [],
+        missingExams: result.missingExams || [],
+        alteredExams: result.alteredExams || [],
+        finalStatus: result.finalStatus || '',
+        conduct: result.conduct || '',
+        blocoResumo: result.blocoResumo || '',
+        relatorioTecnico: result.relatorioTecnico || ''
       }]);
       setStreamingResult(null);
       setProgressStatus("");
@@ -128,93 +139,6 @@ export default function Triagem() {
     } finally {
       setAnalyzing(false);
     }
-  };
-
-  const handleStreamingAnalyze = async (fileUrls) => {
-    const url = `${appParams.appBaseUrl}/fn/${appParams.appId}/fastAnalyzeStream`;
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fileUrls, anamnesis })
-    });
-
-    if (!response.ok) {
-      const err = await response.text();
-      throw new Error(`Stream indisponível (${response.status}). Tentando modo normal...`);
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
-
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue;
-        const data = line.slice(6).trim();
-        if (!data) continue;
-
-        try {
-          const event = JSON.parse(data);
-
-          if (event.type === 'progress') {
-            setProgressStatus('analyzing');
-          } else if (event.type === 'phase1') {
-            setStreamingResult({
-              patientName: event.patientName,
-              patientInfo: event.patientInfo,
-              surgeryType: event.surgeryType,
-              examResults: [],
-              alerts: [],
-              finalStatus: '',
-              conduct: '',
-              blocoResumo: '',
-              relatorioTecnico: '',
-              _phase: 'identifying'
-            });
-          } else if (event.type === 'phase2_partial') {
-            setStreamingResult(prev => ({
-              ...(prev || {}),
-              examResults: event.examResults || [],
-              alerts: event.alerts || [],
-              missingExams: event.missingExams || [],
-              alteredExams: event.alteredExams || [],
-              finalStatus: event.finalStatus || '',
-              conduct: event.conduct || '',
-              blocoResumo: event.blocoResumo || '',
-              relatorioTecnico: event.relatorioTecnico || '',
-              _phase: 'partial'
-            }));
-          } else if (event.type === 'complete') {
-            setResults([{
-              patientName: event.patientName,
-              patientInfo: event.patientInfo,
-              surgeryType: event.surgeryType,
-              examResults: event.examResults,
-              alerts: event.alerts,
-              missingExams: event.missingExams,
-              alteredExams: event.alteredExams,
-              finalStatus: event.finalStatus,
-              conduct: event.conduct,
-              blocoResumo: event.blocoResumo,
-              relatorioTecnico: event.relatorioTecnico
-            }]);
-            setStreamingResult(null);
-          } else if (event.type === 'error') {
-            throw new Error(event.error || 'Erro no streaming');
-          }
-        } catch {}
-      }
-    }
-
-    reader.releaseLock();
   };
 
   return (
