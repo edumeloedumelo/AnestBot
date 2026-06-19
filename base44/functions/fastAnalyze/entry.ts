@@ -204,31 +204,31 @@ IMPORTANTE:
     const data = await claudeRes.json();
     const text = (data.content?.[0]?.text || '').trim();
 
-    // Parse JSON (limpa markdown + repara erros comuns)
+    // Parse JSON com reparo automático de erros comuns da IA
     let parsed;
-    const cleanJson = (raw) => {
+    const repairAndParse = (raw) => {
       let s = raw
         .replace(/```json\s*/g, '').replace(/```\s*/g, '')
-        .replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '') // comentários
-        .replace(/,\s*([}\]])/g, '$1') // trailing commas
+        .replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/,\s*([}\]])/g, '$1')
         .replace(/\n/g, ' ').replace(/\r/g, '')
         .trim();
-      // Remove texto antes da primeira { e depois da última }
       const firstBrace = s.indexOf('{');
       const lastBrace = s.lastIndexOf('}');
       if (firstBrace >= 0 && lastBrace > firstBrace) {
         s = s.substring(firstBrace, lastBrace + 1);
       }
-      return s;
+      // Corrige vírgulas faltando entre elementos de array: "a" "b" → "a", "b"
+      s = s.replace(/"\s+(?=")/g, (m) => m.includes(',') ? m : '", "');
+      return JSON.parse(s);
     };
 
     try {
-      parsed = JSON.parse(cleanJson(text));
+      parsed = repairAndParse(text);
     } catch (e1) {
-      // Segunda tentativa: regex extraction com limpeza
       try {
         const match = text.match(/\{[\s\S]*\}/);
-        if (match) parsed = JSON.parse(cleanJson(match[0]));
+        if (match) parsed = repairAndParse(match[0]);
       } catch (e2) {
         throw new Error(`JSON inválido: ${e2.message}. Resposta crua: ${text.substring(0, 500)}`);
       }

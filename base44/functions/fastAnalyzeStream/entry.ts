@@ -237,8 +237,8 @@ IMPORTANTE: Gere phase1 PRIMEIRO (identificação) e só depois phase2 (análise
               }
             }
 
-            // Parse final completo (limpa markdown + repara erros comuns)
-            const cleanJson = (raw) => {
+            // Parse final com reparo automático de erros comuns da IA
+            const repairAndParse = (raw) => {
               let s = raw
                 .replace(/```json\s*/g, '').replace(/```\s*/g, '')
                 .replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '')
@@ -250,14 +250,16 @@ IMPORTANTE: Gere phase1 PRIMEIRO (identificação) e só depois phase2 (análise
               if (firstBrace >= 0 && lastBrace > firstBrace) {
                 s = s.substring(firstBrace, lastBrace + 1);
               }
-              return s;
+              // Corrige vírgulas faltando entre elementos de array: "a" "b" → "a", "b"
+              s = s.replace(/"\s+(?=")/g, (m) => m.includes(',') ? m : '", "');
+              return JSON.parse(s);
             };
 
             try {
-              finalResult = JSON.parse(cleanJson(fullText));
+              finalResult = repairAndParse(fullText);
             } catch {
               const match = fullText.match(/\{[\s\S]*\}/);
-              if (match) finalResult = JSON.parse(cleanJson(match[0]));
+              if (match) finalResult = repairAndParse(match[0]);
             }
 
             if (!finalResult?.phase1?.patientName) {
