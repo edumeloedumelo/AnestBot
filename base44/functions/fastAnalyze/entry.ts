@@ -1,28 +1,51 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
-function arrayBufferToBase64(buffer) {
-  const bytes = new Uint8Array(buffer);
-  const chunks = [];
-  for (let i = 0; i < bytes.length; i += 8192) {
-    chunks.push(String.fromCharCode(...bytes.slice(i, i + 8192)));
+async function streamToBase64(body) {
+  const reader = body.getReader();
+  const base64Chunks = [];
+  let leftover = new Uint8Array(0);
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    const combined = new Uint8Array(leftover.length + value.length);
+    combined.set(leftover);
+    combined.set(value, leftover.length);
+    const remainder = combined.length % 3;
+    const processLen = combined.length - remainder;
+    if (processLen > 0) {
+      let binary = '';
+      const view = combined.subarray(0, processLen);
+      for (let j = 0; j < view.length; j++) binary += String.fromCharCode(view[j]);
+      base64Chunks.push(btoa(binary));
+    }
+    leftover = combined.slice(processLen);
   }
-  return btoa(chunks.join(''));
+  if (leftover.length > 0) {
+    let binary = '';
+    for (let j = 0; j < leftover.length; j++) binary += String.fromCharCode(leftover[j]);
+    base64Chunks.push(btoa(binary));
+  }
+  return base64Chunks.join('');
 }
 
 async function fetchFileBlock(url, i) {
   const res = await fetch(url);
   if (!res.ok) return null;
   const contentType = res.headers.get('content-type') || '';
-  const buffer = await res.arrayBuffer();
-  const base64 = arrayBufferToBase64(buffer);
   const lower = url.toLowerCase().split('?')[0];
-  if (/\.(png|jpg|jpeg|gif|webp)$/i.test(lower) || contentType.startsWith('image/')) {
-    const mt = contentType.includes('png') ? 'image/png' : contentType.includes('webp') ? 'image/webp' : contentType.includes('gif') ? 'image/gif' : 'image/jpeg';
-    return { type: 'image', source: { type: 'base64', media_type: mt, data: base64 } };
-  }
-  if (contentType === 'application/pdf' || lower.includes('.pdf')) {
+  const isBinary = /\.(png|jpg|jpeg|gif|webp)$/i.test(lower) || contentType.startsWith('image/') || contentType === 'application/pdf' || lower.includes('.pdf');
+
+  if (isBinary) {
+    const base64 = await streamToBase64(res.body);
+    if (/\.(png|jpg|jpeg|gif|webp)$/i.test(lower) || contentType.startsWith('image/')) {
+      const mt = contentType.includes('png') ? 'image/png' : contentType.includes('webp') ? 'image/webp' : contentType.includes('gif') ? 'image/gif' : 'image/jpeg';
+      return { type: 'image', source: { type: 'base64', media_type: mt, data: base64 } };
+    }
     return { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } };
   }
+
+  // Arquivos de texto (pequenos) — mantém abordagem original
+  const buffer = await res.arrayBuffer();
   return { type: 'text', text: `[Arquivo ${i + 1}]\n${new TextDecoder().decode(buffer).substring(0, 8000)}` };
 }
 
