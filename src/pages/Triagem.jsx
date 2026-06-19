@@ -8,6 +8,7 @@ import { Link } from "react-router-dom";
 import FileUploader from "@/components/triagem/FileUploader";
 import ProgressIndicator from "@/components/triagem/ProgressIndicator";
 import PainelResumo from "@/components/triagem/PainelResumo";
+import ClearHistoryButton from "@/components/historico/ClearHistoryButton";
 
 export default function Triagem() {
   const [anamnesis, setAnamnesis] = useState("");
@@ -403,11 +404,14 @@ export default function Triagem() {
                   </p>
                 </div>
               </div>
-              {newWhatsappCount > 0 && (
-                <span className="px-3 py-1 rounded-full bg-[#25D366]/15 text-[#25D366] text-[10px] font-bold uppercase tracking-wider animate-pulse">
-                  {newWhatsappCount} novo{newWhatsappCount > 1 ? 's' : ''}
-                </span>
-              )}
+              <div className="flex items-center gap-3">
+                {newWhatsappCount > 0 && (
+                  <span className="px-3 py-1 rounded-full bg-[#25D366]/15 text-[#25D366] text-[10px] font-bold uppercase tracking-wider animate-pulse">
+                    {newWhatsappCount} novo{newWhatsappCount > 1 ? 's' : ''}
+                  </span>
+                )}
+                <ClearHistoryButton onCleared={() => { setWhatsappResults([]); setNewWhatsappCount(0); }} />
+              </div>
             </div>
 
             {whatsappResults.map((triage, i) => (
