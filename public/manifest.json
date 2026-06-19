@@ -1,33 +1,18 @@
 {
-  "name": "Avaliação Pré-Anestésica",
-  "short_name": "Pré-Anestésica",
-  "description": "Triagem pré-anestésica com suporte à decisão clínica",
+  "name": "AnestGuide",
+  "short_name": "AnestGuide",
+  "description": "Avaliação Pré-Anestésica — Triagem cirúrgica inteligente",
   "start_url": "/",
   "display": "standalone",
-  "orientation": "portrait",
+  "orientation": "portrait-primary",
   "background_color": "#000000",
   "theme_color": "#000000",
   "icons": [
     {
-      "src": "https://base44.com/logo_v2.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
+      "src": "https://media.base44.com/images/public/6a32c59cb09cb4cbc5f457ef/03cbc5c34_generated_image.png",
+      "sizes": "512x512",
+      "type": "image/png",
       "purpose": "any maskable"
     }
-  ],
-  "share_target": {
-    "action": "/share",
-    "method": "POST",
-    "enctype": "multipart/form-data",
-    "params": {
-      "title": "name",
-      "text": "description",
-      "files": [
-        {
-          "name": "files",
-          "accept": ["image/*", "application/pdf", "text/*"]
-        }
-      ]
-    }
-  }
+  ]
 }
