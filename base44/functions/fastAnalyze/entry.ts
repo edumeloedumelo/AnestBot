@@ -220,6 +220,16 @@ IMPORTANTE:
       }
       // Corrige vírgulas faltando entre elementos de array: "a" "b" → "a", "b"
       s = s.replace(/"\s+(?=")/g, (m) => m.includes(',') ? m : '", "');
+      // Corrige vírgulas faltando entre objetos: } { → }, {
+      s = s.replace(/\}\s+\{/g, '}, {');
+      // Corrige vírgulas faltando entre array e string: ] " → ], "
+      s = s.replace(/\]\s+"/g, '], "');
+      // Corrige vírgulas faltando entre string e objeto: " { → ", {
+      s = s.replace(/"\s+\{/g, '", {');
+      // Corrige vírgulas faltando entre objeto e string: } " → }, "
+      s = s.replace(/\}\s+"/g, '}, "');
+      // Corrige vírgulas faltando entre string e array: " [ → ", [
+      s = s.replace(/"\s+\[/g, '", [');
       return JSON.parse(s);
     };
 
