@@ -11,6 +11,7 @@ import Triagem from '@/pages/Triagem';
 import Cirurgias from '@/pages/Cirurgias';
 import Historico from '@/pages/Historico';
 import AdminRoute from '@/components/AdminRoute';
+import ErrorBoundary from '@/components/ErrorBoundary';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -55,7 +56,7 @@ function App() {
       <QueryClientProvider client={queryClientInstance}>
         <Router>
           <ScrollToTop />
-          <AuthenticatedApp />
+          <ErrorBoundary><AuthenticatedApp /></ErrorBoundary>
         </Router>
         <Toaster />
       </QueryClientProvider>

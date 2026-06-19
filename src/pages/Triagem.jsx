@@ -38,10 +38,12 @@ export default function Triagem() {
     loadRecent();
 
     const unsubscribe = base44.entities.Triage.subscribe((event) => {
-      if (event.type === 'create') {
-        setWhatsappResults(prev => [event.data, ...prev]);
-        setNewWhatsappCount(c => c + 1);
-      }
+      try {
+        if (event.type === 'create' && event.data) {
+          setWhatsappResults(prev => [event.data, ...prev]);
+          setNewWhatsappCount(c => c + 1);
+        }
+      } catch {}
     });
 
     return unsubscribe;

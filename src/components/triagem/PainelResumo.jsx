@@ -106,7 +106,9 @@ export default function PainelResumo({ result }) {
               {alerts.map((a, i) => (
                 <li key={i} className="text-xs text-[#e0e0e0] leading-relaxed flex items-start gap-1.5">
                   <span className="text-[#FF5252] mt-0.5">•</span>
-                  <span>{a}</span>
+                  <span>
+                    {typeof a === 'string' ? a : `${a.exam || a.rule || ''}${a.value ? ` (${a.value})` : ''}${a.limit ? ` — ${a.limit}` : ''}`}
+                  </span>
                 </li>
               ))}
             </ul>
