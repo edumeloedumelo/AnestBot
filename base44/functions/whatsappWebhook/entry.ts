@@ -79,14 +79,25 @@ function extractJson(text) {
     if (firstBrace >= 0 && lastBrace > firstBrace) {
       s = s.substring(firstBrace, lastBrace + 1);
     }
+    // Corrige vírgulas faltando entre elementos
+    s = s.replace(/"\s+(?=")/g, (m) => m.includes(',') ? m : '", "');
+    s = s.replace(/\}\s+\{/g, '}, {');
+    s = s.replace(/\]\s+"/g, '], "');
+    s = s.replace(/"\s+\{/g, '", {');
+    s = s.replace(/\}\s+"/g, '}, "');
+    s = s.replace(/"\s+\[/g, '", [');
     return s;
   };
 
   try {
     return JSON.parse(cleanJson(text));
-  } catch {
-    const match = text.match(/\{[\s\S]*\}/);
-    return JSON.parse(cleanJson(match ? match[0] : text));
+  } catch (e1) {
+    try {
+      const match = text.match(/\{[\s\S]*\}/);
+      return JSON.parse(cleanJson(match ? match[0] : text));
+    } catch (e2) {
+      throw new Error(`JSON inválido: ${e2.message}`);
+    }
   }
 }
 

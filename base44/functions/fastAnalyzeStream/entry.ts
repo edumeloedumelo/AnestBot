@@ -1,62 +1,10 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
-async function streamToBase64(body) {
-  const reader = body.getReader();
-  const base64Chunks = [];
-  let leftover = new Uint8Array(0);
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    const combined = new Uint8Array(leftover.length + value.length);
-    combined.set(leftover);
-    combined.set(value, leftover.length);
-    const remainder = combined.length % 3;
-    const processLen = combined.length - remainder;
-    if (processLen > 0) {
-      let binary = '';
-      const view = combined.subarray(0, processLen);
-      for (let j = 0; j < view.length; j++) binary += String.fromCharCode(view[j]);
-      base64Chunks.push(btoa(binary));
-    }
-    leftover = combined.slice(processLen);
-  }
-  if (leftover.length > 0) {
-    let binary = '';
-    for (let j = 0; j < leftover.length; j++) binary += String.fromCharCode(leftover[j]);
-    base64Chunks.push(btoa(binary));
-  }
-  return base64Chunks.join('');
-}
-
-async function fetchFileBlock(url, i) {
-  const res = await fetch(url);
-  if (!res.ok) return null;
-  const contentType = res.headers.get('content-type') || '';
-  const lower = url.toLowerCase().split('?')[0];
-  const isBinary = /\.(png|jpg|jpeg|gif|webp)$/i.test(lower) || contentType.startsWith('image/') || contentType === 'application/pdf' || lower.includes('.pdf');
-
-  if (isBinary) {
-    const base64 = await streamToBase64(res.body);
-    if (/\.(png|jpg|jpeg|gif|webp)$/i.test(lower) || contentType.startsWith('image/')) {
-      const mt = contentType.includes('png') ? 'image/png' : contentType.includes('webp') ? 'image/webp' : contentType.includes('gif') ? 'image/gif' : 'image/jpeg';
-      return { type: 'image', source: { type: 'base64', media_type: mt, data: base64 } };
-    }
-    return { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } };
-  }
-
-  // Arquivos de texto (pequenos) — mantém abordagem original
-  const buffer = await res.arrayBuffer();
-  return { type: 'text', text: `[Arquivo ${i + 1}]\n${new TextDecoder().decode(buffer).substring(0, 8000)}` };
-}
-
 Deno.serve(async (req) => {
   try {
     const body = await req.json();
-    const { fileUrls = [], anamnesis = '', stream: useStream = false } = body;
+    const { fileUrls = [], anamnesis = '' } = body;
     if (!fileUrls.length) return Response.json({ error: 'Nenhum arquivo' }, { status: 400 });
-
-    const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
-    if (!apiKey) return Response.json({ error: 'API key não configurada' }, { status: 500 });
 
     const base44 = createClientFromRequest(req);
     const [surgeries, examLimits] = await Promise.all([
@@ -64,8 +12,8 @@ Deno.serve(async (req) => {
       base44.asServiceRole.entities.ExamLimit.list()
     ]);
 
-    // Construir prompt médico completo
-    const systemPrompt = `Você é um médico anestesista fazendo avaliação pré-operatória de triagem. Execute este prompt com exatidão.
+    // Constrói o prompt completo (system + user em um só)
+    const prompt = `Você é um médico anestesista experiente fazendo avaliação pré-operatória de triagem.
 
 ## CIRURGIAS CADASTRADAS
 ${surgeries.map(s => `- **${s.name}** → key: "${s.key}" | Exames obrigatórios: ${(s.required_exams || []).join(', ')}`).join('\n')}
@@ -85,315 +33,142 @@ ${examLimits.map(l => {
 - Mama/BIRADS: 1-2 ok. 3-6 → encaminhar mastologista + parecer. Sem parecer = 🚨 pendência crítica.
 - RX tórax: nódulo → pneumologista obrigatório.
 - Anti-HBs < 2 não contraindica — apenas informe.
-- GLP-1 (Ozempic, Mounjaro, Wegovy, Saxenda, Rybelsus, Trulicity): suspender 21 dias.
+- GLP-1 (Ozempic, Mounjaro, Wegovy, Saxenda, Rybelsus, Trulicity): suspender 21 dias antes da cirurgia.
 - Avaliar anticoagulantes, antiagregantes, AAS, clopidogrel, rivaroxabana, varfarina, anticoncepcionais, hipoglicemiantes, corticoides, imunossupressores, psicotrópicos.
-- Ilegível/cortado/desfocado: "❓ Ilegível". NUNCA invente.
-- Exame obrigatório não enviado → "❌ Não enviado".
+- Ilegível/cortado/desfocado: informe "❓ Ilegível". NUNCA invente resultado.
+- Exame obrigatório não enviado → status "❌ Não enviado".
 
 ## PROIBIÇÕES ABSOLUTAS
-Nunca: inventar resultados · inventar exames · presumir BIRADS · presumir ECG normal · ignorar Hb < 12 · ignorar nódulo pulmonar · ignorar medicações relevantes · liberar cirurgia sem exames obrigatórios · ignorar exame ilegível · substituir avaliação médica presencial. Em dúvida → interpretação mais conservadora.
+Nunca: inventar resultados · inventar exames · presumir BIRADS · presumir ECG normal · ignorar Hb < 12 · ignorar nódulo pulmonar · ignorar medicações relevantes · liberar cirurgia sem exames obrigatórios · ignorar exame ilegível · substituir avaliação médica presencial.
+Em dúvida → adotar interpretação mais conservadora e segura.
 
-## FORMATO DO RELATÓRIO (relatorioTecnico)
+## FORMATO DO RELATÓRIO TÉCNICO (relatorioTecnico)
+Use EXATAMENTE este formato:
 \`\`\`
 🧾 TRIAGEM PRÉ-OPERATÓRIA
 👩‍⚕️ Cirurgia: [tipo]
+
 ITEM                  STATUS
-[listar cada exame obrigatório com ✅/⚠️/❌]
+[listar cada exame obrigatório com ✅/⚠️/❌/❓ e valor resumido]
+
 🚨 ALERTAS / ALTERAÇÕES
-* [alteração]
-📌 STATUS FINAL: [✅/⚠️/❌/🚨]
-📋 CONDUTA: [até 3 linhas]
+* [alteração relevante com detalhes]
+(ou: ✅ Sem alterações relevantes identificadas.)
+
+📌 STATUS FINAL: [✅ Completo sem alertas / ⚠️ Completo com alertas / ❌ Pendente / 🚨 Pendência crítica]
+
+📋 CONDUTA: [orientação objetiva em até 3 linhas]
 \`\`\`
 
-## FORMATO BLOCO WHATSAPP (blocoResumo)
+## FORMATO DO BLOCO WHATSAPP (blocoResumo)
+Texto único, SEM tabela, otimizado para copiar e colar:
 \`\`\`
 📋 RESUMO — TRIAGEM PRÉ-ANESTÉSICA
-Nome: [nome] | Cirurgia: [tipo]
-Exames alterados / faltando: • [item] (ou: nenhum ✅)
-Medicações a suspender: • [medicação] — [tempo] (ou: nenhuma ✅)
-Alertas críticos: • [alerta] (ou: nenhum ✅)
+
+Nome: [nome]
+Cirurgia: [tipo]
+
+Exames alterados / faltando:
+• [item] (ou: nenhum ✅)
+
+Medicações a suspender:
+• [medicação] — suspender por [tempo] (ou: nenhuma ✅)
+
+Alertas críticos:
+• [alerta] (ou: nenhum ✅)
+
 📌 [✅ liberado / ⚠️ com ressalvas / ❌ pendente / 🚨 não liberar]
 \`\`\`
 
-## JSON DE SAÍDA — Gere phase1 PRIMEIRO, depois phase2:
-{
-  "phase1": {
-    "patientName": "Nome completo",
-    "patientInfo": "idade, peso, comorbidades, data cirurgia",
-    "surgeryType": "Nome da cirurgia"
-  },
-  "phase2": {
-    "examResults": [{"exam":"...", "status":"✅|⚠️|❌|❓", "value":"resultado resumido"}],
-    "alerts": ["⚠️ Alerta com detalhe"],
-    "missingExams": ["Exame faltante"],
-    "alteredExams": ["Exame alterado (valor)"],
-    "finalStatus": "✅ Completo sem alertas relevantes",
-    "conduct": "Conduta em até 3 linhas",
-    "blocoResumo": "📋 RESUMO... (use \\n para quebras)",
-    "relatorioTecnico": "🧾 TRIAGEM... (use \\n para quebras)"
-  }
-}
+## REGRAS DO BLOCO RESUMO
+- Texto único, sem tabela, otimizado para WhatsApp.
+- Campo vazio = "nenhum" / "nenhuma".
+- Listar em "alterados/faltando" tanto exames alterados quanto obrigatórios ausentes.
+- Medicações SEMPRE com tempo de suspensão.
+- Não inventar nem presumir — apenas o identificado.
 
-IMPORTANTE: Gere phase1 PRIMEIRO (identificação) e só depois phase2 (análise dos exames). Retorne JSON puro, sem markdown.`;
+## TAREFA
+Analise TODOS os ${fileUrls.length} exames anexados como médico anestesista.
+${anamnesis.trim() ? 'ANAMNESE / OBSERVAÇÕES:\n' + anamnesis + '\n' : ''}
+Siga EXATAMENTE o protocolo. Identifique paciente e cirurgia, compare cada exame com os limites de referência, verifique completude dos exames obrigatórios, e gere os relatórios nos formatos exatos especificados acima.`;
 
-    // Baixar arquivos
-    console.log(`Baixando ${fileUrls.length} arquivos...`);
-    const blocks = await Promise.all(fileUrls.map((url, i) => fetchFileBlock(url, i)));
+    console.log(`Chamando InvokeLLM com ${fileUrls.length} arquivos...`);
 
-    const content = [];
-    content.push({ type: 'text', text: `Analise TODOS os ${fileUrls.length} exames como médico anestesista.${anamnesis.trim() ? '\n\nANAMNESE / OBSERVAÇÕES:\n' + anamnesis : ''}\n\nSiga EXATAMENTE o protocolo. Identifique paciente e cirurgia (phase1), depois analise cada exame (phase2). Retorne SOMENTE o JSON.` });
-    for (let i = 0; i < blocks.length; i++) {
-      const b = blocks[i];
-      if (!b) continue;
-      content.push({ type: 'text', text: `--- EXAME [${i + 1}] ---` });
-      content.push(b);
-    }
-
-    // 🔹 MODO NÃO-STREAMING: chamada direta via SDK
-    if (!useStream) {
-      console.log('Chamando Claude (não-streaming)...');
-      const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-        body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 4096, system: systemPrompt, messages: [{ role: 'user', content }] })
-      });
-
-      if (!claudeRes.ok) {
-        const err = await claudeRes.text();
-        return Response.json({ error: `Claude (${claudeRes.status}): ${err.substring(0, 200)}` }, { status: 500 });
-      }
-
-      const data = await claudeRes.json();
-      const text = (data.content?.[0]?.text || '').trim();
-
-      // Parse JSON
-      let finalResult;
-      const repairAndParse = (raw) => {
-        let s = raw.replace(/```json\s*/g, '').replace(/```\s*/g, '').replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/,\s*([}\]])/g, '$1').replace(/\n/g, ' ').replace(/\r/g, '').trim();
-        const firstBrace = s.indexOf('{');
-        const lastBrace = s.lastIndexOf('}');
-        if (firstBrace >= 0 && lastBrace > firstBrace) s = s.substring(firstBrace, lastBrace + 1);
-        s = s.replace(/"\s+(?=")/g, (m) => m.includes(',') ? m : '", "');
-        s = s.replace(/\}\s+\{/g, '}, {');
-        s = s.replace(/\]\s+"/g, '], "');
-        s = s.replace(/"\s+\{/g, '", {');
-        s = s.replace(/\}\s+"/g, '}, "');
-        s = s.replace(/"\s+\[/g, '", [');
-        return JSON.parse(s);
-      };
-
-      try { finalResult = repairAndParse(text); } catch { const m = text.match(/\{[\s\S]*\}/); if (m) finalResult = repairAndParse(m[0]); }
-      if (!finalResult?.phase1?.patientName) return Response.json({ error: 'IA não retornou dados válidos' }, { status: 500 });
-
-      const p1 = finalResult.phase1;
-      const p2 = finalResult.phase2 || {};
-      let status = 'incomplete';
-      const fs = p2.finalStatus || '';
-      if (fs.includes('crítica') || fs.includes('🚨')) status = 'critical_pending';
-      else if (fs.includes('sem alertas') || fs.includes('✅')) status = 'complete_without_alerts';
-      else if (fs.includes('com alertas') || fs.includes('⚠️')) status = 'complete_with_alerts';
-
-      await base44.asServiceRole.entities.Triage.create({
-        patient_name: p1.patientName, surgery_type: p1.surgeryType || 'indefinida', status,
-        missing_exams: p2.missingExams || [], altered_exams: p2.alteredExams || [],
-        relatorio_tecnico: p2.relatorioTecnico || '', bloco_resumo: p2.blocoResumo || '', files_count: fileUrls.length
-      });
-
-      return Response.json({
-        patientName: p1.patientName, patientInfo: p1.patientInfo || '', surgeryType: p1.surgeryType || '',
-        examResults: p2.examResults || [], alerts: p2.alerts || [], missingExams: p2.missingExams || [],
-        alteredExams: p2.alteredExams || [], finalStatus: p2.finalStatus || '❌ Pendente', conduct: p2.conduct || '',
-        blocoResumo: p2.blocoResumo || '', relatorioTecnico: p2.relatorioTecnico || '', status
-      });
-    }
-
-    // 🔹 MODO STREAMING: SSE para frontend
-    let bodyCancelled = false;
-    let finalResult = null;
-
-    const stream = new ReadableStream({
-      start(controller) {
-        const encoder = new TextEncoder();
-        const send = (data) => {
-          if (bodyCancelled) return;
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
-        };
-
-        (async () => {
-          try {
-            send({ type: 'progress', phase: 'analyzing', message: 'IA analisando exames...' });
-
-            const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-              body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 4096, stream: true, system: systemPrompt, messages: [{ role: 'user', content }] })
-            });
-
-            if (!claudeRes.ok) {
-              const err = await claudeRes.text();
-              send({ type: 'error', error: `Claude (${claudeRes.status}): ${err.substring(0, 200)}` });
-              controller.close();
-              return;
+    // InvokeLLM garante JSON válido via response_json_schema
+    const result = await base44.integrations.Core.InvokeLLM({
+      prompt,
+      file_urls: fileUrls,
+      model: 'claude_sonnet_4_6',
+      response_json_schema: {
+        type: 'object',
+        properties: {
+          patientName: { type: 'string', description: 'Nome completo da paciente' },
+          patientInfo: { type: 'string', description: 'Idade, peso, comorbidades, data da cirurgia' },
+          surgeryType: { type: 'string', description: 'Nome da cirurgia identificada' },
+          examResults: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                exam: { type: 'string', description: 'Nome do exame' },
+                status: { type: 'string', description: '✅ normal, ⚠️ alterado, ❌ não enviado, ❓ ilegível' },
+                value: { type: 'string', description: 'Resultado resumido do exame' }
+              },
+              required: ['exam', 'status', 'value']
             }
-
-            let fullText = '';
-            let phase1Sent = false;
-            let lastPhase2Sent = '';
-            const reader = claudeRes.body.getReader();
-            const decoder = new TextDecoder();
-            let buffer = '';
-
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-
-              buffer += decoder.decode(value, { stream: true });
-              const lines = buffer.split('\n');
-              buffer = lines.pop() || '';
-
-              for (const line of lines) {
-                if (!line.startsWith('data: ')) continue;
-                const data = line.slice(6);
-                if (data === '[DONE]') continue;
-
-                try {
-                  const parsed = JSON.parse(data);
-                  if (parsed.type === 'content_block_delta') {
-                    fullText += parsed.delta?.text || '';
-
-                    // Tentar extrair phase1
-                    if (!phase1Sent) {
-                      const p1Match = fullText.match(/"phase1"\s*:\s*(\{[^}]+\})/s);
-                      if (p1Match) {
-                        try {
-                          const p1 = JSON.parse(p1Match[1]);
-                          send({ type: 'phase1', ...p1 });
-                          phase1Sent = true;
-                        } catch {}
-                      }
-                    }
-
-                    // Tentar extrair phase2 parcial
-                    if (phase1Sent) {
-                      const p2Match = fullText.match(/"phase2"\s*:\s*(\{[\s\S]*?\})(?:\s*\}|$)/);
-                      if (p2Match) {
-                        const p2Text = p2Match[1];
-                        if (p2Text !== lastPhase2Sent && p2Text.length > 20) {
-                          try {
-                            const p2 = JSON.parse(p2Text);
-                            // Só envia se tiver pelo menos alguns exames
-                            if (p2.examResults && p2.examResults.length >= 2) {
-                              send({ type: 'phase2_partial', ...p2 });
-                              lastPhase2Sent = p2Text;
-                            }
-                          } catch {}
-                        }
-                      }
-                    }
-                  }
-                } catch {}
-              }
-            }
-
-            // Parse final com reparo automático de erros comuns da IA
-            const repairAndParse = (raw) => {
-              let s = raw
-                .replace(/```json\s*/g, '').replace(/```\s*/g, '')
-                .replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '')
-                .replace(/,\s*([}\]])/g, '$1')
-                .replace(/\n/g, ' ').replace(/\r/g, '')
-                .trim();
-              const firstBrace = s.indexOf('{');
-              const lastBrace = s.lastIndexOf('}');
-              if (firstBrace >= 0 && lastBrace > firstBrace) {
-                s = s.substring(firstBrace, lastBrace + 1);
-              }
-              // Corrige vírgulas faltando entre elementos de array: "a" "b" → "a", "b"
-              s = s.replace(/"\s+(?=")/g, (m) => m.includes(',') ? m : '", "');
-              // Corrige vírgulas faltando entre objetos: } { → }, {
-              s = s.replace(/\}\s+\{/g, '}, {');
-              // Corrige vírgulas faltando entre array e string: ] " → ], "
-              s = s.replace(/\]\s+"/g, '], "');
-              // Corrige vírgulas faltando entre string e objeto: " { → ", {
-              s = s.replace(/"\s+\{/g, '", {');
-              // Corrige vírgulas faltando entre objeto e string: } " → }, "
-              s = s.replace(/\}\s+"/g, '}, "');
-              // Corrige vírgulas faltando entre string e array: " [ → ", [
-              s = s.replace(/"\s+\[/g, '", [');
-              return JSON.parse(s);
-            };
-
-            try {
-              finalResult = repairAndParse(fullText);
-            } catch {
-              const match = fullText.match(/\{[\s\S]*\}/);
-              if (match) finalResult = repairAndParse(match[0]);
-            }
-
-            if (!finalResult?.phase1?.patientName) {
-              send({ type: 'error', error: 'Não foi possível extrair dados da resposta da IA.' });
-              controller.close();
-              return;
-            }
-
-            // Salvar no banco
-            const p1 = finalResult.phase1;
-            const p2 = finalResult.phase2 || {};
-            let status = 'incomplete';
-            const fs = p2.finalStatus || '';
-            if (fs.includes('crítica') || fs.includes('🚨')) status = 'critical_pending';
-            else if (fs.includes('sem alertas') || fs.includes('✅')) status = 'complete_without_alerts';
-            else if (fs.includes('com alertas') || fs.includes('⚠️')) status = 'complete_with_alerts';
-
-            await base44.asServiceRole.entities.Triage.create({
-              patient_name: p1.patientName,
-              surgery_type: p1.surgeryType || 'indefinida',
-              status,
-              missing_exams: p2.missingExams || [],
-              altered_exams: p2.alteredExams || [],
-              relatorio_tecnico: p2.relatorioTecnico || '',
-              bloco_resumo: p2.blocoResumo || '',
-              files_count: fileUrls.length
-            });
-
-            // Enviar resultado completo
-            send({
-              type: 'complete',
-              patientName: p1.patientName,
-              patientInfo: p1.patientInfo || '',
-              surgeryType: p1.surgeryType || '',
-              examResults: p2.examResults || [],
-              alerts: p2.alerts || [],
-              missingExams: p2.missingExams || [],
-              alteredExams: p2.alteredExams || [],
-              finalStatus: p2.finalStatus || '❌ Pendente',
-              conduct: p2.conduct || '',
-              blocoResumo: p2.blocoResumo || '',
-              relatorioTecnico: p2.relatorioTecnico || '',
-              status
-            });
-
-            controller.close();
-          } catch (err) {
-            console.error('Stream error:', err.message);
-            send({ type: 'error', error: err.message });
-            controller.close();
-          }
-        })();
-      },
-      cancel() {
-        bodyCancelled = true;
+          },
+          alerts: { type: 'array', items: { type: 'string' }, description: 'Alertas e alterações relevantes' },
+          missingExams: { type: 'array', items: { type: 'string' }, description: 'Exames obrigatórios faltantes' },
+          alteredExams: { type: 'array', items: { type: 'string' }, description: 'Exames com alterações (nome + valor)' },
+          finalStatus: { type: 'string', description: 'Status final com emoji: ✅/⚠️/❌/🚨' },
+          conduct: { type: 'string', description: 'Conduta recomendada em até 3 linhas' },
+          blocoResumo: { type: 'string', description: 'Resumo formatado para WhatsApp' },
+          relatorioTecnico: { type: 'string', description: 'Relatório técnico completo' }
+        },
+        required: ['patientName', 'surgeryType', 'finalStatus']
       }
     });
 
-    return new Response(stream, {
-      headers: {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive'
-      }
+    // result já é um objeto JSON válido — sem necessidade de parse!
+    if (!result || !result.patientName) {
+      return Response.json({ error: 'IA não conseguiu identificar a paciente. Verifique os arquivos enviados.' }, { status: 500 });
+    }
+
+    // Determinar status para salvar
+    let status = 'incomplete';
+    const fs = result.finalStatus || '';
+    if (fs.includes('crítica') || fs.includes('🚨')) status = 'critical_pending';
+    else if (fs.includes('sem alertas') || fs.includes('✅')) status = 'complete_without_alerts';
+    else if (fs.includes('com alertas') || fs.includes('⚠️')) status = 'complete_with_alerts';
+
+    // Salvar no banco
+    await base44.asServiceRole.entities.Triage.create({
+      patient_name: result.patientName,
+      surgery_type: result.surgeryType || 'indefinida',
+      status,
+      missing_exams: result.missingExams || [],
+      altered_exams: result.alteredExams || [],
+      relatorio_tecnico: result.relatorioTecnico || '',
+      bloco_resumo: result.blocoResumo || '',
+      files_count: fileUrls.length
+    });
+
+    return Response.json({
+      patientName: result.patientName,
+      patientInfo: result.patientInfo || '',
+      surgeryType: result.surgeryType || 'indefinida',
+      examResults: result.examResults || [],
+      alerts: result.alerts || [],
+      missingExams: result.missingExams || [],
+      alteredExams: result.alteredExams || [],
+      finalStatus: result.finalStatus || '❌ Pendente',
+      conduct: result.conduct || '',
+      blocoResumo: result.blocoResumo || '',
+      relatorioTecnico: result.relatorioTecnico || '',
+      status
     });
   } catch (error) {
-    return Response.json({ error: error.message }, { status: 500 });
+    console.error('Erro:', error.message);
+    return Response.json({ error: error.message || 'Erro interno ao processar análise.' }, { status: 500 });
   }
 });
