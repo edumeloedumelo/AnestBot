@@ -18,6 +18,8 @@ export default function Cirurgias() {
   const [editingSurgery, setEditingSurgery] = useState(null);
   const [editingLimit, setEditingLimit] = useState(null);
   const [activeTab, setActiveTab] = useState("surgeries");
+  const [surgeryError, setSurgeryError] = useState("");
+  const [limitError, setLimitError] = useState("");
 
   const loadSurgeries = async () => {
     const data = await base44.entities.Surgery.list();
@@ -34,40 +36,61 @@ export default function Cirurgias() {
   useEffect(() => { loadSurgeries(); loadLimits(); }, []);
 
   const handleSaveSurgery = async (data) => {
-    if (editingSurgery) {
-      await base44.entities.Surgery.update(editingSurgery.id, data);
-    } else {
-      await base44.entities.Surgery.create(data);
+    setSurgeryError("");
+    try {
+      if (editingSurgery) {
+        await base44.entities.Surgery.update(editingSurgery.id, data);
+      } else {
+        await base44.entities.Surgery.create(data);
+      }
+      setShowSurgeryForm(false);
+      setEditingSurgery(null);
+      loadSurgeries();
+    } catch (err) {
+      setSurgeryError(err?.message || "Erro ao salvar cirurgia.");
     }
-    setShowSurgeryForm(false);
-    setEditingSurgery(null);
-    loadSurgeries();
   };
 
   const handleDeleteSurgery = async (surgery) => {
-    await base44.entities.Surgery.delete(surgery.id);
-    loadSurgeries();
+    setSurgeryError("");
+    try {
+      await base44.entities.Surgery.delete(surgery.id);
+      loadSurgeries();
+    } catch (err) {
+      setSurgeryError(err?.message || "Erro ao excluir cirurgia.");
+    }
   };
 
   const handleEditSurgery = (surgery) => {
+    setSurgeryError("");
     setEditingSurgery(surgery);
     setShowSurgeryForm(true);
   };
 
   const handleSaveLimit = async (data) => {
-    if (editingLimit) {
-      await base44.entities.ExamLimit.update(editingLimit.id, data);
-    } else {
-      await base44.entities.ExamLimit.create(data);
+    setLimitError("");
+    try {
+      if (editingLimit) {
+        await base44.entities.ExamLimit.update(editingLimit.id, data);
+      } else {
+        await base44.entities.ExamLimit.create(data);
+      }
+      setShowLimitForm(false);
+      setEditingLimit(null);
+      loadLimits();
+    } catch (err) {
+      setLimitError(err?.message || "Erro ao salvar limite.");
     }
-    setShowLimitForm(false);
-    setEditingLimit(null);
-    loadLimits();
   };
 
   const handleDeleteLimit = async (limit) => {
-    await base44.entities.ExamLimit.delete(limit.id);
-    loadLimits();
+    setLimitError("");
+    try {
+      await base44.entities.ExamLimit.delete(limit.id);
+      loadLimits();
+    } catch (err) {
+      setLimitError(err?.message || "Erro ao excluir limite.");
+    }
   };
 
   const handleEditLimit = (limit) => {
@@ -132,7 +155,13 @@ export default function Cirurgias() {
 
             {showSurgeryForm && (
               <div className="mb-6">
-                <SurgeryForm surgery={editingSurgery} onSave={handleSaveSurgery} onCancel={() => { setShowSurgeryForm(false); setEditingSurgery(null); }} />
+                <SurgeryForm surgery={editingSurgery} onSave={handleSaveSurgery} onCancel={() => { setShowSurgeryForm(false); setEditingSurgery(null); setSurgeryError(""); }} />
+              </div>
+            )}
+
+            {surgeryError && (
+              <div className="mb-4 p-3 bg-[#1a0000] border border-[#4a2020] rounded-xl">
+                <p className="text-xs text-[#ff4444] font-medium uppercase tracking-wider">{surgeryError}</p>
               </div>
             )}
 
@@ -174,7 +203,13 @@ export default function Cirurgias() {
 
             {showLimitForm && (
               <div className="mb-6">
-                <ExamLimitForm limit={editingLimit} onSave={handleSaveLimit} onCancel={() => { setShowLimitForm(false); setEditingLimit(null); }} />
+                <ExamLimitForm limit={editingLimit} onSave={handleSaveLimit} onCancel={() => { setShowLimitForm(false); setEditingLimit(null); setLimitError(""); }} />
+              </div>
+            )}
+
+            {limitError && (
+              <div className="mb-4 p-3 bg-[#1a0000] border border-[#4a2020] rounded-xl">
+                <p className="text-xs text-[#ff4444] font-medium uppercase tracking-wider">{limitError}</p>
               </div>
             )}
 

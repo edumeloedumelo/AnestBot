@@ -3,7 +3,7 @@ import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { RotateCcw, Settings, ClipboardList, Upload, ArrowRight, Share2, Activity, Zap, Bell } from "lucide-react";
+import { RotateCcw, Settings, ClipboardList, Upload, Share2, Activity, Zap, Bell } from "lucide-react";
 import { Link } from "react-router-dom";
 import FileUploader from "@/components/triagem/FileUploader";
 import ProgressIndicator from "@/components/triagem/ProgressIndicator";
