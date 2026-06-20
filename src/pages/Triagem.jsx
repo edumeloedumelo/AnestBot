@@ -141,7 +141,7 @@ export default function Triagem() {
         return;
       }
 
-      setResults(analysisResults.map(r => ({
+      const mappedResults = analysisResults.map(r => ({
         patientName: r.patientName || '',
         patientInfo: r.patientInfo || '',
         surgeryType: r.surgeryType || '',
@@ -154,7 +154,21 @@ export default function Triagem() {
         blocoResumo: r.blocoResumo || '',
         relatorioTecnico: r.relatorioTecnico || '',
         medicationsToSuspend: r.medicationsToSuspend || []
-      })));
+      }));
+      setResults(mappedResults);
+
+      // Auto-save each report to Google Drive
+      mappedResults.forEach(r => {
+        if (r.relatorioTecnico && r.patientName) {
+          base44.functions.invoke("saveToDrive", {
+            patientName: r.patientName,
+            surgeryType: r.surgeryType,
+            blocoResumo: r.relatorioTecnico,
+            createdDate: new Date().toISOString(),
+          }).catch(() => {}); // fire-and-forget, silencia erros
+        }
+      });
+
       setStreamingResult(null);
       setProgressStatus("");
     } catch (err) {
