@@ -3,7 +3,7 @@ import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { RotateCcw, Settings, ClipboardList, Upload, Share2, Activity, Zap, Bell } from "lucide-react";
+import { RotateCcw, Settings, ClipboardList, Upload, Share2, Activity, Zap, Bell, AlertTriangle } from "lucide-react";
 import { Link } from "react-router-dom";
 import FileUploader from "@/components/triagem/FileUploader";
 import ProgressIndicator from "@/components/triagem/ProgressIndicator";
@@ -85,6 +85,15 @@ export default function Triagem() {
 
   const handleAnalyze = async () => {
     if (!canAnalyze) return;
+
+    // Check for very large files that may cause API errors
+    const MAX_TOTAL_MB = 200;
+    const totalSize = files.reduce((sum, f) => sum + f.size, 0);
+    if (totalSize > MAX_TOTAL_MB * 1024 * 1024) {
+      setError(`Total de arquivos excede ${MAX_TOTAL_MB}MB. Reduza o tamanho ou divida em lotes menores.`);
+      return;
+    }
+
     setAnalyzing(true);
     setError("");
     setResults(null);
@@ -105,7 +114,17 @@ export default function Triagem() {
       const response = await base44.functions.invoke(fnName, { fileUrls, anamnesis });
 
       if (response.data?.error) {
-        setError(response.data.error);
+        let msg = response.data.error;
+        if (msg.includes("USER-EXCEPTION") || msg.includes("User Exception")) {
+          msg = "Erro interno do servidor. Tente novamente com menos arquivos ou arquivos menores.";
+        } else if (msg.includes("429") || msg.includes("rate")) {
+          msg = "Muitas requisições. Aguarde alguns segundos e tente novamente.";
+        } else if (msg.includes("401") || msg.includes("Unauthorized")) {
+          msg = "Erro de autenticação com o serviço de IA.";
+        } else if (msg.includes("timeout")) {
+          msg = "A análise excedeu o tempo limite. Tente com menos arquivos.";
+        }
+        setError(msg);
         return;
       }
 
@@ -133,7 +152,19 @@ export default function Triagem() {
       setStreamingResult(null);
       setProgressStatus("");
     } catch (err) {
-      const msg = err?.response?.data?.error || err?.message || "Erro de conexão.";
+      let msg = err?.response?.data?.error || err?.message || "Erro de conexão.";
+      // Translate technical errors to user-friendly messages
+      if (msg.includes("USER-EXCEPTION") || msg.includes("User Exception")) {
+        msg = "Erro interno do servidor. Tente novamente com menos arquivos ou verifique sua conexão.";
+      } else if (msg.includes("429") || msg.includes("rate") || msg.includes("Rate")) {
+        msg = "Muitas requisições. Aguarde alguns segundos e tente novamente.";
+      } else if (msg.includes("401") || msg.includes("Unauthorized")) {
+        msg = "Erro de autenticação com o serviço de IA. Contate o administrador.";
+      } else if (msg.includes("500") || msg.includes("Internal")) {
+        msg = "Erro no servidor. Tente novamente em alguns instantes.";
+      } else if (msg.includes("timeout") || msg.includes("Timeout")) {
+        msg = "A análise excedeu o tempo limite. Tente com menos arquivos ou arquivos menores.";
+      }
       setError(msg);
     } finally {
       setAnalyzing(false);
@@ -218,8 +249,12 @@ export default function Triagem() {
 
               {/* Error */}
               {error && (
-                <div className="p-4 bg-[#1a0000] border border-[#4a2020] rounded-2xl">
-                  <p className="text-xs text-[#ff4444] font-medium uppercase tracking-wider">{error}</p>
+                <div className="p-5 bg-[#1a0000] border border-[#4a2020] rounded-2xl space-y-2">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-[#f87171]" />
+                    <p className="text-xs text-[#f87171] font-bold uppercase tracking-wider">Erro na análise</p>
+                  </div>
+                  <p className="text-xs text-[#ff8888] leading-relaxed">{error}</p>
                 </div>
               )}
 

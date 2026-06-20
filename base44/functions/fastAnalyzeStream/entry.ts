@@ -120,6 +120,8 @@ ${surgeryList}
 
 Tipos de exame: Hemograma, Coagulograma, Ionograma, Bioquímica renal, Mamografia/USG, Sorologias, Beta-HCG, Urina/EAS, ECG, RX tórax, Risco cirúrgico, USG abdome, USG parede, Outro
 
+IMPORTANTE: PDFs de imagem (USG, Mamografia, RX, ECG) contêm LAUDO MÉDICO em texto. Leia o conteúdo textual do PDF — não ignore só porque tem imagens. Palavras-chave: "ultrassonografia", "USG", "mamografia", "BI-RADS", "RX", "tórax", "ECG", "abdome", "parede abdominal".
+
 Agrupe por nome aproximado. Use anamnese para cirurgia. Na dúvida → "indefinida".
 examIndices: índices RELATIVOS (0, 1, 2...).`;
 
@@ -181,6 +183,8 @@ Procedimento: ${surgery?.name || patient.surgeryType || 'Não identificado'}
 Exames obrigatórios: ${requiredExams.length > 0 ? requiredExams.join(', ') : 'Nenhum'}
 
 REGRAS: Hb≥12. PCR>10=alterado. BIRADS 3-6=mastologista(sem=🚨CRÍTICO). Nódulo RX=pneumologista. GLP-1=suspender 21d. Anti-HBs=ignorar(suficiente). Reparo mamário=NÃO exige mamografia. ECG FC≥50 ok. Urina só ITU. Ilegível=❓(nunca inventar). Não enviado=❌.
+
+⚠️ EXAMES DE IMAGEM (USG, Mamografia, RX, ECG): São relatórios textuais com laudo médico. PROCURE por palavras-chave: "ultrassonografia", "USG", "mamografia", "BI-RADS", "ecografia", "radiografia", "RX", "tórax", "eletrocardiograma", "ECG", "parede abdominal", "abdome". Mesmo se o PDF tiver imagens, o LAUDO ESCRITO está presente. Só marque ❌ se o exame NÃO ESTIVER em nenhum arquivo.
 
 LIMITES: ${limitsRef || 'Padrão'}
 
