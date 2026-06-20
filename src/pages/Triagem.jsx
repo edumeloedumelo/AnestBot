@@ -87,7 +87,7 @@ export default function Triagem() {
     if (!canAnalyze) return;
 
     // Check for very large files that may cause API errors
-    const MAX_TOTAL_MB = 200;
+    const MAX_TOTAL_MB = 100;
     const totalSize = files.reduce((sum, f) => sum + f.size, 0);
     if (totalSize > MAX_TOTAL_MB * 1024 * 1024) {
       setError(`Total de arquivos excede ${MAX_TOTAL_MB}MB. Reduza o tamanho ou divida em lotes menores.`);
@@ -114,15 +114,21 @@ export default function Triagem() {
       const response = await base44.functions.invoke(fnName, { fileUrls, anamnesis });
 
       if (response.data?.error) {
-        let msg = response.data.error;
-        if (msg.includes("USER-EXCEPTION") || msg.includes("User Exception")) {
-          msg = "Erro interno do servidor. Tente novamente com menos arquivos ou arquivos menores.";
-        } else if (msg.includes("429") || msg.includes("rate")) {
+        const raw = response.data.error;
+        const msgLower = raw.toLowerCase();
+        let msg;
+        if (msgLower.includes("user-exception") || msgLower.includes("user exception")) {
+          msg = "Arquivo muito grande ou formato incompatível. Reduza o tamanho do PDF (máx. 30MB) e tente novamente.";
+        } else if (msgLower.includes("limite") || msgLower.includes("tamanho") || msgLower.includes("grande")) {
+          msg = raw;
+        } else if (msgLower.includes("429") || msgLower.includes("rate")) {
           msg = "Muitas requisições. Aguarde alguns segundos e tente novamente.";
-        } else if (msg.includes("401") || msg.includes("Unauthorized")) {
+        } else if (msgLower.includes("401") || msgLower.includes("unauthorized")) {
           msg = "Erro de autenticação com o serviço de IA.";
-        } else if (msg.includes("timeout")) {
+        } else if (msgLower.includes("timeout")) {
           msg = "A análise excedeu o tempo limite. Tente com menos arquivos.";
+        } else {
+          msg = raw;
         }
         setError(msg);
         return;
@@ -152,18 +158,23 @@ export default function Triagem() {
       setStreamingResult(null);
       setProgressStatus("");
     } catch (err) {
-      let msg = err?.response?.data?.error || err?.message || "Erro de conexão.";
-      // Translate technical errors to user-friendly messages
-      if (msg.includes("USER-EXCEPTION") || msg.includes("User Exception")) {
-        msg = "Erro interno do servidor. Tente novamente com menos arquivos ou verifique sua conexão.";
-      } else if (msg.includes("429") || msg.includes("rate") || msg.includes("Rate")) {
+      const raw = err?.response?.data?.error || err?.message || "Erro de conexão.";
+      const msgLower = raw.toLowerCase();
+      let msg;
+      if (msgLower.includes("user-exception") || msgLower.includes("user exception")) {
+        msg = "Arquivo muito grande ou formato incompatível. Reduza o tamanho do PDF (máx. 30MB) e tente novamente.";
+      } else if (msgLower.includes("limite") || msgLower.includes("tamanho") || msgLower.includes("grande")) {
+        msg = raw;
+      } else if (msgLower.includes("429") || msgLower.includes("rate")) {
         msg = "Muitas requisições. Aguarde alguns segundos e tente novamente.";
-      } else if (msg.includes("401") || msg.includes("Unauthorized")) {
+      } else if (msgLower.includes("401") || msgLower.includes("unauthorized")) {
         msg = "Erro de autenticação com o serviço de IA. Contate o administrador.";
-      } else if (msg.includes("500") || msg.includes("Internal")) {
+      } else if (msgLower.includes("500") || msgLower.includes("internal")) {
         msg = "Erro no servidor. Tente novamente em alguns instantes.";
-      } else if (msg.includes("timeout") || msg.includes("Timeout")) {
+      } else if (msgLower.includes("timeout")) {
         msg = "A análise excedeu o tempo limite. Tente com menos arquivos ou arquivos menores.";
+      } else {
+        msg = raw;
       }
       setError(msg);
     } finally {
