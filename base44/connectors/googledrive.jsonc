@@ -1,0 +1,6 @@
+{
+  "type": "googledrive",
+  "scopes": [
+    "email"
+  ]
+}
