@@ -87,7 +87,7 @@ export default function Triagem() {
     if (!canAnalyze) return;
 
     // Check for very large files that may cause API errors
-    const MAX_TOTAL_MB = 100;
+    const MAX_TOTAL_MB = 200;
     const totalSize = files.reduce((sum, f) => sum + f.size, 0);
     if (totalSize > MAX_TOTAL_MB * 1024 * 1024) {
       setError(`Total de arquivos excede ${MAX_TOTAL_MB}MB. Reduza o tamanho ou divida em lotes menores.`);

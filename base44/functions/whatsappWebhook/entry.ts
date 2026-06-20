@@ -14,7 +14,7 @@ function arrayBufferToBase64(buffer) {
 async function fetchFileAsBlock(url, i) {
   const headRes = await fetch(url, { method: 'HEAD' });
   const contentLength = parseInt(headRes.headers.get('content-length') || '0', 10);
-  const MAX_FILE_MB = 30;
+  const MAX_FILE_MB = 100;
   if (contentLength > MAX_FILE_MB * 1024 * 1024) {
     const sizeMB = Math.round(contentLength / (1024 * 1024));
     throw new Error(`Arquivo ${i + 1} excede o limite de ${MAX_FILE_MB}MB (${sizeMB}MB). Comprima ou divida o PDF em arquivos menores.`);
