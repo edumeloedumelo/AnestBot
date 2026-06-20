@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { Link } from "react-router-dom";
-import { ArrowLeft, Clock, AlertTriangle, CheckCircle, XCircle, Users, ClipboardList, Loader2 } from "lucide-react";
+import { ArrowLeft, Clock, AlertTriangle, CheckCircle, XCircle, Users, ClipboardList, Loader2, Trash2 } from "lucide-react";
 import ClearHistoryButton from "@/components/historico/ClearHistoryButton";
 
 const STATUS_CONFIG = {
@@ -25,6 +25,11 @@ export default function Historico() {
     const data = await base44.entities.Triage.list("-created_date", 200);
     setTriages(data);
     setLoading(false);
+  };
+
+  const handleDelete = async (id) => {
+    await base44.entities.Triage.delete(id);
+    setTriages(prev => prev.filter(t => t.id !== id));
   };
 
   const filtered = filter === "all" ? triages : triages.filter(t => {
@@ -133,13 +138,22 @@ export default function Historico() {
                       <h3 className="font-semibold text-sm text-white truncate uppercase tracking-wider">{t.patient_name}</h3>
                       <p className="text-[11px] text-[#a0a0a0]">{t.surgery_type}</p>
                     </div>
-                    <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                      <span className={`text-[9px] font-semibold px-2 py-0.5 rounded-full uppercase tracking-wider ${config.bg} ${config.color}`}>
-                        {config.label}
-                      </span>
-                      <span className="text-[10px] text-[#555]">
-                        {new Date(t.created_date).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
-                      </span>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <div className="flex flex-col items-end gap-1">
+                        <span className={`text-[9px] font-semibold px-2 py-0.5 rounded-full uppercase tracking-wider ${config.bg} ${config.color}`}>
+                          {config.label}
+                        </span>
+                        <span className="text-[10px] text-[#555]">
+                          {new Date(t.created_date).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                      </div>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleDelete(t.id); }}
+                        className="p-2 rounded-lg text-[#555] hover:text-[#f87171] hover:bg-[#f87171]/10 transition-colors"
+                        title="Excluir"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                     </div>
                   </button>
 

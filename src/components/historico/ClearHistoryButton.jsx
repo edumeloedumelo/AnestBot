@@ -18,9 +18,15 @@ export default function ClearHistoryButton({ onCleared }) {
   const handleClear = async () => {
     setLoading(true);
     try {
-      await base44.functions.invoke("clearTriageHistory", {});
-      onCleared?.();
-      setOpen(false);
+      const res = await base44.functions.invoke("clearTriageHistory", {});
+      if (res.data?.success) {
+        onCleared?.();
+        setOpen(false);
+      } else {
+        alert(res.data?.error || "Erro ao limpar histórico");
+      }
+    } catch (err) {
+      alert(err?.response?.data?.error || "Erro de conexão ao limpar histórico");
     } finally {
       setLoading(false);
     }
