@@ -118,7 +118,7 @@ export default function Triagem() {
         const msgLower = raw.toLowerCase();
         let msg;
         if (msgLower.includes("user-exception") || msgLower.includes("user exception")) {
-          msg = "Arquivo muito grande ou formato incompatível. Reduza o tamanho do PDF (máx. 30MB) e tente novamente.";
+          msg = "Arquivo muito grande ou formato incompatível. Reduza o tamanho do PDF (máx. 100MB por arquivo) e tente novamente.";
         } else if (msgLower.includes("limite") || msgLower.includes("tamanho") || msgLower.includes("grande")) {
           msg = raw;
         } else if (msgLower.includes("429") || msgLower.includes("rate")) {

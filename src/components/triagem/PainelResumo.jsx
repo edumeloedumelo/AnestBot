@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Button } from "@/components/ui/button";
-import { Copy, Check, HardDrive, Loader2 } from "lucide-react";
-import { base44 } from "@/api/base44Client";
+import { Copy, Check } from "lucide-react";
 
 const statusEmojis = {
   "✅": "text-[#4CAF50]",
@@ -12,9 +11,6 @@ const statusEmojis = {
 
 export default function PainelResumo({ result }) {
   const [copied, setCopied] = useState(false);
-  const [savingDrive, setSavingDrive] = useState(false);
-  const [savedDrive, setSavedDrive] = useState(false);
-  const [driveError, setDriveError] = useState("");
   const {
     patientName = '',
     patientInfo = '',
@@ -60,29 +56,6 @@ export default function PainelResumo({ result }) {
     } catch {}
   };
 
-  const handleSaveToDrive = async () => {
-    setSavingDrive(true);
-    setDriveError("");
-    try {
-      const res = await base44.functions.invoke("saveToDrive", {
-        patientName,
-        surgeryType,
-        blocoResumo,
-        createdDate: new Date().toISOString(),
-      });
-      if (res.data?.success) {
-        setSavedDrive(true);
-        setTimeout(() => setSavedDrive(false), 3000);
-      } else {
-        setDriveError(res.data?.error || "Erro ao salvar");
-      }
-    } catch (e) {
-      setDriveError(e?.response?.data?.error || "Erro de conexão");
-    } finally {
-      setSavingDrive(false);
-    }
-  };
-
   return (
     <div className="space-y-3">
       {/* Bloco Resumo — cartão principal para leitura rápida + cópia */}
@@ -104,28 +77,7 @@ export default function PainelResumo({ result }) {
               {copied ? <Check className="w-3.5 h-3.5 mr-1 text-[#4CAF50]" /> : <Copy className="w-3.5 h-3.5 mr-1" />}
               {copied ? 'Copiado' : 'Copiar WhatsApp'}
             </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleSaveToDrive}
-              disabled={savingDrive || savedDrive}
-              className={`h-7 px-3 text-[10px] font-bold rounded-lg uppercase tracking-wider transition-colors ${
-                savedDrive
-                  ? 'text-[#4CAF50]'
-                  : driveError
-                    ? 'text-[#f87171]'
-                    : 'text-[#888] hover:text-white'
-              }`}
-            >
-              {savingDrive ? (
-                <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
-              ) : savedDrive ? (
-                <Check className="w-3.5 h-3.5 mr-1" />
-              ) : (
-                <HardDrive className="w-3.5 h-3.5 mr-1" />
-              )}
-              {savingDrive ? 'Salvando...' : savedDrive ? 'Salvo no Drive' : driveError ? 'Erro' : 'Salvar no Drive'}
-            </Button>
+
           </div>
         </div>
 
