@@ -1,5 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+const CHUNK_SIZE = 4;
+
 async function streamToBase64(body) {
   const reader = body.getReader();
   const base64Chunks = [];
@@ -46,6 +48,50 @@ async function fetchFileBlock(url, i) {
   return { type: 'text', text: `[Arquivo ${i + 1}]\n${new TextDecoder().decode(buffer).substring(0, 8000)}` };
 }
 
+function normalizeName(name) {
+  return name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z\s]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+function mergePatientGroups(allGroups) {
+  const merged = {};
+  for (const group of allGroups) {
+    for (const p of (group.patients || [])) {
+      const key = normalizeName(p.name || 'paciente');
+      if (!merged[key]) {
+        merged[key] = { name: p.name, surgeryType: p.surgeryType || 'indefinida', examIndices: [] };
+      }
+      for (const idx of (p.examIndices || [])) {
+        if (!merged[key].examIndices.includes(idx)) merged[key].examIndices.push(idx);
+      }
+      if (p.surgeryType && p.surgeryType !== 'indefinida' && merged[key].surgeryType === 'indefinida') {
+        merged[key].surgeryType = p.surgeryType;
+      }
+    }
+  }
+  return Object.values(merged).map(p => ({ name: p.name, surgeryType: p.surgeryType, examIndices: p.examIndices.sort((a, b) => a - b) }));
+}
+
+async function callClaude(systemPrompt, content, apiKey, maxTokens, tools, toolChoice) {
+  const body = { model: 'claude-sonnet-4-6', max_tokens: maxTokens, system: systemPrompt, messages: [{ role: 'user', content }] };
+  if (tools) { body.tools = tools; body.tool_choice = toolChoice; }
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Claude (${res.status}): ${err.substring(0, 200)}`);
+  }
+  const data = await res.json();
+  if (tools) {
+    const toolBlock = (data.content || []).find(c => c.type === 'tool_use');
+    if (toolBlock) return toolBlock.input;
+    return null;
+  }
+  return data.content?.[0]?.text || '';
+}
+
 Deno.serve(async (req) => {
   try {
     const body = await req.json();
@@ -61,118 +107,152 @@ Deno.serve(async (req) => {
       base44.asServiceRole.entities.ExamLimit.list()
     ]);
 
-const systemPrompt = `Anestesista — triagem pré-operatória. ULTRACONCISO. Sem explicações. Só checklist + resumo.
+    const allBlocks = await Promise.all(fileUrls.map((url, i) => fetchFileBlock(url, i)));
 
-CIRURGIAS:
-${surgeries.map(s => `- ${s.name}: ${(s.required_exams || []).join(', ')}`).join('\n')}
-Combinadas = união de exames.
+    // ===== PHASE 1: Identify patients =====
+    const keys = surgeries.map(s => `"${s.key}"`).join(', ');
+    const surgeryList = surgeries.map(s => `- ${s.name} → "${s.key}"`).join('\n');
 
-REGRAS:
-- Hb ≥ 12. < 12 = alterado.
-- PCR > 10 = alterado.
-- BIRADS 1-2 ok. 3-6 = mastologista (sem parecer = 🚨 CRÍTICO).
-- Nódulo RX tórax = pneumologista.
-- GLP-1 = suspender 21d.
-- Anti-HBs = ignorar. Sempre suficiente.
-- Cirurgia de reparo mamário ou qualquer outra = NÃO exige mamografia nem exames de imagem novos.
-- ECG: FC ≥ 50 isolada ok.
-- Urina: só ITU.
-- Ilegível = ❓. Nunca inventar.
-- Não enviado = ❌.
+    const identifyPrompt = `Identifique pacientes nos exames. Retorne APENAS JSON via output_patients.
 
-LIMITES:
-${examLimits.map(l => `- ${l.exam_name}: ${l.description}${l.unit ? ' (' + l.unit + ')' : ''}`).join('\n')}
+Cirurgias: ${keys.length ? keys + ', "combinada", "indefinida"' : '"indefinida"'}
+${surgeryList}
 
-FORMATO: output_triage. Só checklist + blocoResumo. NADA mais.`;
+Tipos de exame: Hemograma, Coagulograma, Ionograma, Bioquímica renal, Mamografia/USG, Sorologias, Beta-HCG, Urina/EAS, ECG, RX tórax, Risco cirúrgico, USG abdome, USG parede, Outro
 
-    const blocks = await Promise.all(fileUrls.map((url, i) => fetchFileBlock(url, i)));
+Agrupe por nome aproximado. Use anamnese para cirurgia. Na dúvida → "indefinida".
+examIndices: índices RELATIVOS (0, 1, 2...).`;
 
-    const content = [];
-    const isSinglePdf = fileUrls.length === 1;
-    content.push({ type: 'text', text: `${isSinglePdf ? '⚠️ PDF único: LEIA TODAS AS PÁGINAS.\n' : ''}${anamnesis.trim() ? 'Anamnese: ' + anamnesis.substring(0, 300) + '\n\n' : ''}CHECKLIST rápido. Sem justificativas. Só output_triage.` });
-
-    for (let i = 0; i < blocks.length; i++) {
-      const b = blocks[i];
-      content.push({ type: 'text', text: `--- EXAME [${i + 1}] ---` });
-      content.push(b || { type: 'text', text: '[indisponível]' });
+    const chunks = [];
+    for (let i = 0; i < fileUrls.length; i += CHUNK_SIZE) {
+      chunks.push({ start: i, end: Math.min(i + CHUNK_SIZE, fileUrls.length) });
     }
 
-    const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 3072,
-        system: systemPrompt,
-        messages: [{ role: 'user', content }],
-        tools: [{
-          name: 'output_triage',
-          description: 'Triagem pré-anestésica',
-          input_schema: {
-            type: 'object',
-            properties: {
-              patientName: { type: 'string' },
-              patientInfo: { type: 'string' },
-              surgeryType: { type: 'string' },
-              examResults: { type: 'array', items: { type: 'object', properties: { exam: { type: 'string' }, status: { type: 'string', description: '✅/⚠️/❌/❓' }, value: { type: 'string' } }, required: ['exam', 'status', 'value'] } },
-              alerts: { type: 'array', items: { type: 'object', properties: { severity: { type: 'string' }, text: { type: 'string' } }, required: ['severity', 'text'] } },
-              missingExams: { type: 'array', items: { type: 'string' } },
-              alteredExams: { type: 'array', items: { type: 'string' } },
-              finalStatus: { type: 'string' },
-              conduct: { type: 'string' },
-              blocoResumo: { type: 'string' }
-            },
-            required: ['patientName', 'surgeryType', 'finalStatus', 'examResults', 'blocoResumo']
-          }
-        }],
-        tool_choice: { type: 'tool', name: 'output_triage' }
-      })
-    });
-
-    if (!claudeRes.ok) {
-      const err = await claudeRes.text();
-      return Response.json({ error: `Erro Claude (${claudeRes.status}): ${err.substring(0, 300)}` }, { status: 500 });
+    const allGroups = [];
+    for (const chunk of chunks) {
+      const content = [];
+      let ctx = `${chunk.end - chunk.start} arquivos. Identifique nome, tipo de exame e cirurgia.`;
+      if (chunk.start === 0 && anamnesis?.trim()) {
+        ctx += `\nANAMNESE: ${anamnesis}`;
+      }
+      content.push({ type: 'text', text: ctx });
+      for (let i = chunk.start; i < chunk.end; i++) {
+        content.push({ type: 'text', text: `--- ARQUIVO [${i - chunk.start}] ---` });
+        content.push(allBlocks[i] || { type: 'text', text: '[indisponível]' });
+      }
+      const identifyTools = [{
+        name: 'output_patients',
+        description: 'Pacientes identificados',
+        input_schema: {
+          type: 'object',
+          properties: {
+            patients: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, surgeryType: { type: 'string' }, examIndices: { type: 'array', items: { type: 'integer' } } }, required: ['name', 'surgeryType', 'examIndices'] } }
+          },
+          required: ['patients']
+        }
+      }];
+      const json = await callClaude(identifyPrompt, content, apiKey, 2048, identifyTools, { type: 'tool', name: 'output_patients' });
+      if (!json) throw new Error('IA não identificou pacientes');
+      allGroups.push({
+        patients: (json.patients || []).map(p => ({ ...p, examIndices: (p.examIndices || []).map(idx => idx + chunk.start) }))
+      });
     }
 
-    const data = await claudeRes.json();
-    const toolBlock = (data.content || []).find(c => c.type === 'tool_use' && c.name === 'output_triage');
-    
-    if (!toolBlock || !toolBlock.input) {
-      return Response.json({ error: 'IA não retornou dados estruturados.' }, { status: 500 });
+    const patients = mergePatientGroups(allGroups);
+    if (patients.length === 0) {
+      return Response.json({ patientsFound: 0, results: [] });
     }
 
-    const parsed = toolBlock.input;
+    // ===== PHASE 2: Analyze each patient =====
+    const limitsRef = examLimits.map(e =>
+      `- ${e.exam_name}: ${e.description || ''}${e.min_value != null ? ' mín' + e.min_value : ''}${e.max_value != null ? ' máx' + e.max_value : ''}${e.unit ? ' ' + e.unit : ''}`
+    ).join('\n');
 
-    let status = 'incomplete';
-    const fs = parsed.finalStatus || '';
-    if (fs.includes('crítica') || fs.includes('🚨')) status = 'critical_pending';
-    else if (fs.includes('sem alertas') || fs.includes('✅')) status = 'complete_without_alerts';
-    else if (fs.includes('com alertas') || fs.includes('⚠️')) status = 'complete_with_alerts';
+    const results = [];
+    for (const patient of patients) {
+      const patientBlockIndices = patient.examIndices?.length > 0 ? patient.examIndices : [...Array(fileUrls.length).keys()];
 
-    await base44.asServiceRole.entities.Triage.create({
-      patient_name: parsed.patientName,
-      surgery_type: parsed.surgeryType || 'indefinida',
-      status,
-      missing_exams: parsed.missingExams || [],
-      altered_exams: parsed.alteredExams || [],
-      relatorio_tecnico: '',
-      bloco_resumo: parsed.blocoResumo || '',
-      files_count: fileUrls.length
-    });
+      const surgery = surgeries.find(s => s.key === patient.surgeryType);
+      const requiredExams = surgery?.required_exams || [];
+
+      const analyzePrompt = `Anestesista — triagem. ULTRACONCISO. Só checklist + resumo. ZERO explicações.
+
+Procedimento: ${surgery?.name || patient.surgeryType || 'Não identificado'}
+Exames obrigatórios: ${requiredExams.length > 0 ? requiredExams.join(', ') : 'Nenhum'}
+
+REGRAS: Hb≥12. PCR>10=alterado. BIRADS 3-6=mastologista(sem=🚨CRÍTICO). Nódulo RX=pneumologista. GLP-1=suspender 21d. Anti-HBs=ignorar(suficiente). Reparo mamário=NÃO exige mamografia. ECG FC≥50 ok. Urina só ITU. Ilegível=❓(nunca inventar). Não enviado=❌.
+
+LIMITES: ${limitsRef || 'Padrão'}
+
+FORMATO: output_analysis. Checklist + blocoResumo. NADA mais.`;
+
+      const analyzeContent = [];
+      const isSingleDoc = patientBlockIndices.length === 1;
+      if (anamnesis?.trim()) analyzeContent.push({ type: 'text', text: `ANAMNESE: ${anamnesis}\n` });
+      analyzeContent.push({ type: 'text', text: `${isSingleDoc ? '⚠️ LEIA TODAS AS PÁGINAS do PDF.\n' : ''}Paciente: ${patient.name}. CHECKLIST. Sem justificativas. Ilegível=❓. NUNCA inventar.` });
+      for (let i = 0; i < patientBlockIndices.length; i++) {
+        const idx = patientBlockIndices[i];
+        analyzeContent.push({ type: 'text', text: `--- EXAME [${i}] ---` });
+        analyzeContent.push(allBlocks[idx] || { type: 'text', text: '[indisponível]' });
+      }
+
+      const analyzeTools = [{
+        name: 'output_analysis',
+        description: 'Análise pré-anestésica',
+        input_schema: {
+          type: 'object',
+          properties: {
+            patientName: { type: 'string' }, patientInfo: { type: 'string' }, surgeryType: { type: 'string' },
+            examResults: { type: 'array', items: { type: 'object', properties: { exam: { type: 'string' }, status: { type: 'string', description: '✅/⚠️/❌/❓' }, value: { type: 'string' } }, required: ['exam', 'status', 'value'] } },
+            alerts: { type: 'array', items: { type: 'object', properties: { severity: { type: 'string', description: '❌/⚠️/ℹ️' }, text: { type: 'string' } }, required: ['severity', 'text'] } },
+            missingExams: { type: 'array', items: { type: 'string' } },
+            alteredExams: { type: 'array', items: { type: 'string' } },
+            finalStatus: { type: 'string' },
+            conduct: { type: 'string' },
+            blocoResumo: { type: 'string' }
+          },
+          required: ['patientName', 'surgeryType', 'finalStatus', 'examResults', 'blocoResumo']
+        }
+      }];
+      const analyzeResult = await callClaude(analyzePrompt, analyzeContent, apiKey, 3072, analyzeTools, { type: 'tool', name: 'output_analysis' });
+      if (!analyzeResult) continue;
+
+      let status = 'incomplete';
+      const fs = analyzeResult.finalStatus || '';
+      if (fs.includes('crítica') || fs.includes('🚨')) status = 'critical_pending';
+      else if (fs.includes('sem alertas') || fs.includes('✅')) status = 'complete_without_alerts';
+      else if (fs.includes('com alertas') || fs.includes('⚠️')) status = 'complete_with_alerts';
+
+      await base44.asServiceRole.entities.Triage.create({
+        patient_name: analyzeResult.patientName || patient.name,
+        surgery_type: analyzeResult.surgeryType || patient.surgeryType || 'indefinida',
+        status,
+        missing_exams: analyzeResult.missingExams || [],
+        altered_exams: analyzeResult.alteredExams || [],
+        relatorio_tecnico: '',
+        bloco_resumo: analyzeResult.blocoResumo || '',
+        files_count: patientBlockIndices.length
+      });
+
+      results.push({
+        patientName: analyzeResult.patientName,
+        patientInfo: analyzeResult.patientInfo || '',
+        surgeryType: analyzeResult.surgeryType || patient.surgeryType || 'indefinida',
+        examResults: analyzeResult.examResults || [],
+        alerts: analyzeResult.alerts || [],
+        missingExams: analyzeResult.missingExams || [],
+        alteredExams: analyzeResult.alteredExams || [],
+        finalStatus: analyzeResult.finalStatus || '❌ Pendente',
+        conduct: analyzeResult.conduct || '',
+        blocoResumo: analyzeResult.blocoResumo || '',
+        relatorioTecnico: '',
+        status
+      });
+    }
 
     return Response.json({
-      patientName: parsed.patientName,
-      patientInfo: parsed.patientInfo || '',
-      surgeryType: parsed.surgeryType || 'indefinida',
-      examResults: parsed.examResults || [],
-      alerts: parsed.alerts || [],
-      missingExams: parsed.missingExams || [],
-      alteredExams: parsed.alteredExams || [],
-      finalStatus: parsed.finalStatus || '❌ Pendente',
-      conduct: parsed.conduct || '',
-      blocoResumo: parsed.blocoResumo || '',
-      relatorioTecnico: '',
-      status
+      patientsFound: patients.length,
+      results
     });
   } catch (error) {
     return Response.json({ error: error.message || 'Erro interno.' }, { status: 500 });

@@ -109,31 +109,27 @@ export default function Triagem() {
         return;
       }
 
-      // fastAnalyzeStream pode retornar { phase1, phase2 } ou flat
-      const data = response.data;
-      let result;
-      if (data.phase1 && data.phase2) {
-        result = { ...data.phase1, ...data.phase2 };
-      } else if (data.phase1) {
-        result = { ...data.phase1, ...data };
-      } else {
-        result = data;
+      // Multi-paciente: results é um array de análises
+      const analysisResults = response.data?.results || [];
+      if (analysisResults.length === 0) {
+        setResults([]);
+        return;
       }
 
-      setResults([{
-        patientName: result.patientName || '',
-        patientInfo: result.patientInfo || '',
-        surgeryType: result.surgeryType || '',
-        examResults: result.examResults || [],
-        alerts: result.alerts || [],
-        missingExams: result.missingExams || [],
-        alteredExams: result.alteredExams || [],
-        finalStatus: result.finalStatus || '',
-        conduct: result.conduct || '',
-        blocoResumo: result.blocoResumo || '',
-        relatorioTecnico: result.relatorioTecnico || '',
-        medicationsToSuspend: result.medicationsToSuspend || []
-      }]);
+      setResults(analysisResults.map(r => ({
+        patientName: r.patientName || '',
+        patientInfo: r.patientInfo || '',
+        surgeryType: r.surgeryType || '',
+        examResults: r.examResults || [],
+        alerts: r.alerts || [],
+        missingExams: r.missingExams || [],
+        alteredExams: r.alteredExams || [],
+        finalStatus: r.finalStatus || '',
+        conduct: r.conduct || '',
+        blocoResumo: r.blocoResumo || '',
+        relatorioTecnico: r.relatorioTecnico || '',
+        medicationsToSuspend: r.medicationsToSuspend || []
+      })));
       setStreamingResult(null);
       setProgressStatus("");
     } catch (err) {
@@ -261,11 +257,13 @@ export default function Triagem() {
                   Pacientes
                 </h3>
                 <p className="text-[10px] text-[#555] uppercase tracking-wider mb-4">
-                  Nenhum exame carregado
+                  {files.length > 0 ? `${files.length} arquivo${files.length > 1 ? 's' : ''} carregado${files.length > 1 ? 's' : ''}` : 'Nenhum exame carregado'}
                 </p>
                 <div className="space-y-3">
                   <p className="text-[11px] text-[#555] text-center py-8">
-                    Envie arquivos para identificar pacientes automaticamente
+                    {files.length > 0
+                      ? 'A IA identifica automaticamente cada paciente pelo nome nos exames'
+                      : 'Envie arquivos para identificar pacientes automaticamente'}
                   </p>
                 </div>
               </div>

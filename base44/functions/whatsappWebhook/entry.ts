@@ -96,25 +96,15 @@ Deno.serve(async (req) => {
     const keys = surgeries.map(s => `"${s.key}"`).join(', ');
     const surgeryList = surgeries.map(s => `- **${s.name}** → key: "${s.key}"`).join('\n');
 
-    const identifyPrompt = `Você é um assistente médico. Analise os arquivos e identifique pacientes e tipos de exame.
+    const identifyPrompt = `Identifique pacientes nos exames. Retorne APENAS JSON via output_patients.
 
-Retorne APENAS JSON:
-{
-  "patients": [
-    {
-      "name": "Nome da Paciente",
-      "surgeryType": ${keys.length ? keys + ' ou "combinada" ou "indefinida"' : '"indefinida"'},
-      "examIndices": [0, 1]
-    }
-  ]
-}
+Cirurgias: ${keys.length ? keys + ', "combinada", "indefinida"' : '"indefinida"'}
+${surgeryList}
 
-Cirurgias conhecidas:\n${surgeryList}
-
-Tipos de exame: Hemograma, Coagulograma, Ionograma, Bioquímica renal, Mamografia/USG mamas, Sorologias, Beta-HCG, Urina/EAS, ECG, RX tórax, Risco cirúrgico, USG abdome, USG parede abdominal, Outro
+Tipos de exame: Hemograma, Coagulograma, Ionograma, Bioquímica renal, Mamografia/USG, Sorologias, Beta-HCG, Urina/EAS, ECG, RX tórax, Risco cirúrgico, USG abdome, USG parede, Outro
 
 Agrupe por nome aproximado. Use anamnese para cirurgia. Na dúvida → "indefinida".
-examIndices: índices RELATIVOS aos arquivos deste lote (0, 1, 2...).`;
+examIndices: índices RELATIVOS (0, 1, 2...).`;
 
     const allBlocks = await Promise.all(fileUrls.map((url, i) => fetchFileAsBlock(url, i)));
 
@@ -191,16 +181,16 @@ examIndices: índices RELATIVOS aos arquivos deste lote (0, 1, 2...).`;
         `- ${e.exam_name}: ${e.description || ''} (${e.rule_type || ''}) ${e.min_value != null ? 'mín ' + e.min_value : ''}${e.max_value != null ? ' máx ' + e.max_value : ''} ${e.unit || ''}`
       ).join('\n');
 
-      const analyzePrompt = `Anestesista — triagem. ULTRACONCISO. Só checklist + resumo.
+      const analyzePrompt = `Anestesista — triagem. ULTRACONCISO. Só checklist + resumo. ZERO explicações.
 
 Procedimento: ${surgery?.name || patient.surgeryType || 'Não identificado'}
 Exames obrigatórios: ${requiredExams.length > 0 ? requiredExams.join(', ') : 'Nenhum'}
 
-REGRAS: Hb≥12. PCR>10=alterado. BIRADS 3-6=mastologista. Nódulo RX=pneumologista. GLP-1=suspender 21d. Anti-HBs=ignorar. Reparo mamário=NÃO exige mamografia. ECG FC≥50 ok. Urina só ITU.
+REGRAS: Hb≥12. PCR>10=alterado. BIRADS 3-6=mastologista(sem=🚨CRÍTICO). Nódulo RX=pneumologista. GLP-1=suspender 21d. Anti-HBs=ignorar(suficiente). Reparo mamário=NÃO exige mamografia. ECG FC≥50 ok. Urina só ITU. Ilegível=❓(nunca inventar). Não enviado=❌.
 
 LIMITES: ${limitsRef || 'Padrão'}
 
-Retorne via output_analysis. Só checklist + blocoResumo.`;
+FORMATO: output_analysis. Checklist + blocoResumo. NADA mais.`;
 
       const analyzeContent = [];
       if (anamnesis?.trim()) {
