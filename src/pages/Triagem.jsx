@@ -3,12 +3,12 @@ import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { RotateCcw, Settings, ClipboardList, Upload, Share2, Activity, Zap, Bell, AlertTriangle } from "lucide-react";
-import { Link } from "react-router-dom";
+import { RotateCcw, Upload, Share2, Zap, Bell, AlertTriangle } from "lucide-react";
 import FileUploader from "@/components/triagem/FileUploader";
 import ProgressIndicator from "@/components/triagem/ProgressIndicator";
 import PainelResumo from "@/components/triagem/PainelResumo";
 import ClearHistoryButton from "@/components/historico/ClearHistoryButton";
+import PullToRefresh from "@/components/PullToRefresh";
 
 export default function Triagem() {
   const [anamnesis, setAnamnesis] = useState("");
@@ -183,39 +183,16 @@ export default function Triagem() {
   };
 
   return (
-    <div className="min-h-screen bg-[#000000]">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+    <PullToRefresh onRefresh={() => window.location.reload()}>
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4 sm:py-6">
         {/* Header */}
-        <header className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8 sm:mb-10">
-          <div className="flex items-center gap-3 sm:gap-4">
-            <div className="w-9 h-9 rounded-xl bg-[#121212] border border-[#2d2d2d] flex items-center justify-center flex-shrink-0">
-              <Activity className="w-5 h-5 text-[#808080]" />
-            </div>
-            <div>
-              <h1 className="text-sm font-extrabold text-white tracking-[0.15em] uppercase">
-                Avaliação Pré-Anestésica
-              </h1>
-              <p className="text-[10px] sm:text-[11px] text-[#a0a0a0] mt-0.5 hidden sm:block">
-                Apoio à decisão clínica — Suporte Anestésico Pré-Cirúrgico
-              </p>
-            </div>
-          </div>
-          <div className="flex gap-2 w-full sm:w-auto">
-            <Link
-              to="/cirurgias"
-              className="flex-1 sm:flex-none flex items-center justify-center gap-2 text-[11px] font-medium text-[#a0a0a0] hover:text-white transition-colors px-3 py-2.5 rounded-full bg-[#121212] border border-[#2d2d2d] uppercase tracking-wider"
-            >
-              <Settings className="w-3.5 h-3.5" />
-              <span className="sm:inline">Configurações</span>
-            </Link>
-            <Link
-              to="/historico"
-              className="flex-1 sm:flex-none flex items-center justify-center gap-2 text-[11px] font-medium text-[#a0a0a0] hover:text-white transition-colors px-3 py-2.5 rounded-full bg-[#121212] border border-[#2d2d2d] uppercase tracking-wider"
-            >
-              <ClipboardList className="w-3.5 h-3.5" />
-              <span className="sm:inline">Histórico</span>
-            </Link>
-          </div>
+        <header className="mb-6 sm:mb-8">
+          <h1 className="text-sm font-extrabold text-white tracking-[0.15em] uppercase">
+            Avaliação Pré-Anestésica
+          </h1>
+          <p className="text-[10px] sm:text-[11px] text-[#a0a0a0] mt-0.5 hidden sm:block">
+            Apoio à decisão clínica — Suporte Anestésico Pré-Cirúrgico
+          </p>
         </header>
 
         {/* Shared indicator */}
@@ -430,6 +407,6 @@ export default function Triagem() {
           </div>
         </footer>
       </div>
-    </div>
+    </PullToRefresh>
   );
 }

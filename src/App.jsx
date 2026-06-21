@@ -6,6 +6,7 @@ import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import ScrollToTop from './components/ScrollToTop';
+import MobileLayout from '@/components/MobileLayout';
 // Add page imports here
 import Triagem from '@/pages/Triagem';
 import Cirurgias from '@/pages/Cirurgias';
@@ -39,10 +40,12 @@ const AuthenticatedApp = () => {
   // Render the main app
   return (
     <Routes>
-      {/* Add your page Route elements here */}
-      <Route path="/" element={<Triagem />} />
-      <Route path="/cirurgias" element={<AdminRoute><Cirurgias /></AdminRoute>} />
-      <Route path="/historico" element={<AdminRoute><Historico /></AdminRoute>} />
+      {/* Main app routes wrapped in MobileLayout */}
+      <Route element={<MobileLayout />}>
+        <Route path="/" element={<Triagem />} />
+        <Route path="/cirurgias" element={<AdminRoute><Cirurgias /></AdminRoute>} />
+        <Route path="/historico" element={<AdminRoute><Historico /></AdminRoute>} />
+      </Route>
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );

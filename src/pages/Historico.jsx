@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
-import { Link } from "react-router-dom";
-import { ArrowLeft, Clock, AlertTriangle, CheckCircle, XCircle, Users, ClipboardList, Loader2, Trash2 } from "lucide-react";
+import { Clock, AlertTriangle, CheckCircle, XCircle, Users, ClipboardList, Loader2, Trash2 } from "lucide-react";
 import ClearHistoryButton from "@/components/historico/ClearHistoryButton";
+import PullToRefresh from "@/components/PullToRefresh";
 
 const STATUS_CONFIG = {
   complete_without_alerts: { label: "Completo", icon: CheckCircle, color: "text-[#4ade80]", bg: "bg-[#4ade80]/10", border: "border-[#4ade80]/20" },
@@ -47,28 +47,23 @@ export default function Historico() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#000000] flex items-center justify-center">
+      <div className="bg-background flex items-center justify-center min-h-screen">
         <Loader2 className="w-6 h-6 text-[#808080] animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#000000]">
+    <PullToRefresh onRefresh={loadTriages}>
       <div className="max-w-4xl mx-auto px-6 py-8">
         {/* Header */}
         <div className="flex items-center gap-3 mb-8">
-          <Link to="/" className="text-[#555] hover:text-white transition-colors">
-            <ArrowLeft className="w-5 h-5" />
-          </Link>
-          <div>
+          <div className="flex-1">
             <h1 className="text-sm font-extrabold text-white uppercase tracking-[0.15em]">Histórico de Avaliações</h1>
             <p className="text-[11px] text-[#555] mt-0.5">Painel administrativo — auditoria e rastreabilidade</p>
           </div>
           {triages.length > 0 && (
-            <div className="ml-auto">
-              <ClearHistoryButton onCleared={() => setTriages([])} />
-            </div>
+            <ClearHistoryButton onCleared={() => setTriages([])} />
           )}
         </div>
 
@@ -179,6 +174,6 @@ export default function Historico() {
           </div>
         )}
       </div>
-    </div>
+    </PullToRefresh>
   );
 }

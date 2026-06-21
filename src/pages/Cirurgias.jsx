@@ -1,12 +1,20 @@
 import { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
-import { Plus, ArrowLeft, Settings } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Plus, Settings, Trash2, Loader2 } from "lucide-react";
 import SurgeryCard from "@/components/cirurgias/SurgeryCard";
 import SurgeryForm from "@/components/cirurgias/SurgeryForm";
 import ExamLimitCard from "@/components/cirurgias/ExamLimitCard";
 import ExamLimitForm from "@/components/cirurgias/ExamLimitForm";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+} from "@/components/ui/alert-dialog";
 
 export default function Cirurgias() {
   const [surgeries, setSurgeries] = useState([]);
@@ -20,6 +28,8 @@ export default function Cirurgias() {
   const [activeTab, setActiveTab] = useState("surgeries");
   const [surgeryError, setSurgeryError] = useState("");
   const [limitError, setLimitError] = useState("");
+  const [deleteAccountOpen, setDeleteAccountOpen] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
 
   const loadSurgeries = async () => {
     const data = await base44.entities.Surgery.list();
@@ -99,12 +109,9 @@ export default function Cirurgias() {
   };
 
   return (
-    <div className="min-h-screen bg-[#000000]">
+    <div className="bg-background">
       <div className="max-w-3xl mx-auto px-6 py-8">
-        <div className="flex items-center gap-3 mb-8">
-          <Link to="/" className="text-[#555] hover:text-white transition-colors">
-            <ArrowLeft className="w-5 h-5" />
-          </Link>
+        <div className="mb-8">
           <div>
             <h1 className="text-sm font-extrabold text-white uppercase tracking-[0.15em]">
               Gerenciar Cirurgias
@@ -230,6 +237,61 @@ export default function Cirurgias() {
             )}
           </>
         )}
+
+        {/* Delete Account */}
+        <div className="mt-16 pt-8 border-t border-[#1a1a1a]">
+          <div className="bg-[#f87171]/5 border border-[#f87171]/15 rounded-2xl p-5">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-8 h-8 rounded-lg bg-[#f87171]/10 flex items-center justify-center">
+                <Trash2 className="w-4 h-4 text-[#f87171]" />
+              </div>
+              <div>
+                <h3 className="text-xs font-extrabold text-white uppercase tracking-[0.15em]">Zona de Perigo</h3>
+                <p className="text-[10px] text-[#888]">Excluir permanentemente sua conta e todos os dados</p>
+              </div>
+            </div>
+            <Button
+              onClick={() => setDeleteAccountOpen(true)}
+              variant="destructive"
+              className="bg-[#f87171] hover:bg-[#ef4444] text-white gap-2 rounded-xl text-xs font-semibold uppercase tracking-wider"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Excluir minha conta
+            </Button>
+          </div>
+        </div>
+
+        <AlertDialog open={deleteAccountOpen} onOpenChange={setDeleteAccountOpen}>
+          <AlertDialogContent className="bg-[#121212] border-[#2d2d2d] max-w-sm">
+            <AlertDialogHeader>
+              <AlertDialogTitle className="text-white text-base">Excluir sua conta?</AlertDialogTitle>
+              <AlertDialogDescription className="text-[#a0a0a0] text-sm leading-relaxed">
+                Esta ação é irreversível. Todos os seus dados, avaliações e configurações serão permanentemente removidos. Sua conta será encerrada e você perderá o acesso ao aplicativo.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={deletingAccount} className="bg-transparent border-[#2d2d2d] text-[#a0a0a0] hover:bg-[#1a1a1a] hover:text-white text-xs uppercase tracking-wider">
+                Cancelar
+              </AlertDialogCancel>
+              <button
+                onClick={async () => {
+                  setDeletingAccount(true);
+                  try {
+                    await base44.functions.invoke("clearTriageHistory", {});
+                    await base44.auth.logout("/");
+                  } catch {
+                    await base44.auth.logout("/");
+                  }
+                }}
+                disabled={deletingAccount}
+                className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-semibold bg-[#f87171] text-white hover:bg-[#ef4444] transition-colors disabled:opacity-50 uppercase tracking-wider"
+              >
+                {deletingAccount ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                {deletingAccount ? "Excluindo..." : "Sim, excluir tudo"}
+              </button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </div>
   );
