@@ -3,11 +3,11 @@ import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { RotateCcw, Upload, Share2, Zap, Bell, AlertTriangle } from "lucide-react";
+import { RotateCcw, Upload, Share2, Zap, AlertTriangle } from "lucide-react";
 import FileUploader from "@/components/triagem/FileUploader";
 import ProgressIndicator from "@/components/triagem/ProgressIndicator";
 import PainelResumo from "@/components/triagem/PainelResumo";
-import ClearHistoryButton from "@/components/historico/ClearHistoryButton";
+import SecurityNotice from "@/components/triagem/SecurityNotice";
 import PullToRefresh from "@/components/PullToRefresh";
 
 export default function Triagem() {
@@ -18,36 +18,6 @@ export default function Triagem() {
   const [error, setError] = useState("");
   const [results, setResults] = useState(null);
   const [sharedReceived, setSharedReceived] = useState(false);
-  const [streamMode, setStreamMode] = useState(true);
-  const [streamingResult, setStreamingResult] = useState(null);
-  const [whatsappResults, setWhatsappResults] = useState([]);
-  const [newWhatsappCount, setNewWhatsappCount] = useState(0);
-
-  // Subscribe to new Triage records (from WhatsApp webhook)
-  useEffect(() => {
-    let initialLoad = true;
-
-    const loadRecent = async () => {
-      try {
-        const recent = await base44.entities.Triage.list('-created_date', 20);
-        setWhatsappResults(recent);
-        if (initialLoad) initialLoad = false;
-      } catch {}
-    };
-
-    loadRecent();
-
-    const unsubscribe = base44.entities.Triage.subscribe((event) => {
-      try {
-        if (event.type === 'create' && event.data) {
-          setWhatsappResults(prev => [event.data, ...prev]);
-          setNewWhatsappCount(c => c + 1);
-        }
-      } catch {}
-    });
-
-    return unsubscribe;
-  }, []);
 
   const canAnalyze = files.length > 0 && !analyzing;
 
@@ -80,13 +50,11 @@ export default function Triagem() {
     setProgressStatus("");
     setError("");
     setResults(null);
-    setStreamingResult(null);
   }, [files]);
 
   const handleAnalyze = async () => {
     if (!canAnalyze) return;
 
-    // Check for very large files that may cause API errors
     const MAX_TOTAL_MB = 200;
     const totalSize = files.reduce((sum, f) => sum + f.size, 0);
     if (totalSize > MAX_TOTAL_MB * 1024 * 1024) {
@@ -97,7 +65,6 @@ export default function Triagem() {
     setAnalyzing(true);
     setError("");
     setResults(null);
-    setStreamingResult(null);
 
     try {
       setProgressStatus("uploading");
@@ -105,19 +72,15 @@ export default function Triagem() {
         files.map(file => base44.integrations.Core.UploadFile({ file }))
       );
       const fileUrls = uploadResults.map(r => r.file_url);
-      setProgressStatus("");
-
-      // Usa sempre o SDK para máxima confiabilidade
       setProgressStatus("analyzing");
 
-      const fnName = streamMode ? "fastAnalyzeStream" : "fastAnalyze";
-      const response = await base44.functions.invoke(fnName, { fileUrls, anamnesis });
+      const response = await base44.functions.invoke("analyzeSinglePatient", { fileUrls, anamnesis });
 
       if (response.data?.error) {
         const raw = response.data.error;
         const msgLower = raw.toLowerCase();
         let msg;
-        if (msgLower.includes("user-exception") || msgLower.includes("user exception")) {
+        if (msgLower.includes("user-exception")) {
           msg = "Arquivo muito grande ou formato incompatível. Reduza o tamanho do PDF (máx. 100MB por arquivo) e tente novamente.";
         } else if (msgLower.includes("limite") || msgLower.includes("tamanho") || msgLower.includes("grande")) {
           msg = raw;
@@ -127,6 +90,8 @@ export default function Triagem() {
           msg = "Erro de autenticação com o serviço de IA.";
         } else if (msgLower.includes("timeout")) {
           msg = "A análise excedeu o tempo limite. Tente com menos arquivos.";
+        } else if (msgLower.includes("não foi possível analisar")) {
+          msg = raw;
         } else {
           msg = raw;
         }
@@ -134,35 +99,20 @@ export default function Triagem() {
         return;
       }
 
-      // Multi-paciente: results é um array de análises
-      const analysisResults = response.data?.results || [];
-      if (analysisResults.length === 0) {
-        setResults([]);
+      const resultData = response.data?.result;
+      if (!resultData) {
+        setError("Resposta inesperada do servidor. Tente novamente.");
         return;
       }
 
-      setResults(analysisResults.map(r => ({
-        patientName: r.patientName || '',
-        patientInfo: r.patientInfo || '',
-        surgeryType: r.surgeryType || '',
-        examResults: r.examResults || [],
-        alerts: r.alerts || [],
-        missingExams: r.missingExams || [],
-        alteredExams: r.alteredExams || [],
-        finalStatus: r.finalStatus || '',
-        conduct: r.conduct || '',
-        blocoResumo: r.blocoResumo || '',
-        relatorioTecnico: r.relatorioTecnico || '',
-        medicationsToSuspend: r.medicationsToSuspend || []
-      })));
-      setStreamingResult(null);
+      setResults(resultData);
       setProgressStatus("");
     } catch (err) {
       const raw = err?.response?.data?.error || err?.message || "Erro de conexão.";
       const msgLower = raw.toLowerCase();
       let msg;
-      if (msgLower.includes("user-exception") || msgLower.includes("user exception")) {
-        msg = "Arquivo muito grande ou formato incompatível. Reduza o tamanho do PDF (máx. 30MB) e tente novamente.";
+      if (msgLower.includes("user-exception")) {
+        msg = "Arquivo muito grande ou formato incompatível. Reduza o tamanho do PDF (máx. 100MB por arquivo) e tente novamente.";
       } else if (msgLower.includes("limite") || msgLower.includes("tamanho") || msgLower.includes("grande")) {
         msg = raw;
       } else if (msgLower.includes("429") || msgLower.includes("rate")) {
@@ -196,7 +146,7 @@ export default function Triagem() {
         </header>
 
         {/* Shared indicator */}
-        {sharedReceived && !analyzing && !results && !streamingResult && (
+        {sharedReceived && !analyzing && !results && (
           <div className="mb-6 p-4 bg-[#121212] border border-[#2d2d2d] rounded-2xl flex items-center gap-3">
             <Share2 className="w-4 h-4 text-[#808080]" />
             <div>
@@ -206,10 +156,16 @@ export default function Triagem() {
           </div>
         )}
 
-        {/* Two-column layout */}
-        {!results && !streamingResult && (
+        {/* Security Notice */}
+        {!results && !analyzing && (
+          <div className="mb-6">
+            <SecurityNotice />
+          </div>
+        )}
+
+        {/* Main content — before results */}
+        {!results && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Main column */}
             <div className="lg:col-span-2 space-y-6">
               {/* Upload card */}
               <div className="bg-[#121212] border border-[#2d2d2d] rounded-2xl p-6">
@@ -223,15 +179,15 @@ export default function Triagem() {
                 </Label>
                 <Textarea
                   id="anamnesis"
-                  placeholder="Comorbidades, histórico cirúrgico, medicações de uso contínuo, alergias, IMC, idade..."
+                  placeholder="Comorbidades, histórico cirúrgico, medicações de uso contínuo, alergias, IMC, idade, TIPO DE CIRURGIA..."
                   value={anamnesis}
                   onChange={(e) => setAnamnesis(e.target.value)}
                   disabled={analyzing}
-                  rows={3}
+                  rows={4}
                   className="bg-[#0a0a0a] border-[#2d2d2d] resize-none rounded-xl text-white placeholder:text-[#555] focus:border-[#555] transition-colors text-sm"
                 />
                 <p className="text-[10px] text-[#555] mt-3 uppercase tracking-wider">
-                  Opcional · Aplicado a todos os pacientes do lote
+                  Inclua o tipo de cirurgia planejada e dados clínicos da paciente
                 </p>
               </div>
 
@@ -246,38 +202,23 @@ export default function Triagem() {
                 </div>
               )}
 
-              {/* Mode toggle + Analyze button */}
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => setStreamMode(!streamMode)}
-                  disabled={analyzing}
-                  className={`flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider px-3 py-3.5 rounded-xl border transition-all flex-shrink-0
-                    ${streamMode
-                      ? 'bg-[#FFC107]/15 border-[#FFC107]/40 text-[#FFC107] shadow-[0_0_12px_rgba(255,193,7,0.08)]'
-                      : 'bg-[#121212] border-[#2d2d2d] text-[#555] hover:border-[#555] hover:text-[#808080]'
-                    } disabled:opacity-50 disabled:cursor-not-allowed`}
-                >
-                  <Zap className={`w-3.5 h-3.5 ${streamMode ? 'text-[#FFC107]' : ''}`} />
-                  <span className="hidden sm:inline">{streamMode ? 'Turbo ativo' : 'Turbo'}</span>
-                </button>
-                <Button
-                  onClick={handleAnalyze}
-                  disabled={!canAnalyze}
-                  className={`flex-1 h-14 text-sm font-bold uppercase tracking-[0.2em] rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed
-                    ${streamMode ? 'bg-[#FFC107] hover:bg-[#FFD54F] text-black' : 'bg-[#808080] hover:bg-[#999]'}`}
-                >
-                  {analyzing ? "Analisando..." : (
-                    <><Upload className="w-5 h-5 mr-2" /> Analisar exames</>
-                  )}
-                </Button>
-              </div>
+              {/* Analyze button */}
+              <Button
+                onClick={handleAnalyze}
+                disabled={!canAnalyze}
+                className="w-full h-14 text-sm font-bold uppercase tracking-[0.2em] rounded-xl bg-[#808080] hover:bg-[#999] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {analyzing ? "Analisando..." : (
+                  <><Upload className="w-5 h-5 mr-2" /> Analisar exames</>
+                )}
+              </Button>
             </div>
 
-            {/* Sidebar — Pacientes */}
+            {/* Sidebar — info */}
             <div className="lg:col-span-1">
               <div className="bg-[#121212] border border-[#2d2d2d] rounded-2xl p-5">
                 <h3 className="text-[11px] font-bold text-white uppercase tracking-[0.15em] mb-1">
-                  Pacientes
+                  Arquivos
                 </h3>
                 <p className="text-[10px] text-[#555] uppercase tracking-wider mb-4">
                   {files.length > 0 ? `${files.length} arquivo${files.length > 1 ? 's' : ''} carregado${files.length > 1 ? 's' : ''}` : 'Nenhum exame carregado'}
@@ -285,8 +226,13 @@ export default function Triagem() {
                 <div className="space-y-3">
                   <p className="text-[11px] text-[#555] text-center py-8">
                     {files.length > 0
-                      ? 'A IA identifica automaticamente cada paciente pelo nome nos exames'
-                      : 'Envie arquivos para identificar pacientes automaticamente'}
+                      ? 'Todos os arquivos serão analisados como sendo da mesma paciente'
+                      : 'Envie os exames e preencha a anamnese para análise'}
+                  </p>
+                </div>
+                <div className="mt-4 pt-4 border-t border-[#1a1a1a]">
+                  <p className="text-[10px] text-[#444] leading-relaxed">
+                    Formatos aceitos: PDF, JPG, PNG, TXT — até 100MB por arquivo
                   </p>
                 </div>
               </div>
@@ -294,33 +240,12 @@ export default function Triagem() {
           </div>
         )}
 
-        {/* Streaming partial result */}
-        {streamingResult && (
+        {analyzing && !results && <ProgressIndicator status={progressStatus} />}
+
+        {/* Results — single patient */}
+        {results && (
           <div className="space-y-6 max-w-3xl">
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-[#FFC107] animate-pulse" />
-              <p className="text-[10px] text-[#FFC107] font-semibold uppercase tracking-[0.2em]">
-                Processando em tempo real...
-              </p>
-            </div>
-            <PainelResumo result={streamingResult} />
-          </div>
-        )}
-
-        {analyzing && !streamingResult && !results && <ProgressIndicator status={progressStatus} />}
-
-        {/* Results */}
-        {results && results.length > 0 && (
-          <div className="space-y-6 max-w-3xl">
-            <div className="flex items-center justify-between">
-              <p className="text-[10px] text-[#808080] font-semibold uppercase tracking-[0.2em]">
-                {results.length} paciente{results.length > 1 ? "s" : ""} encontrado{results.length > 1 ? "s" : ""}
-              </p>
-            </div>
-
-            {results.map((result, i) => (
-              <PainelResumo key={i} result={result} />
-            ))}
+            <PainelResumo result={results} />
 
             <div className="flex justify-center pt-4 pb-12">
               <Button onClick={resetAll} variant="outline" className="gap-2 rounded-xl h-11 border-[#2d2d2d] text-[#a0a0a0] hover:text-white hover:border-[#555] bg-transparent transition-colors text-xs uppercase tracking-wider">
@@ -328,73 +253,6 @@ export default function Triagem() {
                 Nova avaliação
               </Button>
             </div>
-          </div>
-        )}
-
-        {results && results.length === 0 && (
-          <div className="text-center py-20">
-            <p className="text-[#a0a0a0] mb-6 text-sm">
-              Nenhum paciente identificado nos arquivos enviados.
-            </p>
-            <Button onClick={resetAll} variant="outline" className="gap-2 rounded-xl border-[#2d2d2d] text-[#a0a0a0] hover:text-white bg-transparent text-xs uppercase tracking-wider">
-              <RotateCcw className="w-4 h-4" />
-              Tentar novamente
-            </Button>
-          </div>
-        )}
-
-        {/* WhatsApp Results */}
-        {whatsappResults.length > 0 && !results && (
-          <div className="space-y-6 max-w-3xl mt-10">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-xl bg-[#25D366]/10 border border-[#25D366]/20 flex items-center justify-center">
-                  <Bell className="w-4 h-4 text-[#25D366]" />
-                </div>
-                <div>
-                  <p className="text-sm font-bold text-white uppercase tracking-[0.1em]">
-                    Análises via WhatsApp
-                  </p>
-                  <p className="text-[10px] text-[#555] uppercase tracking-wider">
-                    {whatsappResults.length} registro{whatsappResults.length > 1 ? 's' : ''} recebido{whatsappResults.length > 1 ? 's' : ''}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                {newWhatsappCount > 0 && (
-                  <span className="px-3 py-1 rounded-full bg-[#25D366]/15 text-[#25D366] text-[10px] font-bold uppercase tracking-wider animate-pulse">
-                    {newWhatsappCount} novo{newWhatsappCount > 1 ? 's' : ''}
-                  </span>
-                )}
-                <ClearHistoryButton onCleared={() => { setWhatsappResults([]); setNewWhatsappCount(0); }} />
-              </div>
-            </div>
-
-            {whatsappResults.map((triage, i) => (
-              <PainelResumo
-                key={triage.id || i}
-                result={{
-                  patientName: triage.patient_name,
-                  surgeryType: triage.surgery_type,
-                  examResults: [],
-                  alerts: triage.altered_exams?.length ? triage.altered_exams.map(e => ({
-                    severity: '⚠️',
-                    text: `${e} — alterado`
-                  })) : [],
-                  finalStatus: triage.status === 'complete_without_alerts' ? '✅ Completo sem alertas' :
-                               triage.status === 'complete_with_alerts' ? '⚠️ Completo com alertas' :
-                               triage.status === 'incomplete' ? '❌ Exames pendentes' : '🚨 Pendência crítica',
-                  conduct: triage.status === 'complete_without_alerts' ? '✅ Paciente apta para cirurgia. Prosseguir conforme protocolo.' :
-                           triage.status === 'complete_with_alerts' ? '⚠️ Paciente requer avaliação adicional.' :
-                           triage.status === 'incomplete' ? '❌ Exames obrigatórios faltantes. Solicitar antes da avaliação.' : '🚨 Pendência crítica — não liberar sem resolução.',
-                  blocoResumo: triage.bloco_resumo || '',
-                  relatorioTecnico: triage.relatorio_tecnico || '',
-                  missingExams: triage.missing_exams || [],
-                  alteredExams: triage.altered_exams || [],
-                  medicationsToSuspend: []
-                }}
-              />
-            ))}
           </div>
         )}
 

@@ -10,7 +10,7 @@ export default function SecurityNotice() {
             Ferramenta de apoio à decisão
           </p>
           <p className="text-xs text-muted-foreground leading-relaxed">
-            Nenhum dado é armazenado — os arquivos são analisados e descartados. Não substitui a avaliação médica presencial. A responsabilidade clínica é do anestesiologista.
+            Os arquivos são processados em memória e descartados. Nenhum dado de paciente é salvo. Não substitui a avaliação médica presencial. A responsabilidade clínica é do anestesiologista.
           </p>
         </div>
       </div>

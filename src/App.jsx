@@ -10,7 +10,6 @@ import MobileLayout from '@/components/MobileLayout';
 // Add page imports here
 import Triagem from '@/pages/Triagem';
 import Cirurgias from '@/pages/Cirurgias';
-import Historico from '@/pages/Historico';
 import AdminRoute from '@/components/AdminRoute';
 import ErrorBoundary from '@/components/ErrorBoundary';
 
@@ -44,7 +43,7 @@ const AuthenticatedApp = () => {
       <Route element={<MobileLayout />}>
         <Route path="/" element={<Triagem />} />
         <Route path="/cirurgias" element={<AdminRoute><Cirurgias /></AdminRoute>} />
-        <Route path="/historico" element={<AdminRoute><Historico /></AdminRoute>} />
+
       </Route>
       <Route path="*" element={<PageNotFound />} />
     </Routes>

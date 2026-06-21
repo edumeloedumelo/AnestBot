@@ -1,10 +1,9 @@
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Activity, ClipboardList, Settings, ArrowLeft } from 'lucide-react';
+import { Activity, Settings, ArrowLeft } from 'lucide-react';
 
 const tabs = [
   { path: '/', label: 'Triagem', icon: Activity },
-  { path: '/historico', label: 'Histórico', icon: ClipboardList },
   { path: '/cirurgias', label: 'Config.', icon: Settings },
 ];
 
