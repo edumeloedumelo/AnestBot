@@ -3,15 +3,28 @@ import { Upload, AlertCircle } from "lucide-react";
 
 export default function FileUploader({ files, setFiles, disabled }) {
   const [errors, setErrors] = useState([]);
-  const ALLOWED_EXT = ["jpg", "jpeg", "png", "webp", "gif", "heic", "heif", "pdf", "txt", "csv", "xlsx", "xls"];
+  const ALLOWED_EXT = ["jpg", "jpeg", "png", "webp", "gif", "pdf", "txt", "csv"];
+  const BLOCKED_MESSAGES = {
+    heic: "Formato HEIC não suportado (padrão iPhone). Converta para JPG ou PDF antes de enviar.",
+    heif: "Formato HEIC não suportado (padrão iPhone). Converta para JPG ou PDF antes de enviar.",
+    xlsx: "Planilhas Excel não são suportadas. Converta para PDF antes de enviar.",
+    xls: "Planilhas Excel não são suportadas. Converta para PDF antes de enviar.",
+    doc: "Formato Word não suportado. Converta para PDF antes de enviar.",
+    docx: "Formato Word não suportado. Converta para PDF antes de enviar.",
+  };
   const MAX_SIZE = 100 * 1024 * 1024;
 
   const validateFile = (file) => {
     const ext = (file.name.split(".").pop() || "").toLowerCase();
-    const typeOk = file.type.startsWith("image/") || file.type === "application/pdf" || file.type.startsWith("text/");
-    if (!typeOk && !ALLOWED_EXT.includes(ext)) {
+
+    if (BLOCKED_MESSAGES[ext]) {
+      return { valid: false, error: BLOCKED_MESSAGES[ext] };
+    }
+
+    if (!ALLOWED_EXT.includes(ext)) {
       return { valid: false, error: `Tipo não suportado: ${file.name}` };
     }
+
     if (file.size > MAX_SIZE) {
       return { valid: false, error: `Arquivo muito grande (máx 100MB): ${file.name}` };
     }
@@ -82,13 +95,13 @@ export default function FileUploader({ files, setFiles, disabled }) {
           No celular: escolha "Câmera" ou "Galeria"
         </p>
         <p className="text-[10px] text-[#444] mt-1">
-          JPEG, PNG, PDF, TXT — até 100MB por arquivo
+          JPEG, PNG, PDF, TXT — até 100MB · HEIC: converta para JPG
         </p>
         <input
           id="file-input"
           type="file"
           multiple
-          accept="image/*,.pdf,.txt,.webp,.xlsx,.xls,.csv"
+          accept="image/jpeg,image/png,image/webp,image/gif,.pdf,.txt,.csv"
           onChange={handleSelect}
           className="hidden"
           disabled={disabled}

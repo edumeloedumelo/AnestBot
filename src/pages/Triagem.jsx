@@ -1,9 +1,10 @@
 import { useState, useCallback, useEffect } from "react";
+import { Link } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { RotateCcw, Upload, Share2, Zap, AlertTriangle } from "lucide-react";
+import { RotateCcw, Upload, Share2, AlertTriangle } from "lucide-react";
 import FileUploader from "@/components/triagem/FileUploader";
 import ProgressIndicator from "@/components/triagem/ProgressIndicator";
 import PainelResumo from "@/components/triagem/PainelResumo";
@@ -16,6 +17,8 @@ export default function Triagem() {
   const [analyzing, setAnalyzing] = useState(false);
   const [progressStatus, setProgressStatus] = useState("");
   const [error, setError] = useState("");
+  const [errorType, setErrorType] = useState(""); // '422' | 'generic'
+  const [notFoundReason, setNotFoundReason] = useState("");
   const [results, setResults] = useState(null);
   const [sharedReceived, setSharedReceived] = useState(false);
 
@@ -49,6 +52,8 @@ export default function Triagem() {
     setAnalyzing(false);
     setProgressStatus("");
     setError("");
+    setErrorType("");
+    setNotFoundReason("");
     setResults(null);
   }, [files]);
 
@@ -59,11 +64,14 @@ export default function Triagem() {
     const totalSize = files.reduce((sum, f) => sum + f.size, 0);
     if (totalSize > MAX_TOTAL_MB * 1024 * 1024) {
       setError(`Total de arquivos excede ${MAX_TOTAL_MB}MB. Reduza o tamanho ou divida em lotes menores.`);
+      setErrorType("generic");
       return;
     }
 
     setAnalyzing(true);
     setError("");
+    setErrorType("");
+    setNotFoundReason("");
     setResults(null);
 
     try {
@@ -74,62 +82,59 @@ export default function Triagem() {
       const fileUrls = uploadResults.map(r => r.file_url);
       setProgressStatus("analyzing");
 
-      const response = await base44.functions.invoke("analyzeSinglePatient", { fileUrls, anamnesis });
+      const response = await base44.functions.invoke("fastAnalyze", { fileUrls, anamnesis });
 
-      if (response.data?.error) {
-        const raw = response.data.error;
-        const msgLower = raw.toLowerCase();
-        let msg;
-        if (msgLower.includes("user-exception")) {
-          msg = "Arquivo muito grande ou formato incompatível. Reduza o tamanho do PDF (máx. 100MB por arquivo) e tente novamente.";
-        } else if (msgLower.includes("limite") || msgLower.includes("tamanho") || msgLower.includes("grande")) {
-          msg = raw;
-        } else if (msgLower.includes("429") || msgLower.includes("rate")) {
-          msg = "Muitas requisições. Aguarde alguns segundos e tente novamente.";
-        } else if (msgLower.includes("401") || msgLower.includes("unauthorized")) {
-          msg = "Erro de autenticação com o serviço de IA.";
-        } else if (msgLower.includes("timeout")) {
-          msg = "A análise excedeu o tempo limite. Tente com menos arquivos.";
-        } else if (msgLower.includes("não foi possível analisar")) {
-          msg = raw;
-        } else {
-          msg = raw;
-        }
-        setError(msg);
+      // Handle 422 — surgery not identified
+      if (response.status === 422 || response.data?.status === 422) {
+        setError("Cirurgia não identificada");
+        setErrorType("422");
+        setNotFoundReason(response.data?.not_found_reason || "Não foi possível identificar a cirurgia na anamnese.");
         return;
       }
 
-      const resultData = response.data?.result;
-      if (!resultData) {
+      if (response.data?.error) {
+        const raw = response.data.error;
+        setError(formatErrorMessage(raw));
+        setErrorType("generic");
+        return;
+      }
+
+      const resultData = response.data;
+      if (!resultData || !resultData.patientName) {
         setError("Resposta inesperada do servidor. Tente novamente.");
+        setErrorType("generic");
         return;
       }
 
       setResults(resultData);
       setProgressStatus("");
     } catch (err) {
-      const raw = err?.response?.data?.error || err?.message || "Erro de conexão.";
-      const msgLower = raw.toLowerCase();
-      let msg;
-      if (msgLower.includes("user-exception")) {
-        msg = "Arquivo muito grande ou formato incompatível. Reduza o tamanho do PDF (máx. 100MB por arquivo) e tente novamente.";
-      } else if (msgLower.includes("limite") || msgLower.includes("tamanho") || msgLower.includes("grande")) {
-        msg = raw;
-      } else if (msgLower.includes("429") || msgLower.includes("rate")) {
-        msg = "Muitas requisições. Aguarde alguns segundos e tente novamente.";
-      } else if (msgLower.includes("401") || msgLower.includes("unauthorized")) {
-        msg = "Erro de autenticação com o serviço de IA. Contate o administrador.";
-      } else if (msgLower.includes("500") || msgLower.includes("internal")) {
-        msg = "Erro no servidor. Tente novamente em alguns instantes.";
-      } else if (msgLower.includes("timeout")) {
-        msg = "A análise excedeu o tempo limite. Tente com menos arquivos ou arquivos menores.";
-      } else {
-        msg = raw;
+      if (err?.response?.status === 422 || err?.response?.data?.status === 422) {
+        setError("Cirurgia não identificada");
+        setErrorType("422");
+        setNotFoundReason(err?.response?.data?.not_found_reason || "Não foi possível identificar a cirurgia na anamnese.");
+        return;
       }
-      setError(msg);
+      const raw = err?.response?.data?.error || err?.message || "Erro de conexão.";
+      setError(formatErrorMessage(raw));
+      setErrorType("generic");
     } finally {
       setAnalyzing(false);
     }
+  };
+
+  const formatErrorMessage = (raw) => {
+    const msg = (raw || "").toLowerCase();
+    if (msg.includes("user-exception") || msg.includes("limite") || msg.includes("tamanho") || msg.includes("grande")) {
+      return "Arquivo muito grande ou formato incompatível. Reduza o tamanho do PDF (máx. 100MB por arquivo) e tente novamente.";
+    }
+    if (msg.includes("429") || msg.includes("rate")) {
+      return "Muitas requisições. Aguarde alguns segundos e tente novamente.";
+    }
+    if (msg.includes("timeout")) {
+      return "A análise excedeu o tempo limite. Tente com menos arquivos.";
+    }
+    return raw;
   };
 
   return (
@@ -179,7 +184,7 @@ export default function Triagem() {
                 </Label>
                 <Textarea
                   id="anamnesis"
-                  placeholder="Comorbidades, histórico cirúrgico, medicações de uso contínuo, alergias, IMC, idade, TIPO DE CIRURGIA..."
+                  placeholder="Tipo de cirurgia, comorbidades, medicações, alergias, IMC, idade — quanto mais detalhes, melhor a análise..."
                   value={anamnesis}
                   onChange={(e) => setAnamnesis(e.target.value)}
                   disabled={analyzing}
@@ -187,12 +192,30 @@ export default function Triagem() {
                   className="bg-[#0a0a0a] border-[#2d2d2d] resize-none rounded-xl text-white placeholder:text-[#555] focus:border-[#555] transition-colors text-sm"
                 />
                 <p className="text-[10px] text-[#555] mt-3 uppercase tracking-wider">
-                  Inclua o tipo de cirurgia planejada e dados clínicos da paciente
+                  Informe o tipo de cirurgia — essencial para a triagem correta
                 </p>
               </div>
 
-              {/* Error */}
-              {error && (
+              {/* Error — 422 Surgery not found */}
+              {error && errorType === "422" && (
+                <div className="p-5 bg-[#1a1a00] border border-[#332200] rounded-2xl space-y-3">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-[#FFC107]" />
+                    <p className="text-xs text-[#FFC107] font-bold uppercase tracking-wider">Cirurgia não identificada</p>
+                  </div>
+                  <p className="text-xs text-[#cccccc] leading-relaxed">{notFoundReason}</p>
+                  <p className="text-[10px] text-[#888]">
+                    Verifique as cirurgias cadastradas em{" "}
+                    <Link to="/cirurgias" className="text-[#aaa] underline hover:text-white transition-colors">
+                      Configurações
+                    </Link>
+                    {" "}ou ajuste a anamnese informando o nome exato.
+                  </p>
+                </div>
+              )}
+
+              {/* Error — generic */}
+              {error && errorType === "generic" && (
                 <div className="p-5 bg-[#1a0000] border border-[#4a2020] rounded-2xl space-y-2">
                   <div className="flex items-center gap-2">
                     <AlertTriangle className="w-4 h-4 text-[#f87171]" />
@@ -232,7 +255,7 @@ export default function Triagem() {
                 </div>
                 <div className="mt-4 pt-4 border-t border-[#1a1a1a]">
                   <p className="text-[10px] text-[#444] leading-relaxed">
-                    Formatos aceitos: PDF, JPG, PNG, TXT — até 100MB por arquivo
+                    Formatos aceitos: PDF, JPG, PNG, TXT — até 100MB por arquivo · HEIC: converta para JPG
                   </p>
                 </div>
               </div>
