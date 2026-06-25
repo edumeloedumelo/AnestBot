@@ -1,53 +1,111 @@
-// Divide a lista de mensagens em blocos de pacientes usando ❌ como separador.
-// Garante isolamento total entre casos: cada bloco tem seus próprios textos e mídias.
+// Divide mensagens em blocos de pacientes.
+// Detecta início de caso por anamnese OU fim de caso por ❌❌❌❌.
+// Pula mensagens já respondidas pelo bot (evita reprocessar).
 
-const SEPARATOR_RE = /^[\s❌✖✗x×]+$/i;
-
+// ── detecção de separador ❌❌❌❌ ──────────────────────────────────────────
 function isSeparator(body) {
   if (!body) return false;
-  // Linha composta só por ❌ (e variações visuais), espaços ou combinações deles
-  return SEPARATOR_RE.test(body) && /❌/.test(body);
+  return /^[\s❌✖✗x×]+$/i.test(body) && body.includes('❌');
 }
 
+// ── início de novo caso: avaliação pré-anestésica ─────────────────────────
+function isAnamnese(body) {
+  if (!body) return false;
+  const t = body.toLowerCase();
+  return (
+    t.includes('equipe de anestesia') ||
+    t.includes('avaliação pré-anestésica') ||
+    t.includes('avaliacao pre-anestesica') ||
+    t.includes('avaliacao pre anestesica') ||
+    t.includes('avaliação pre anestésica')
+  );
+}
+
+// ── resposta já enviada pelo bot (não reprocessar) ────────────────────────
+function isBotReport(body) {
+  if (!body) return false;
+  return (
+    body.includes('TRIAGEM PRÉ-ANESTÉSICA') ||
+    body.includes('TRIAGEM PRE-ANESTESICA') ||
+    body.includes('📋 TRIAGEM') ||
+    body.includes('🧾 TRIAGEM') ||
+    body.includes('📋 RESUMO — TRIAGEM') ||
+    body.includes('Vou gerar a triagem') ||
+    body.includes('⏳ Analisando caso') ||
+    body.includes('✅ Análise concluída')
+  );
+}
+
+// ── extração de nome e cirurgia (padrões do formulário da secretaria) ─────
+export function extractName(texts) {
+  const joined = texts.join('\n');
+  const m =
+    joined.match(/Paciente[:\s]+([^\n,]+)/i) ||
+    joined.match(/Nome[:\s]+([^\n,]+)/i);
+  return m ? m[1].trim() : '';
+}
+
+export function extractSurgery(texts) {
+  const joined = texts.join('\n');
+  const m =
+    joined.match(/Procedimento[:\s]+([^\n,]+)/i) ||
+    joined.match(/Cirurgia[:\s]+([^\n,]+)/i) ||
+    joined.match(/\b(mamoplastia|abdominoplastia|lipoaspira[çc][aã]o|rinoplastia|blefaroplastia|ritidoplastia|mastopexia|lipo)\b/i);
+  return m ? m[1].trim() : '';
+}
+
+// ── parser principal ───────────────────────────────────────────────────────
 /**
- * Recebe array de mensagens (já filtradas e ordenadas) e retorna array de blocos:
- * [
- *   { index: 1, texts: ['...'], media: [{ url, caption, type }] },
- *   { index: 2, texts: ['...'], media: [...] },
- *   ...
- * ]
- * Blocos vazios (sem texto nem mídia) são descartados.
+ * Retorna array de blocos:
+ * [{ index, texts, media: [{ url, caption, type }] }, ...]
+ * Blocos vazios (sem anamnese nem mídia) são descartados.
  */
 export function splitIntoPatients(messages) {
   const blocks = [];
-  let current = { texts: [], media: [] };
+  let current = null;
+
+  function pushCurrent() {
+    if (current && (current.texts.length > 0 || current.media.length > 0)) {
+      blocks.push(current);
+    }
+    current = null;
+  }
 
   for (const m of messages) {
     const body = (m.body || '').trim();
 
+    // Ignora respostas já emitidas pelo próprio bot
+    if (m.fromMe || isBotReport(body)) continue;
+
+    // ❌❌❌❌ fecha o caso atual
     if (isSeparator(body)) {
-      // Finaliza bloco atual se tiver conteúdo
-      if (current.texts.length > 0 || current.media.length > 0) {
-        blocks.push(current);
-      }
-      current = { texts: [], media: [] };
+      pushCurrent();
       continue;
     }
+
+    // Anamnese detectada = início de novo caso
+    if (isAnamnese(body)) {
+      pushCurrent();
+      current = { texts: [body], media: [] };
+      continue;
+    }
+
+    // Se ainda não há caso aberto, ignora (mensagem fora de contexto)
+    if (!current) continue;
 
     const isMedia = m.type === 'image' || m.type === 'document' || m.type === 'video';
 
     if (isMedia && m.media) {
       current.media.push({ url: m.media, caption: body, type: m.type });
-      if (body) current.texts.push(body); // legenda vira contexto/anamnese
+      // Legenda com conteúdo clínico vira texto de contexto também
+      if (body) current.texts.push(body);
     } else if (m.type === 'chat' && body) {
       current.texts.push(body);
     }
   }
 
-  // Último bloco (sem ❌ no final)
-  if (current.texts.length > 0 || current.media.length > 0) {
-    blocks.push(current);
-  }
+  // Fecha último bloco (sem ❌ no final)
+  pushCurrent();
 
   return blocks.map((b, i) => ({ index: i + 1, ...b }));
 }

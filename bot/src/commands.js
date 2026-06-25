@@ -2,7 +2,7 @@
 import { getConfig, updateConfig } from './config.js';
 import { getLastTime, setLastTime, resetGroup } from './state.js';
 import { fetchNewMessages } from './fetcher.js';
-import { splitIntoPatients } from './parser.js';
+import { splitIntoPatients, extractName, extractSurgery } from './parser.js';
 import { sendText } from './ultramsg.js';
 import { runTriage } from './triage.js';
 import { formatTriageReply } from './format.js';
@@ -129,7 +129,7 @@ async function doAnalisar(chatId) {
       const { fullText, errors } = await runTriage({
         patientName: extractName(patient.texts) || `Caso ${label}`,
         surgeryType: extractSurgery(patient.texts),
-        anamnesis: patient.texts.join('\n'),
+        anamnesis: patient.texts.join('\n\n'),
         media: patient.media,
       });
 
@@ -160,21 +160,6 @@ async function doAnalisar(chatId) {
   }
 }
 
-// Tenta extrair nome da paciente do bloco de texto (linha que contenha "nome:")
-function extractName(texts) {
-  const joined = texts.join('\n');
-  const m = joined.match(/nome[:\s]+([^\n,]+)/i);
-  return m ? m[1].trim() : '';
-}
-
-// Tenta extrair tipo de cirurgia do bloco de texto
-function extractSurgery(texts) {
-  const joined = texts.join('\n');
-  const m = joined.match(/cirurgia[:\s]+([^\n,]+)/i)
-    || joined.match(/procedimento[:\s]+([^\n,]+)/i)
-    || joined.match(/\b(mamoplastia|abdominoplastia|lipoaspira[çc][aã]o|rinoplastia|blefaroplastia|ritidoplastia|mastopexia)\b/i);
-  return m ? m[1].trim() : '';
-}
 
 // ─────────────────────────────────────────────
 // STATUS / RESET
