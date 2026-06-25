@@ -3,14 +3,18 @@ const INSTANCE = process.env.ULTRAMSG_INSTANCE_ID;
 const TOKEN = process.env.ULTRAMSG_TOKEN;
 const BASE = `https://api.ultramsg.com/${INSTANCE}`;
 
-// Quantidade máxima de mensagens a buscar por chamada.
-// 500 é conservador; ajuste se os grupos tiverem histórico muito longo.
 const FETCH_LIMIT = 500;
 
-/**
- * Retorna mensagens do grupo mais recentes que `afterTimestamp` (Unix seg).
- * Cada item: { id, type, body, media, time, fromMe, author }
- */
+// UltraMsg pode usar "timestamp" ou "time" dependendo do endpoint — normaliza.
+function getTime(m) {
+  return m.timestamp || m.time || 0;
+}
+
+// fromMe pode vir como bool ou string "true"
+function isFromMe(m) {
+  return m.fromMe === true || m.fromMe === 'true' || m.self === true;
+}
+
 export async function fetchNewMessages(chatId, afterTimestamp = 0) {
   const url = new URL(`${BASE}/chats/messages`);
   url.searchParams.set('token', TOKEN);
@@ -20,17 +24,25 @@ export async function fetchNewMessages(chatId, afterTimestamp = 0) {
   const res = await fetch(url.toString());
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`UltraMsg GET messages ${res.status}: ${body.substring(0, 200)}`);
+    throw new Error(`UltraMsg GET messages ${res.status}: ${body.substring(0, 300)}`);
   }
 
   const data = await res.json();
+  console.log('[fetcher] raw response type:', typeof data, Array.isArray(data) ? 'array len=' + data.length : JSON.stringify(data).substring(0, 200));
+
   const msgs = Array.isArray(data) ? data : (data?.messages ?? []);
+  console.log(`[fetcher] total msgs: ${msgs.length}, afterTimestamp: ${afterTimestamp}`);
 
-  // Filtra mensagens do bot (fromMe) e anteriores ao ponto de corte.
-  // UltraMsg retorna do mais recente para o mais antigo — invertemos para ordem cronológica.
+  if (msgs.length > 0) {
+    const sample = msgs[0];
+    console.log('[fetcher] sample msg keys:', Object.keys(sample).join(', '));
+    console.log('[fetcher] sample time/timestamp:', sample.time, sample.timestamp, 'fromMe:', sample.fromMe);
+  }
+
   const filtered = msgs
-    .filter((m) => !m.fromMe && m.time > afterTimestamp)
-    .sort((a, b) => a.time - b.time);
+    .filter((m) => !isFromMe(m) && getTime(m) > afterTimestamp)
+    .sort((a, b) => getTime(a) - getTime(b));
 
+  console.log(`[fetcher] filtered msgs: ${filtered.length}`);
   return filtered;
 }

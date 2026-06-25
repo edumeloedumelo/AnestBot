@@ -103,14 +103,18 @@ async function doAnalisar(chatId) {
   try {
     messages = await fetchNewMessages(chatId, lastTime);
   } catch (e) {
+    console.error('[doAnalisar] fetchNewMessages error:', e);
     return sendText(chatId, `❌ Erro ao buscar mensagens: ${e.message}`);
   }
 
+  console.log(`[doAnalisar] chatId=${chatId} lastTime=${lastTime} msgs=${messages.length}`);
+
   if (messages.length === 0) {
-    return sendText(chatId, '✅ Nenhuma mensagem nova desde a última análise.');
+    return sendText(chatId, `✅ Nenhuma mensagem nova desde a última análise.\n\nSe acabou de enviar as avaliações, tente /resetar e depois /analisar.`);
   }
 
   const patients = splitIntoPatients(messages);
+  console.log(`[doAnalisar] patients found: ${patients.length}`);
 
   if (patients.length === 0) {
     return sendText(chatId, '⚠️ Mensagens encontradas mas nenhum caso identificado. Verifique se há avaliação + exames antes do ❌❌❌❌.');
