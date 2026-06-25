@@ -28,6 +28,20 @@ export async function runTriage({ patientName, surgeryType, anamnesis, media }) 
     }
   }
 
-  const fullText = await analyze(system, contentBlocks);
+  let fullText;
+  try {
+    fullText = await analyze(system, contentBlocks);
+  } catch (e) {
+    // Se a API rejeitar por causa de algum arquivo problemático, refaz só com texto
+    // para garantir que o médico sempre receba um relatório.
+    const isMediaError = /content\.\d+|pdf|image|base64|invalid_request/i.test(e.message);
+    if (isMediaError && contentBlocks.length > 1) {
+      console.error('[triage] análise com mídia falhou, refazendo só com texto:', e.message);
+      errors.push('Um ou mais exames não puderam ser processados pela IA e foram ignorados.');
+      fullText = await analyze(system, [contentBlocks[0]]);
+    } else {
+      throw e;
+    }
+  }
   return { fullText, mediaCount: (media || []).length, errors };
 }

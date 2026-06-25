@@ -46,26 +46,48 @@ export function splitMessage(text, max = MAX_LEN) {
 }
 
 // Baixa a mídia (imagem/pdf) de uma URL e devolve bloco pronto p/ Claude.
+// Detecta o tipo REAL pelos magic bytes — o content-type/URL do UltraMsg às vezes
+// mente (ex: arquivo .pdf que na verdade é imagem, ou download que retornou erro).
 export async function downloadMediaBlock(url) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`download falhou (${res.status})`);
-  const contentType = res.headers.get('content-type') || '';
   const buffer = await res.arrayBuffer();
-  const base64Data = bufferToBase64(buffer);
+  const bytes = new Uint8Array(buffer);
 
-  if (contentType.startsWith('image/')) {
-    const mediaType = contentType.includes('png') ? 'image/png'
-      : contentType.includes('webp') ? 'image/webp'
-      : contentType.includes('gif') ? 'image/gif'
-      : 'image/jpeg';
-    return { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64Data } };
+  if (bytes.length === 0) throw new Error('arquivo vazio');
+
+  const kind = sniffType(bytes);
+
+  if (kind === 'pdf') {
+    return { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: bufferToBase64(buffer) } };
   }
-  if (contentType === 'application/pdf' || url.toLowerCase().includes('.pdf')) {
-    return { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64Data } };
+  if (kind) {
+    // kind é o media_type da imagem (image/jpeg, image/png, etc.)
+    return { type: 'image', source: { type: 'base64', media_type: kind, data: bufferToBase64(buffer) } };
   }
-  // fallback: tenta como texto
+
+  // Tipo não reconhecido: tenta como texto se for legível, senão descarta.
   const textContent = new TextDecoder().decode(buffer).substring(0, 10000);
-  return { type: 'text', text: `### ARQUIVO ENVIADO\n${textContent}` };
+  if (/[\x20-\x7E]/.test(textContent) && !/[\x00-\x08]/.test(textContent.substring(0, 200))) {
+    return { type: 'text', text: `### ARQUIVO ENVIADO\n${textContent}` };
+  }
+  throw new Error('formato de arquivo não suportado/ilegível');
+}
+
+// Identifica o tipo pelos primeiros bytes. Retorna 'pdf', um media_type de imagem, ou null.
+function sniffType(bytes) {
+  // %PDF
+  if (bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46) return 'pdf';
+  // JPEG: FF D8 FF
+  if (bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF) return 'image/jpeg';
+  // PNG: 89 50 4E 47
+  if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47) return 'image/png';
+  // GIF: 47 49 46 38
+  if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x38) return 'image/gif';
+  // WEBP: RIFF....WEBP
+  if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 &&
+      bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50) return 'image/webp';
+  return null;
 }
 
 function bufferToBase64(buffer) {
