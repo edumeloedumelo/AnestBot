@@ -1,5 +1,5 @@
-// Recebe o payload do webhook UltraMsg e despacha (buffer de mídia ou comando).
-import * as session from './sessions.js';
+// Recebe o payload do webhook UltraMsg e processa apenas comandos explícitos.
+// Mensagens normais (exames, textos) ficam no grupo — o bot busca via GET quando acionado.
 import { isCommand, handleCommand } from './commands.js';
 
 const ALLOWED = (process.env.ALLOWED_CHATS || '')
@@ -18,25 +18,14 @@ export async function handleWebhook(payload) {
   if (!m) return;
   if (m.fromMe || m.self) return; // ignora mensagens do próprio bot
 
-  const chatId = m.from; // grupo (@g.us) ou contato (@c.us); serve para responder
+  const chatId = m.from;
   if (!isAllowed(chatId)) return;
 
   const body = (m.body || '').trim();
 
-  // Mídia: imagem ou documento (PDF) -> entra no buffer
-  if ((m.type === 'image' || m.type === 'document') && m.media) {
-    session.addMedia(chatId, { url: m.media, caption: body, type: m.type });
-    if (body && !isCommand(body)) session.addText(chatId, body); // legenda vira contexto
-    return;
-  }
-
-  // Texto
-  if (m.type === 'chat') {
-    if (isCommand(body)) {
-      await handleCommand(chatId, body, m);
-      return;
-    }
-    if (body) session.addText(chatId, body); // texto solto vira contexto/anamnese
-    return;
+  // Só age em comandos explícitos (ex: /analisar).
+  // Mensagens de exames/fotos/texto são ignoradas no webhook — serão lidas via GET ao analisar.
+  if (m.type === 'chat' && isCommand(body)) {
+    await handleCommand(chatId, body, m);
   }
 }

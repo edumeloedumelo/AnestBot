@@ -1,6 +1,8 @@
 // Parsing e handlers dos comandos do WhatsApp.
 import { getConfig, updateConfig } from './config.js';
-import * as session from './sessions.js';
+import { getLastTime, setLastTime, resetGroup } from './state.js';
+import { fetchNewMessages } from './fetcher.js';
+import { splitIntoPatients } from './parser.js';
 import { sendText } from './ultramsg.js';
 import { runTriage } from './triage.js';
 import { formatTriageReply } from './format.js';
@@ -29,7 +31,7 @@ function senderNumber(msg) {
 }
 
 function isAdmin(msg) {
-  if (ADMINS.length === 0) return true; // sem lista = liberado
+  if (ADMINS.length === 0) return true;
   return ADMINS.includes(senderNumber(msg));
 }
 
@@ -42,17 +44,16 @@ export async function handleCommand(chatId, body, msg) {
     case 'comandos':
       return sendText(chatId, helpText());
 
-    case 'triagem':
     case 'analisar':
-      return doTriage(chatId, args);
+    case 'triagem':
+      return doAnalisar(chatId);
 
     case 'status':
       return doStatus(chatId);
 
-    case 'limpar':
+    case 'resetar':
     case 'reset':
-      session.clear(chatId);
-      return sendText(chatId, '🧹 Buffer do grupo limpo. Pode enviar novos exames.');
+      return requireAdmin(chatId, msg, () => doReset(chatId));
 
     case 'cirurgias':
       return listSurgeries(chatId);
@@ -84,63 +85,124 @@ export async function handleCommand(chatId, body, msg) {
 
 function requireAdmin(chatId, msg, fn) {
   if (!isAdmin(msg)) {
-    return sendText(chatId, '⛔ Você não tem permissão para editar a configuração.');
+    return sendText(chatId, '⛔ Você não tem permissão para este comando.');
   }
   return fn();
 }
 
-// ----------------- handlers -----------------
+// ─────────────────────────────────────────────
+// ANÁLISE PRINCIPAL
+// ─────────────────────────────────────────────
 
-async function doTriage(chatId, args) {
-  const snap = session.snapshot(chatId);
-  // args: "Nome; Cirurgia; anamnese opcional"
-  const fields = args.split(';').map((s) => s.trim());
-  const patientName = fields[0] || '';
-  const surgeryType = fields[1] || '';
-  const anamnesis = fields.slice(2).join('; ');
+async function doAnalisar(chatId) {
+  const lastTime = getLastTime(chatId);
 
-  if (snap.media.length === 0) {
-    return sendText(chatId, `⚠️ Nenhum exame (imagem/PDF) recebido neste grupo ainda.\nEnvie as fotos/PDFs dos exames e depois rode:\n${PREFIX}triagem Nome da paciente; Tipo de cirurgia`);
-  }
-  if (!patientName) {
-    return sendText(chatId, `⚠️ Informe ao menos o nome:\n${PREFIX}triagem Nome da paciente; Tipo de cirurgia`);
-  }
+  await sendText(chatId, `🔍 Buscando mensagens novas no grupo...`);
 
-  await sendText(chatId, `⏳ Analisando ${snap.media.length} exame(s) de *${patientName}*... aguarde.`);
-
+  let messages;
   try {
-    const { fullText, mediaCount, errors } = await runTriage({
-      patientName,
-      surgeryType,
-      anamnesis,
-      extraTexts: snap.texts,
-      media: snap.media,
-    });
-
-    for (const m of formatTriageReply(fullText)) {
-      await sendText(chatId, m);
-    }
-    if (errors.length) {
-      await sendText(chatId, `⚠️ ${errors.length} arquivo(s) não puderam ser baixados e foram ignorados.`);
-    }
-    session.clear(chatId);
+    messages = await fetchNewMessages(chatId, lastTime);
   } catch (e) {
-    console.error('[triagem] erro:', e);
-    await sendText(chatId, `❌ Erro na análise: ${e.message}`);
+    return sendText(chatId, `❌ Erro ao buscar mensagens: ${e.message}`);
+  }
+
+  if (messages.length === 0) {
+    return sendText(chatId, '✅ Nenhuma mensagem nova desde a última análise.');
+  }
+
+  const patients = splitIntoPatients(messages);
+
+  if (patients.length === 0) {
+    return sendText(chatId, '⚠️ Mensagens encontradas mas nenhum caso identificado. Verifique se há avaliação + exames antes do ❌❌❌❌.');
+  }
+
+  const total = patients.length;
+  await sendText(chatId, `📋 ${total} caso(s) novo(s) encontrado(s). Iniciando análise...`);
+
+  let lastProcessedTime = lastTime;
+
+  for (const patient of patients) {
+    const label = patient.index;
+    await sendText(chatId, `⏳ Analisando caso ${label}/${total} (${patient.media.length} exame(s), ${patient.texts.length} texto(s))...`);
+
+    try {
+      const { fullText, errors } = await runTriage({
+        patientName: extractName(patient.texts) || `Caso ${label}`,
+        surgeryType: extractSurgery(patient.texts),
+        anamnesis: patient.texts.join('\n'),
+        media: patient.media,
+      });
+
+      // Cabeçalho de separação entre pacientes
+      if (total > 1) {
+        await sendText(chatId, `━━━━━━━━━━━━━━━━━━━━\n📁 CASO ${label}/${total}\n━━━━━━━━━━━━━━━━━━━━`);
+      }
+
+      for (const m of formatTriageReply(fullText)) {
+        await sendText(chatId, m);
+      }
+
+      if (errors.length) {
+        await sendText(chatId, `⚠️ Caso ${label}: ${errors.length} arquivo(s) não puderam ser lidos e foram ignorados.`);
+      }
+    } catch (e) {
+      console.error(`[analisar] erro no caso ${label}:`, e);
+      await sendText(chatId, `❌ Erro no caso ${label}: ${e.message}`);
+    }
+  }
+
+  // Salva o timestamp da mensagem mais recente processada
+  const newestTime = messages[messages.length - 1]?.time;
+  if (newestTime) setLastTime(chatId, newestTime);
+
+  if (total > 1) {
+    await sendText(chatId, `✅ Análise concluída — ${total} caso(s) processado(s).`);
   }
 }
 
-function doStatus(chatId) {
-  const snap = session.snapshot(chatId);
-  return sendText(chatId, `📦 Buffer atual deste grupo:\n• Exames (mídia): ${snap.media.length}\n• Mensagens de texto: ${snap.texts.length}\n\nQuando estiver tudo, rode:\n${PREFIX}triagem Nome; Cirurgia`);
+// Tenta extrair nome da paciente do bloco de texto (linha que contenha "nome:")
+function extractName(texts) {
+  const joined = texts.join('\n');
+  const m = joined.match(/nome[:\s]+([^\n,]+)/i);
+  return m ? m[1].trim() : '';
 }
+
+// Tenta extrair tipo de cirurgia do bloco de texto
+function extractSurgery(texts) {
+  const joined = texts.join('\n');
+  const m = joined.match(/cirurgia[:\s]+([^\n,]+)/i)
+    || joined.match(/procedimento[:\s]+([^\n,]+)/i)
+    || joined.match(/\b(mamoplastia|abdominoplastia|lipoaspira[çc][aã]o|rinoplastia|blefaroplastia|ritidoplastia|mastopexia)\b/i);
+  return m ? m[1].trim() : '';
+}
+
+// ─────────────────────────────────────────────
+// STATUS / RESET
+// ─────────────────────────────────────────────
+
+async function doStatus(chatId) {
+  const lastTime = getLastTime(chatId);
+  const date = lastTime
+    ? new Date(lastTime * 1000).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+    : 'nunca (vai analisar tudo disponível)';
+  return sendText(chatId, `📊 Status deste grupo:\n• Última análise: ${date}\n\nUse ${PREFIX}analisar para rodar a triagem dos casos novos.`);
+}
+
+async function doReset(chatId) {
+  resetGroup(chatId);
+  return sendText(chatId, '🔄 Posição de leitura resetada. Na próxima análise, o bot lerá TODAS as mensagens disponíveis do grupo.');
+}
+
+// ─────────────────────────────────────────────
+// LISTAGENS
+// ─────────────────────────────────────────────
 
 function listSurgeries(chatId) {
   const { surgeries } = getConfig();
   if (!surgeries.length) return sendText(chatId, 'Nenhuma cirurgia cadastrada. Use ' + PREFIX + 'addcirurgia.');
-  let out = '🔪 *CIRURGIAS CADASTRADAS*\n\n';
+  let out = '🔪 CIRURGIAS CADASTRADAS\n\n';
   for (const s of surgeries) {
-    out += `• *${s.name}* (key: ${s.key})\n   Exames: ${(s.required_exams || []).join(', ')}\n\n`;
+    out += `• ${s.name} (key: ${s.key})\n   Exames: ${(s.required_exams || []).join(', ')}\n\n`;
   }
   return sendText(chatId, out.trim());
 }
@@ -148,9 +210,9 @@ function listSurgeries(chatId) {
 function listLimits(chatId) {
   const { examLimits } = getConfig();
   if (!examLimits.length) return sendText(chatId, 'Nenhum limite cadastrado. Use ' + PREFIX + 'addlimite.');
-  let out = '📊 *LIMITES / VALORES DE REFERÊNCIA*\n\n';
+  let out = '📊 LIMITES / VALORES DE REFERÊNCIA\n\n';
   for (const l of examLimits) {
-    out += `• *${l.exam_name}*: ${l.description}`;
+    out += `• ${l.exam_name}: ${l.description}`;
     if (l.unit) out += ` (${l.unit})`;
     if (l.notes) out += `\n   Obs: ${l.notes}`;
     out += '\n\n';
@@ -161,12 +223,15 @@ function listLimits(chatId) {
 function showPrompt(chatId) {
   const { extraPrompt } = getConfig();
   return sendText(chatId, extraPrompt
-    ? `📝 *Instruções adicionais ativas:*\n\n${extraPrompt}`
+    ? `📝 Instruções adicionais ativas:\n\n${extraPrompt}`
     : '📝 Nenhuma instrução adicional. O bot usa o protocolo padrão de triagem.');
 }
 
+// ─────────────────────────────────────────────
+// EDIÇÃO DE CONFIG
+// ─────────────────────────────────────────────
+
 function addSurgery(chatId, args) {
-  // formato: key; Nome; exame1, exame2, exame3
   const [key, name, examsRaw] = args.split(';').map((s) => s.trim());
   if (!key || !name) {
     return sendText(chatId, `Uso:\n${PREFIX}addcirurgia chave; Nome da cirurgia; exame1, exame2, exame3`);
@@ -194,7 +259,6 @@ function delSurgery(chatId, args) {
 }
 
 function addLimit(chatId, args) {
-  // formato: Nome do exame; descrição; unidade(opcional); obs(opcional)
   const [exam_name, description, unit, notes] = args.split(';').map((s) => (s || '').trim());
   if (!exam_name || !description) {
     return sendText(chatId, `Uso:\n${PREFIX}addlimite Nome do exame; descrição/limite; unidade (opcional); observação (opcional)`);
@@ -224,33 +288,38 @@ function setPrompt(chatId, args) {
   updateConfig((c) => { c.extraPrompt = args; });
   return sendText(chatId, args
     ? '✅ Instruções adicionais atualizadas.'
-    : '✅ Instruções adicionais removidas (volta ao protocolo padrão).');
+    : '✅ Instruções adicionais removidas.');
 }
 
+// ─────────────────────────────────────────────
+// AJUDA
+// ─────────────────────────────────────────────
+
 function helpText() {
-  return `🤖 *BOT DE TRIAGEM PRÉ-ANESTÉSICA*
+  return `🤖 BOT DE TRIAGEM PRÉ-ANESTÉSICA
 
-*Fluxo:*
-1. Envie as fotos/PDFs dos exames no grupo
-2. Rode a análise:
-   ${PREFIX}triagem Nome; Cirurgia; anamnese (opcional)
+COMO USAR:
+1. A secretaria envia as avaliações e exames no grupo, separando cada paciente com ❌❌❌❌
+2. Quando quiser analisar, envie:
+   ${PREFIX}analisar
+3. O bot lê tudo que é novo desde a última análise, separa por paciente e responde cada um
 
-*Comandos gerais:*
-${PREFIX}triagem Nome; Cirurgia — analisa exames enviados
-${PREFIX}status — mostra o que está no buffer
-${PREFIX}limpar — limpa os exames acumulados
+COMANDOS:
+${PREFIX}analisar — analisa casos novos do grupo
+${PREFIX}status — mostra quando foi a última análise
 ${PREFIX}cirurgias — lista cirurgias e exames exigidos
 ${PREFIX}limites — lista valores de referência
 ${PREFIX}prompt — mostra instruções extras ativas
 ${PREFIX}ajuda — esta mensagem
 
-*Edição (admin):*
+EDIÇÃO (admin):
 ${PREFIX}addcirurgia chave; Nome; exame1, exame2
 ${PREFIX}delcirurgia chave
 ${PREFIX}addlimite Exame; descrição; unidade; obs
 ${PREFIX}dellimite Exame
 ${PREFIX}setprompt texto extra para o protocolo
 ${PREFIX}limparprompt
+${PREFIX}resetar — reprocessa o histórico completo do grupo
 
 ⚠️ Ferramenta de apoio. Não substitui avaliação médica presencial.`;
 }
