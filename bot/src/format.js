@@ -1,19 +1,19 @@
-// Formata a saída do Claude para mensagens de WhatsApp (monoespaçado/alinhado).
+// Formata a saída do Claude para o WhatsApp.
+// O modelo já gera um card único com negrito (*..*), emojis e marcadores.
+// Aqui só limpamos resíduos de markdown e garantimos o formato.
 export function formatTriageReply(fullText) {
-  const parts = fullText.split('---PARTE2---');
-  const relatorio = stripFences(parts[0] || '').trim();
-  const resumo = stripFences(parts[1] || '').trim();
+  let text = (fullText || '').trim();
 
-  const messages = [];
-  // Relatório técnico em bloco monoespaçado (mantém alinhamento das colunas).
-  if (relatorio) messages.push('```\n' + relatorio + '\n```');
-  // Resumo: texto corrido normal (fácil de copiar pro prontuário).
-  if (resumo) messages.push(resumo);
-  if (messages.length === 0) messages.push(fullText.trim());
-  return messages;
-}
+  // Remove cercas de código que o modelo possa ter incluído por engano.
+  text = text.replace(/```[a-zA-Z]*\n?/g, '').replace(/```/g, '');
+  // Converte eventual **negrito** markdown para *negrito* do WhatsApp.
+  text = text.replace(/\*\*(.+?)\*\*/g, '*$1*');
+  // Remove marcadores de título markdown (#) no início de linhas.
+  text = text.replace(/^#{1,6}\s*/gm, '');
+  // Remove separador legado, caso o modelo ainda gere.
+  text = text.replace(/^-+PARTE2-+$/gm, '');
+  // Compacta 3+ quebras de linha em no máximo 2.
+  text = text.replace(/\n{3,}/g, '\n\n').trim();
 
-// Remove cercas de código markdown que o modelo possa ter incluído.
-function stripFences(text) {
-  return text.replace(/```[a-zA-Z]*\n?/g, '').replace(/```/g, '');
+  return [text];
 }
