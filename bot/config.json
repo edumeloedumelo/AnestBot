@@ -1,0 +1,73 @@
+{
+  "extraPrompt": "",
+  "surgeries": [
+    {
+      "key": "mamoplastia",
+      "name": "Mamoplastia (aumento/redução/mastopexia)",
+      "required_exams": [
+        "Hemograma completo",
+        "Coagulograma (TAP/INR, TTPa)",
+        "Glicemia de jejum",
+        "ECG",
+        "Mamografia OU USG de mamas com BIRADS",
+        "Beta-HCG (mulheres em idade fértil)"
+      ]
+    },
+    {
+      "key": "abdominoplastia",
+      "name": "Abdominoplastia",
+      "required_exams": [
+        "Hemograma completo",
+        "Coagulograma (TAP/INR, TTPa)",
+        "Glicemia de jejum",
+        "Ureia e Creatinina",
+        "ECG",
+        "RX de tórax",
+        "Beta-HCG (mulheres em idade fértil)"
+      ]
+    },
+    {
+      "key": "lipoaspiracao",
+      "name": "Lipoaspiração",
+      "required_exams": [
+        "Hemograma completo",
+        "Coagulograma (TAP/INR, TTPa)",
+        "Glicemia de jejum",
+        "ECG",
+        "Beta-HCG (mulheres em idade fértil)"
+      ]
+    }
+  ],
+  "examLimits": [
+    {
+      "exam_name": "Hemoglobina (Hb)",
+      "description": "Não liberar com Hb < 12 g/dL. Investigar anemia.",
+      "unit": "g/dL",
+      "notes": "Hb < 12 = pendência crítica."
+    },
+    {
+      "exam_name": "Plaquetas",
+      "description": "Aceitável >= 150.000. Entre 100.000-150.000 avaliar. < 100.000 não liberar.",
+      "unit": "/mm³",
+      "notes": ""
+    },
+    {
+      "exam_name": "INR",
+      "description": "Aceitável <= 1,3 em paciente sem anticoagulante.",
+      "unit": "",
+      "notes": "Investigar se elevado."
+    },
+    {
+      "exam_name": "Glicemia de jejum",
+      "description": "Aceitável < 126 mg/dL. Valores elevados sugerem diabetes não controlado.",
+      "unit": "mg/dL",
+      "notes": ""
+    },
+    {
+      "exam_name": "Beta-HCG",
+      "description": "Positivo contraindica cirurgia eletiva.",
+      "unit": "",
+      "notes": "Positivo = pendência crítica."
+    }
+  ]
+}
