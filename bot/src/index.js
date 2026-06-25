@@ -21,8 +21,12 @@ app.post('/webhook', (req, res) => {
   const from = body?.data?.from || '?';
   const msgBody = (body?.data?.body || '').substring(0, 60);
   console.log(`[webhook] event=${body?.event_type} type=${type} from=${from} body="${msgBody}"`);
-  // Log top-level keys to catch unexpected payload shapes from UltraMsg
-  console.log('[webhook] raw keys:', Object.keys(body || {}).join(', '));
+  // For media messages, log all data fields to discover URL field name
+  if (type === 'image' || type === 'document') {
+    const d = body?.data || {};
+    console.log('[webhook] media data keys:', Object.keys(d).join(', '));
+    console.log('[webhook] media fields: media=', d.media, 'mediaUrl=', d.mediaUrl, 'url=', d.url, 'link=', d.link);
+  }
   res.sendStatus(200);
   handleWebhook(body).catch((e) => console.error('[webhook] erro:', e));
 });
