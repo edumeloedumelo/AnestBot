@@ -51,15 +51,32 @@ export function splitMessage(text, max = MAX_LEN) {
 export async function downloadMediaBlock(url) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`download falhou (${res.status})`);
+  const contentType = res.headers.get('content-type') || '';
   const buffer = await res.arrayBuffer();
   const bytes = new Uint8Array(buffer);
 
   if (bytes.length === 0) throw new Error('arquivo vazio');
 
-  const kind = sniffType(bytes);
+  // 1ª escolha: magic bytes (confiável). 2ª escolha: content-type do servidor.
+  let kind = sniffType(bytes);
+  if (!kind) {
+    if (contentType.includes('pdf')) kind = 'pdf';
+    else if (contentType.startsWith('image/')) {
+      kind = contentType.includes('png') ? 'image/png'
+        : contentType.includes('webp') ? 'image/webp'
+        : contentType.includes('gif') ? 'image/gif'
+        : 'image/jpeg';
+    }
+  }
+  const head = Array.from(bytes.slice(0, 8)).map((b) => b.toString(16).padStart(2, '0')).join(' ');
+  console.log(`[download] ${url.substring(0, 70)} ct=${contentType} bytes=${bytes.length} head=${head} kind=${kind}`);
 
   if (kind === 'pdf') {
-    return { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: bufferToBase64(buffer) } };
+    // Só envia como PDF se realmente começar com %PDF (Claude valida isso).
+    if (sniffType(bytes) === 'pdf') {
+      return { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: bufferToBase64(buffer) } };
+    }
+    throw new Error('rotulado como PDF mas conteúdo inválido');
   }
   if (kind) {
     // kind é o media_type da imagem (image/jpeg, image/png, etc.)
