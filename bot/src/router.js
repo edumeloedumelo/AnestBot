@@ -13,7 +13,13 @@ function isAllowed(chatId) {
 }
 
 export async function handleWebhook(payload) {
-  if (!payload || payload.event_type !== 'message_received') return;
+  // UltraMsg may send event_type or just omit it on some versions — be permissive
+  if (!payload) return;
+  const isMessageEvent = !payload.event_type || payload.event_type === 'message_received';
+  if (!isMessageEvent) {
+    console.log('[router] ignoring event_type:', payload.event_type);
+    return;
+  }
   const m = payload.data;
   if (!m) return;
   if (m.fromMe || m.self) return; // ignora mensagens do próprio bot

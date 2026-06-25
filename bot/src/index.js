@@ -21,6 +21,8 @@ app.post('/webhook', (req, res) => {
   const from = body?.data?.from || '?';
   const msgBody = (body?.data?.body || '').substring(0, 60);
   console.log(`[webhook] event=${body?.event_type} type=${type} from=${from} body="${msgBody}"`);
+  // Log top-level keys to catch unexpected payload shapes from UltraMsg
+  console.log('[webhook] raw keys:', Object.keys(body || {}).join(', '));
   res.sendStatus(200);
   handleWebhook(body).catch((e) => console.error('[webhook] erro:', e));
 });
