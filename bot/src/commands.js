@@ -108,8 +108,6 @@ async function doAnalisar(chatId) {
     return sendText(chatId, `❌ Erro ao buscar mensagens: ${e.message}`);
   }
 
-  console.log(`[doAnalisar] chatId=${chatId} lastTime=${lastTime} msgs=${messages.length}`);
-
   if (messages.length === 0) {
     return sendText(chatId, `✅ Nenhuma mensagem nova desde a última análise.\n\nSe acabou de enviar as avaliações, tente /resetar e depois /analisar.`);
   }
@@ -119,18 +117,12 @@ async function doAnalisar(chatId) {
   const messagesWithMedia = messages.map((m) => {
     if ((m.type === 'image' || m.type === 'document') && !m.media) {
       const stored = loadMedia(m.id);
-      if (stored) {
-        console.log('[doAnalisar] mídia carregada do store, id:', m.id);
-        return { ...m, media: stored.url };
-      } else {
-        console.log('[doAnalisar] sem mídia para id:', m.id, '(Webhook Download Media OFF?)');
-      }
+      if (stored) return { ...m, media: stored.url };
     }
     return m;
   });
 
   const patients = splitIntoPatients(messagesWithMedia);
-  console.log(`[doAnalisar] patients found: ${patients.length}`);
 
   if (patients.length === 0) {
     return sendText(chatId, '⚠️ Mensagens encontradas mas nenhum caso identificado. Verifique se há avaliação + exames antes do ❌❌❌❌.');

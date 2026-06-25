@@ -8,27 +8,12 @@ const app = express();
 app.use(express.json({ limit: '60mb' }));
 app.use(express.urlencoded({ extended: true, limit: '60mb' }));
 
-// Log de todas as requisições recebidas
-app.use((req, _res, next) => {
-  console.log(`[http] ${req.method} ${req.path}`);
-  next();
-});
-
 app.get('/', (_req, res) => res.send('AnestGuide WhatsApp bot online ✅'));
 app.get('/health', (_req, res) => res.json({ ok: true }));
 
 app.post('/webhook', (req, res) => {
-  const body = req.body;
-  const type = body?.data?.type || '?';
-  const from = body?.data?.from || '?';
-  const msgBody = (body?.data?.body || '').substring(0, 60);
-  console.log(`[webhook] event=${body?.event_type} type=${type} from=${from} body="${msgBody}"`);
-  if (type === 'image' || type === 'document') {
-    const d = body?.data || {};
-    console.log('[webhook] media url presente?', !!d.media, 'tamanho payload:', JSON.stringify(body).length);
-  }
   res.sendStatus(200);
-  handleWebhook(body).catch((e) => console.error('[webhook] erro:', e));
+  handleWebhook(req.body).catch((e) => console.error('[webhook] erro:', e));
 });
 
 // Tratador de erros (payload grande/JSON inválido) — responde 200 e não derruba o processo.

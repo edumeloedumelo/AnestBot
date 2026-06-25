@@ -68,9 +68,6 @@ export async function downloadMediaBlock(url) {
         : 'image/jpeg';
     }
   }
-  const head = Array.from(bytes.slice(0, 8)).map((b) => b.toString(16).padStart(2, '0')).join(' ');
-  console.log(`[download] ${url.substring(0, 70)} ct=${contentType} bytes=${bytes.length} head=${head} kind=${kind}`);
-
   if (kind === 'pdf') {
     // Só envia como PDF se realmente começar com %PDF (Claude valida isso).
     if (sniffType(bytes) === 'pdf') {

@@ -34,9 +34,6 @@ export async function handleWebhook(payload) {
   // "Webhook Download Media: ON" no UltraMsg é obrigatório para m.media ter valor.
   if ((m.type === 'image' || m.type === 'document') && m.media) {
     saveMedia(m.id, { url: m.media, caption: m.body || '', type: m.type });
-    console.log('[router] mídia salva id:', m.id, 'url:', String(m.media).substring(0, 80));
-  } else if (m.type === 'image' || m.type === 'document') {
-    console.log('[router] imagem sem URL (Webhook Download Media está OFF?) id:', m.id);
   }
 
   // Processa comandos (/analisar etc.) de qualquer remetente — inclusive o número
