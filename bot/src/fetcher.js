@@ -39,6 +39,15 @@ export async function fetchNewMessages(chatId, afterTimestamp = 0) {
     console.log('[fetcher] sample time/timestamp:', sample.time, sample.timestamp, 'fromMe:', sample.fromMe);
   }
 
+  // Log first image/document message to verify media field name
+  const firstMedia = msgs.find((m) => m.type === 'image' || m.type === 'document');
+  if (firstMedia) {
+    console.log('[fetcher] media msg keys:', Object.keys(firstMedia).join(', '));
+    console.log('[fetcher] media msg type:', firstMedia.type, 'media:', firstMedia.media, 'mediaUrl:', firstMedia.mediaUrl, 'url:', firstMedia.url);
+  } else {
+    console.log('[fetcher] no image/document messages found in batch');
+  }
+
   const filtered = msgs
     .filter((m) => !isFromMe(m) && getTime(m) > afterTimestamp)
     .sort((a, b) => getTime(a) - getTime(b));
