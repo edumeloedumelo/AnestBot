@@ -1,6 +1,6 @@
 // Recebe o payload do webhook UltraMsg e processa comandos + cacheia mídias recebidas.
 import { isCommand, handleCommand } from './commands.js';
-import { cacheMediaById } from './sessions.js';
+import { saveMedia } from './mediastore.js';
 
 const ALLOWED = (process.env.ALLOWED_CHATS || '')
   .split(',')
@@ -13,28 +13,34 @@ function isAllowed(chatId) {
 }
 
 export async function handleWebhook(payload) {
-  // UltraMsg may send event_type or just omit it on some versions — be permissive
   if (!payload) return;
-  const isMessageEvent = !payload.event_type || payload.event_type === 'message_received';
-  if (!isMessageEvent) {
-    console.log('[router] ignoring event_type:', payload.event_type);
+
+  // Aceita message_received (de outros) e message_create (do próprio número conectado).
+  // Isso permite que o médico dispare /analisar do número do WhatsApp Business.
+  const et = payload.event_type;
+  const isMsg = !et || et === 'message_received' || et === 'message_create' || et === 'message_created';
+  if (!isMsg) {
+    console.log('[router] ignorando event_type:', et);
     return;
   }
+
   const m = payload.data;
   if (!m) return;
 
   const chatId = m.from;
   if (!isAllowed(chatId)) return;
 
-  // Cacheia mídia recebida para uso no /analisar (GET API não retorna URLs de mídia).
-  // Cacheia mesmo se fromMe — o médico/secretária podem enviar pelo número conectado.
+  // Persiste URL de mídia recebida (GET API não retorna URLs de mídia).
+  // "Webhook Download Media: ON" no UltraMsg é obrigatório para m.media ter valor.
   if ((m.type === 'image' || m.type === 'document') && m.media) {
-    cacheMediaById(m.id, { url: m.media, caption: (m.body || ''), type: m.type });
-    console.log('[router] mídia cacheada id:', m.id, 'url:', String(m.media).substring(0, 80));
+    saveMedia(m.id, { url: m.media, caption: m.body || '', type: m.type });
+    console.log('[router] mídia salva id:', m.id, 'url:', String(m.media).substring(0, 80));
+  } else if (m.type === 'image' || m.type === 'document') {
+    console.log('[router] imagem sem URL (Webhook Download Media está OFF?) id:', m.id);
   }
 
-  // Comandos (ex: /analisar) são processados mesmo se fromMe — o bot nunca
-  // gera mensagens iniciadas em "/", então não há risco de auto-loop.
+  // Processa comandos (/analisar etc.) de qualquer remetente — inclusive o número
+  // conectado. O bot nunca envia mensagens começando com "/", sem risco de loop.
   const body = (m.body || '').trim();
   if (m.type === 'chat' && isCommand(body)) {
     await handleCommand(chatId, body, m);

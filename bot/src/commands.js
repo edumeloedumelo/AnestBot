@@ -3,7 +3,7 @@ import { getConfig, updateConfig } from './config.js';
 import { getLastTime, setLastTime, resetGroup } from './state.js';
 import { fetchNewMessages } from './fetcher.js';
 import { splitIntoPatients, extractName, extractSurgery } from './parser.js';
-import { getMediaById } from './sessions.js';
+import { loadMedia } from './mediastore.js';
 import { sendText } from './ultramsg.js';
 import { runTriage } from './triage.js';
 import { formatTriageReply } from './format.js';
@@ -114,13 +114,16 @@ async function doAnalisar(chatId) {
     return sendText(chatId, `✅ Nenhuma mensagem nova desde a última análise.\n\nSe acabou de enviar as avaliações, tente /resetar e depois /analisar.`);
   }
 
-  // Mescla URLs de mídia do cache de webhook (GET API não retorna media URLs)
+  // Mescla URLs de mídia do store persistente (GET API não retorna media URLs).
+  // As URLs são salvas pelo webhook quando "Webhook Download Media: ON" no UltraMsg.
   const messagesWithMedia = messages.map((m) => {
     if ((m.type === 'image' || m.type === 'document') && !m.media) {
-      const cached = getMediaById(m.id);
-      if (cached) {
-        console.log('[doAnalisar] mídia restaurada do cache, id:', m.id);
-        return { ...m, media: cached.url };
+      const stored = loadMedia(m.id);
+      if (stored) {
+        console.log('[doAnalisar] mídia carregada do store, id:', m.id);
+        return { ...m, media: stored.url };
+      } else {
+        console.log('[doAnalisar] sem mídia para id:', m.id, '(Webhook Download Media OFF?)');
       }
     }
     return m;
