@@ -29,6 +29,17 @@ export function clear(chatId) {
   sessions.delete(chatId);
 }
 
+// Cache de mídia por ID de mensagem (populado pelo webhook quando Download Media está ON)
+const mediaCache = new Map(); // msgId -> { url, caption, type }
+
+export function cacheMediaById(msgId, item) {
+  mediaCache.set(msgId, item);
+}
+
+export function getMediaById(msgId) {
+  return mediaCache.get(msgId);
+}
+
 // limpeza periódica
 setInterval(() => {
   const now = Date.now();

@@ -3,6 +3,7 @@ import { getConfig, updateConfig } from './config.js';
 import { getLastTime, setLastTime, resetGroup } from './state.js';
 import { fetchNewMessages } from './fetcher.js';
 import { splitIntoPatients, extractName, extractSurgery } from './parser.js';
+import { getMediaById } from './sessions.js';
 import { sendText } from './ultramsg.js';
 import { runTriage } from './triage.js';
 import { formatTriageReply } from './format.js';
@@ -113,7 +114,19 @@ async function doAnalisar(chatId) {
     return sendText(chatId, `✅ Nenhuma mensagem nova desde a última análise.\n\nSe acabou de enviar as avaliações, tente /resetar e depois /analisar.`);
   }
 
-  const patients = splitIntoPatients(messages);
+  // Mescla URLs de mídia do cache de webhook (GET API não retorna media URLs)
+  const messagesWithMedia = messages.map((m) => {
+    if ((m.type === 'image' || m.type === 'document') && !m.media) {
+      const cached = getMediaById(m.id);
+      if (cached) {
+        console.log('[doAnalisar] mídia restaurada do cache, id:', m.id);
+        return { ...m, media: cached.url };
+      }
+    }
+    return m;
+  });
+
+  const patients = splitIntoPatients(messagesWithMedia);
   console.log(`[doAnalisar] patients found: ${patients.length}`);
 
   if (patients.length === 0) {

@@ -1,6 +1,6 @@
-// Recebe o payload do webhook UltraMsg e processa apenas comandos explícitos.
-// Mensagens normais (exames, textos) ficam no grupo — o bot busca via GET quando acionado.
+// Recebe o payload do webhook UltraMsg e processa comandos + cacheia mídias recebidas.
 import { isCommand, handleCommand } from './commands.js';
+import { cacheMediaById } from './sessions.js';
 
 const ALLOWED = (process.env.ALLOWED_CHATS || '')
   .split(',')
@@ -27,10 +27,13 @@ export async function handleWebhook(payload) {
   const chatId = m.from;
   if (!isAllowed(chatId)) return;
 
-  const body = (m.body || '').trim();
+  // Cacheia mídia recebida para uso no /analisar (GET API não retorna URLs de mídia)
+  if ((m.type === 'image' || m.type === 'document') && m.media) {
+    cacheMediaById(m.id, { url: m.media, caption: (m.body || ''), type: m.type });
+    console.log('[router] mídia cacheada id:', m.id, 'url:', String(m.media).substring(0, 80));
+  }
 
-  // Só age em comandos explícitos (ex: /analisar).
-  // Mensagens de exames/fotos/texto são ignoradas no webhook — serão lidas via GET ao analisar.
+  const body = (m.body || '').trim();
   if (m.type === 'chat' && isCommand(body)) {
     await handleCommand(chatId, body, m);
   }
