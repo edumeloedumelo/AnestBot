@@ -21,18 +21,25 @@ function isAnamnese(body) {
   );
 }
 
-// ── resposta já enviada pelo bot (não reprocessar) ────────────────────────
+// ── mensagem emitida pelo próprio bot (relatório ou status) — não reprocessar ──
 function isBotReport(body) {
   if (!body) return false;
   return (
     body.includes('TRIAGEM PRÉ-ANESTÉSICA') ||
     body.includes('TRIAGEM PRE-ANESTESICA') ||
+    body.includes('TRIAGEM PRÉ-OPERATÓRIA') ||
     body.includes('📋 TRIAGEM') ||
     body.includes('🧾 TRIAGEM') ||
     body.includes('📋 RESUMO — TRIAGEM') ||
     body.includes('Vou gerar a triagem') ||
+    body.includes('Vou analisar o caso') ||
+    // mensagens de status emitidas durante o /analisar
+    body.includes('🔍 Buscando mensagens') ||
+    body.includes('caso(s) novo(s) encontrado') ||
     body.includes('⏳ Analisando caso') ||
-    body.includes('✅ Análise concluída')
+    body.includes('✅ Análise concluída') ||
+    body.includes('Mensagens encontradas mas nenhum caso') ||
+    body.includes('Nenhuma mensagem nova')
   );
 }
 
@@ -74,8 +81,12 @@ export function splitIntoPatients(messages) {
   for (const m of messages) {
     const body = (m.body || '').trim();
 
-    // Ignora respostas já emitidas pelo próprio bot
-    if (m.fromMe || isBotReport(body)) continue;
+    // Ignora apenas mensagens geradas pelo próprio bot (relatórios/status).
+    // NÃO descartamos por fromMe: a avaliação pode vir do número conectado.
+    if (isBotReport(body)) continue;
+
+    // Ignora comandos (/analisar, /ajuda, etc.) — não são conteúdo clínico.
+    if (m.type === 'chat' && body.startsWith('/')) continue;
 
     // ❌❌❌❌ fecha o caso atual
     if (isSeparator(body)) {

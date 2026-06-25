@@ -168,8 +168,9 @@ async function doAnalisar(chatId) {
     }
   }
 
-  // Salva o timestamp da mensagem mais recente processada
-  const newestTime = messages[messages.length - 1]?.time;
+  // Salva o timestamp da mensagem mais recente processada (UltraMsg usa "timestamp")
+  const newest = messages[messages.length - 1];
+  const newestTime = newest?.timestamp || newest?.time;
   if (newestTime) setLastTime(chatId, newestTime);
 
   if (total > 1) {

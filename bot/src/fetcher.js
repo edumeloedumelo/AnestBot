@@ -48,8 +48,11 @@ export async function fetchNewMessages(chatId, afterTimestamp = 0) {
     console.log('[fetcher] no image/document messages found in batch');
   }
 
+  // Não filtramos por fromMe aqui: a avaliação/exames podem vir do número
+  // conectado (fromMe=true). As respostas do próprio bot são descartadas no
+  // parser via isBotReport. Filtramos apenas por timestamp.
   const filtered = msgs
-    .filter((m) => !isFromMe(m) && getTime(m) > afterTimestamp)
+    .filter((m) => getTime(m) > afterTimestamp)
     .sort((a, b) => getTime(a) - getTime(b));
 
   console.log(`[fetcher] filtered msgs: ${filtered.length}`);

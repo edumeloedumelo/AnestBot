@@ -22,17 +22,19 @@ export async function handleWebhook(payload) {
   }
   const m = payload.data;
   if (!m) return;
-  if (m.fromMe || m.self) return; // ignora mensagens do próprio bot
 
   const chatId = m.from;
   if (!isAllowed(chatId)) return;
 
-  // Cacheia mídia recebida para uso no /analisar (GET API não retorna URLs de mídia)
+  // Cacheia mídia recebida para uso no /analisar (GET API não retorna URLs de mídia).
+  // Cacheia mesmo se fromMe — o médico/secretária podem enviar pelo número conectado.
   if ((m.type === 'image' || m.type === 'document') && m.media) {
     cacheMediaById(m.id, { url: m.media, caption: (m.body || ''), type: m.type });
     console.log('[router] mídia cacheada id:', m.id, 'url:', String(m.media).substring(0, 80));
   }
 
+  // Comandos (ex: /analisar) são processados mesmo se fromMe — o bot nunca
+  // gera mensagens iniciadas em "/", então não há risco de auto-loop.
   const body = (m.body || '').trim();
   if (m.type === 'chat' && isCommand(body)) {
     await handleCommand(chatId, body, m);
