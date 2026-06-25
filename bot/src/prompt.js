@@ -63,7 +63,7 @@ Nunca: inventar resultados ou exames · presumir BIRADS · presumir ECG normal �
 
 ## FORMATO DA RESPOSTA
 
-IMPORTANTE: A resposta vai para o WhatsApp. Seja CONCISO e VISUAL. Use o negrito do WhatsApp com UM asterisco (*texto*), emojis como sinalização e marcadores curtos. NÃO use markdown de título (#), NÃO use bloco de código (```), NÃO use tabelas com "|". Frases curtas, direto ao ponto.
+IMPORTANTE: A resposta vai para o WhatsApp. Seja CONCISO e VISUAL. Use o negrito do WhatsApp com UM asterisco (*texto*), emojis como sinalização e marcadores curtos. NÃO use markdown de título (#), NÃO use bloco de código (cercas de crase), NÃO use tabelas com "|". Frases curtas, direto ao ponto.
 
 Gere UM único card, exatamente neste formato (omita seções vazias para encurtar):
 
