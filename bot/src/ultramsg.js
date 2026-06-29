@@ -1,10 +1,21 @@
 // Cliente da API UltraMsg: envio de texto e download de mídia recebida.
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+import { tmpdir } from 'os';
+import { writeFile, readFile, unlink } from 'fs/promises';
+import { randomBytes } from 'crypto';
+
+const execFileAsync = promisify(execFile);
+
 const INSTANCE = process.env.ULTRAMSG_INSTANCE_ID;
 const TOKEN = process.env.ULTRAMSG_TOKEN;
 const BASE = `https://api.ultramsg.com/${INSTANCE}`;
 
 // WhatsApp aceita ~65k mas mensagens longas falham/cortam; mantemos pedaços seguros.
 const MAX_LEN = 4000;
+
+// PDFs acima deste tamanho são comprimidos pelo Ghostscript antes de ir ao Claude.
+const PDF_COMPRESS_THRESHOLD = 10 * 1024 * 1024; // 10 MB
 
 export async function sendText(to, body) {
   if (!body) return;
@@ -45,6 +56,34 @@ export function splitMessage(text, max = MAX_LEN) {
   return out;
 }
 
+// Comprime um PDF usando Ghostscript. Retorna ArrayBuffer do arquivo comprimido.
+// Usa /ebook (150 dpi) — boa legibilidade para laudos, tamanho reduzido.
+async function compressPdf(buffer) {
+  const id = randomBytes(8).toString('hex');
+  const inPath = `${tmpdir()}/pdf-in-${id}.pdf`;
+  const outPath = `${tmpdir()}/pdf-out-${id}.pdf`;
+  try {
+    await writeFile(inPath, Buffer.from(buffer));
+    await execFileAsync('gs', [
+      '-sDEVICE=pdfwrite',
+      '-dCompatibilityLevel=1.4',
+      '-dPDFSETTINGS=/ebook',
+      '-dNOPAUSE',
+      '-dQUIET',
+      '-dBATCH',
+      `-sOutputFile=${outPath}`,
+      inPath,
+    ]);
+    const compressed = await readFile(outPath);
+    console.error(`[pdf] comprimido: ${buffer.byteLength} → ${compressed.length} bytes`);
+    // Retorna como ArrayBuffer
+    return compressed.buffer.slice(compressed.byteOffset, compressed.byteOffset + compressed.byteLength);
+  } finally {
+    await unlink(inPath).catch(() => {});
+    await unlink(outPath).catch(() => {});
+  }
+}
+
 // Baixa a mídia (imagem/pdf) de uma URL e devolve bloco pronto p/ Claude.
 // Detecta o tipo REAL pelos magic bytes — o content-type/URL do UltraMsg às vezes
 // mente (ex: arquivo .pdf que na verdade é imagem, ou download que retornou erro).
@@ -53,8 +92,8 @@ export async function downloadMediaBlock(url) {
   const contentType = res.headers.get('content-type') || '';
   console.error(`[media] url=${url.substring(0, 80)} status=${res.status} content-type=${contentType}`);
   if (!res.ok) throw new Error(`download falhou (${res.status})`);
-  const buffer = await res.arrayBuffer();
-  const bytes = new Uint8Array(buffer);
+  let buffer = await res.arrayBuffer();
+  let bytes = new Uint8Array(buffer);
 
   if (bytes.length === 0) throw new Error('arquivo vazio');
 
@@ -75,6 +114,15 @@ export async function downloadMediaBlock(url) {
   if (kind === 'pdf') {
     // Só envia como PDF se realmente começar com %PDF (Claude valida isso).
     if (sniffType(bytes) === 'pdf') {
+      if (bytes.length > PDF_COMPRESS_THRESHOLD) {
+        console.error(`[pdf] PDF grande (${bytes.length} bytes), comprimindo...`);
+        try {
+          buffer = await compressPdf(buffer);
+          bytes = new Uint8Array(buffer);
+        } catch (e) {
+          console.error('[pdf] compressão falhou, usando original:', e.message);
+        }
+      }
       return { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: bufferToBase64(buffer) } };
     }
     throw new Error('rotulado como PDF mas conteúdo inválido');
