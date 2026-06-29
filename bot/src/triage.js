@@ -19,9 +19,14 @@ export async function runTriage({ patientName, surgeryType, anamnesis, media }) 
   const contentBlocks = [{ type: 'text', text: contextText }];
 
   const errors = [];
+  console.error(`[triage] ${(media || []).length} mídia(s) para processar`);
   for (const m of media || []) {
+    console.error(`[triage] baixando: url=${m.url ? m.url.substring(0,80) : 'AUSENTE'} type=${m.type}`);
+    if (!m.url) { errors.push('URL de mídia ausente'); continue; }
     try {
-      contentBlocks.push(await downloadMediaBlock(m.url));
+      const block = await downloadMediaBlock(m.url);
+      console.error(`[triage] bloco adicionado: type=${block.type}`);
+      contentBlocks.push(block);
     } catch (e) {
       errors.push(e.message);
       console.error('[triage] mídia falhou:', m.url, e.message);

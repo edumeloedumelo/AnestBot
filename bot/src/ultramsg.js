@@ -50,15 +50,18 @@ export function splitMessage(text, max = MAX_LEN) {
 // mente (ex: arquivo .pdf que na verdade é imagem, ou download que retornou erro).
 export async function downloadMediaBlock(url) {
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`download falhou (${res.status})`);
   const contentType = res.headers.get('content-type') || '';
+  console.error(`[media] url=${url.substring(0, 80)} status=${res.status} content-type=${contentType}`);
+  if (!res.ok) throw new Error(`download falhou (${res.status})`);
   const buffer = await res.arrayBuffer();
   const bytes = new Uint8Array(buffer);
 
   if (bytes.length === 0) throw new Error('arquivo vazio');
 
+  const magic = Array.from(bytes.slice(0, 8)).map(b => b.toString(16).padStart(2,'0')).join(' ');
   // 1ª escolha: magic bytes (confiável). 2ª escolha: content-type do servidor.
   let kind = sniffType(bytes);
+  console.error(`[media] size=${bytes.length} magic=${magic} sniff=${kind}`);
   if (!kind) {
     if (contentType.includes('pdf')) kind = 'pdf';
     else if (contentType.startsWith('image/')) {
@@ -68,6 +71,7 @@ export async function downloadMediaBlock(url) {
         : 'image/jpeg';
     }
   }
+  console.error(`[media] kind-final=${kind}`);
   if (kind === 'pdf') {
     // Só envia como PDF se realmente começar com %PDF (Claude valida isso).
     if (sniffType(bytes) === 'pdf') {

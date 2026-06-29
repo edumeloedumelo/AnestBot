@@ -117,6 +117,7 @@ async function doAnalisar(chatId) {
   const messagesWithMedia = messages.map((m) => {
     if ((m.type === 'image' || m.type === 'document') && !m.media) {
       const stored = loadMedia(m.id);
+      console.error(`[commands] mídia id=${m.id} type=${m.type} store=${stored ? 'ENCONTRADO' : 'AUSENTE'}`);
       if (stored) return { ...m, media: stored.url };
     }
     return m;
