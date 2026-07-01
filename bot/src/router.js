@@ -1,45 +1,55 @@
-// Recebe o payload do webhook UltraMsg e processa comandos + cacheia mídias recebidas.
-import { isCommand, handleCommand } from './commands.js';
-import { saveMedia } from './mediastore.js';
+// Recebe o payload do webhook UltraMsg (uma instância por tenant, URL própria
+// configurada como /webhook/:tenantId no painel de cada instância) e processa
+// comandos + buffer de mídia/texto.
+import { isCommand, handleCommand, bufferMessage } from './commands.js';
+import { getTenantConnection } from './tenant.js';
+import { getConfig } from './config.js';
+import { claimWebhookEvent } from './idempotency.js';
+import { runSerialized } from './sessions.js';
 
-const ALLOWED = (process.env.ALLOWED_CHATS || '')
-  .split(',')
-  .map((s) => s.trim())
-  .filter(Boolean);
-
-function isAllowed(chatId) {
-  if (ALLOWED.length === 0) return true;
-  return ALLOWED.includes(chatId);
-}
-
-export async function handleWebhook(payload) {
+export async function handleWebhook(tenantId, payload) {
   if (!payload) return;
 
-  // Aceita message_received (de outros) e message_create (do próprio número conectado).
-  // Isso permite que o médico dispare /analisar do número do WhatsApp Business.
+  // Aceita message_received (de outros) e message_create (do próprio número
+  // conectado) — permite que a secretária/médica dispare /analisar do próprio
+  // WhatsApp Business conectado.
   const et = payload.event_type;
   const isMsg = !et || et === 'message_received' || et === 'message_create' || et === 'message_created';
-  if (!isMsg) {
-    console.log('[router] ignorando event_type:', et);
+  if (!isMsg) return;
+
+  const m = payload.data;
+  if (!m || !m.id) return;
+
+  // Dedupe: a UltraMsg pode reentregar o mesmo evento se a resposta demorar.
+  const isNew = await claimWebhookEvent(m.id, 'ultramsg');
+  if (!isNew) return;
+
+  const conn = await getTenantConnection(tenantId);
+  if (!conn) {
+    console.warn(`[router] tenant desconhecido ou sem instância: ${tenantId}`);
+    return;
+  }
+  if (conn.tenantStatus !== 'active') {
+    console.log(`[router] ignorando mensagem — tenant ${tenantId} está '${conn.tenantStatus}', não 'active'`);
     return;
   }
 
-  const m = payload.data;
-  if (!m) return;
-
   const chatId = m.from;
-  if (!isAllowed(chatId)) return;
-
-  // Persiste URL de mídia recebida (GET API não retorna URLs de mídia).
-  // "Webhook Download Media: ON" no UltraMsg é obrigatório para m.media ter valor.
-  if ((m.type === 'image' || m.type === 'document') && m.media) {
-    saveMedia(m.id, { url: m.media, caption: m.body || '', type: m.type });
-  }
-
-  // Processa comandos (/analisar etc.) de qualquer remetente — inclusive o número
-  // conectado. O bot nunca envia mensagens começando com "/", sem risco de loop.
+  const ctx = { tenantId, instanceId: conn.instanceId, token: conn.token, chatId };
   const body = (m.body || '').trim();
-  if (m.type === 'chat' && isCommand(body)) {
-    await handleCommand(chatId, body, m);
-  }
+
+  // Cada webhook é uma requisição HTTP independente, processada sem esperar a
+  // resposta — sem isso, duas mensagens do mesmo chat podem terminar de
+  // processar fora de ordem (ex: /analisar rodando antes de uma imagem anterior
+  // terminar de entrar no buffer). runSerialized garante ordem de chegada.
+  await runSerialized(tenantId, chatId, async () => {
+    if (m.type === 'chat' && isCommand(body)) {
+      const config = await getConfig(tenantId);
+      await handleCommand({ ...ctx, config }, body, m);
+      return;
+    }
+
+    // Não é comando: entra no buffer da sessão pra quando /analisar rodar.
+    bufferMessage(ctx, { id: m.id, type: m.type, body: m.body || '', media: m.media || null });
+  });
 }

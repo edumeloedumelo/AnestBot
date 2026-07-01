@@ -1,6 +1,8 @@
 // Divide mensagens em blocos de pacientes.
 // Detecta início de caso por anamnese OU fim de caso por ❌❌❌❌.
-// Pula mensagens já respondidas pelo bot (evita reprocessar).
+// Pula mensagens já respondidas pelo bot (evita reprocessar) — necessário porque
+// a UltraMsg entrega de volta, via "message_create", até as mensagens que o
+// próprio número conectado envia (inclusive as do bot).
 
 // ── detecção de separador ❌❌❌❌ ──────────────────────────────────────────
 function isSeparator(body) {
@@ -33,13 +35,11 @@ function isBotReport(body) {
     body.includes('📋 RESUMO — TRIAGEM') ||
     body.includes('Vou gerar a triagem') ||
     body.includes('Vou analisar o caso') ||
-    // mensagens de status emitidas durante o /analisar
-    body.includes('🔍 Buscando mensagens') ||
-    body.includes('caso(s) novo(s) encontrado') ||
+    body.includes('📋 ') && body.includes('caso(s) novo(s) encontrado') ||
     body.includes('⏳ Analisando caso') ||
     body.includes('✅ Análise concluída') ||
     body.includes('Mensagens encontradas mas nenhum caso') ||
-    body.includes('Nenhuma mensagem nova')
+    body.includes('Nenhum exame novo no buffer')
   );
 }
 
@@ -64,7 +64,7 @@ export function extractSurgery(texts) {
 // ── parser principal ───────────────────────────────────────────────────────
 /**
  * Retorna array de blocos:
- * [{ index, texts, media: [{ url, caption, type }] }, ...]
+ * [{ index, texts, media: [{ media, caption, type }] }, ...]
  * Blocos vazios (sem anamnese nem mídia) são descartados.
  */
 export function splitIntoPatients(messages) {
@@ -82,7 +82,6 @@ export function splitIntoPatients(messages) {
     const body = (m.body || '').trim();
 
     // Ignora apenas mensagens geradas pelo próprio bot (relatórios/status).
-    // NÃO descartamos por fromMe: a avaliação pode vir do número conectado.
     if (isBotReport(body)) continue;
 
     // Ignora comandos (/analisar, /ajuda, etc.) — não são conteúdo clínico.
@@ -107,7 +106,7 @@ export function splitIntoPatients(messages) {
     const isMedia = m.type === 'image' || m.type === 'document' || m.type === 'video';
 
     if (isMedia && m.media) {
-      current.media.push({ url: m.media, caption: body, type: m.type });
+      current.media.push({ media: m.media, caption: body, type: m.type });
       // Legenda com conteúdo clínico vira texto de contexto também
       if (body) current.texts.push(body);
     } else if (m.type === 'chat' && body) {

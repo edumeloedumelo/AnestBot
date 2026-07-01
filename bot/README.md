@@ -6,8 +6,11 @@ pré-anestésica e responde no próprio grupo de forma tabelada (texto monoespa�
 As cirurgias, exames obrigatórios, limites de referência e instruções extras são
 **editáveis por comandos no próprio WhatsApp**.
 
-Stack: **Node.js + Express + UltraMsg + Claude**. Sem n8n, sem banco de dados
-(config fica em `config.json`).
+**Multi-tenant**: cada clínica tem sua própria instância UltraMsg (número
+próprio) e sua própria configuração — tudo vem do Postgres compartilhado com o
+`backend/` (tenants, planos, cobrança), não mais de `config.json`/env var global.
+
+Stack: **Node.js + Express + Postgres + UltraMsg + Claude**.
 
 ---
 
@@ -24,47 +27,54 @@ npm start
 
 | Variável | O que é |
 |---|---|
-| `ULTRAMSG_INSTANCE_ID` | ID da instância UltraMsg (ex: `instance12345`) |
-| `ULTRAMSG_TOKEN` | Token da instância UltraMsg |
+| `DATABASE_URL` | Postgres — o **mesmo banco** usado pelo `backend/` |
+| `TOKEN_ENCRYPTION_KEY` | **idêntica** à do `backend/` — decifra o token da UltraMsg salvo por lá |
 | `ANTHROPIC_API_KEY` | Chave da API Anthropic (`sk-ant-...`) |
 | `ANTHROPIC_MODEL` | `claude-sonnet-4-6` (padrão), `claude-opus-4-8` (mais preciso) ou `claude-haiku-4-5` |
-| `PORT` | Porta do servidor (padrão 3000) |
-| `ALLOWED_CHATS` | (opcional) ids dos grupos onde o bot atua. Vazio = todos |
-| `ADMIN_NUMBERS` | (opcional) números que podem editar a config. Vazio = todos |
 | `TRIGGER_PREFIX` | prefixo dos comandos (padrão `/`) |
+| `PORT` | Porta do servidor (padrão 3000) |
 
-## 3. Configurar o webhook no UltraMsg
+Não existe mais `ULTRAMSG_INSTANCE_ID`/`ULTRAMSG_TOKEN`/`ALLOWED_CHATS`/
+`ADMIN_NUMBERS` como env var global — isso agora é por tenant, vem do banco
+(`whatsapp_numbers`, `tenant_configs.admin_numbers`).
 
-1. Suba o bot num servidor público (Railway, Render, VPS, etc.) — precisa de URL HTTPS.
-2. No painel UltraMsg → **Instance Settings → Webhook**:
-   - URL: `https://SEU_DOMINIO/webhook`
-   - Marque **"On message received"** e ative o envio de mídia.
-3. Adicione o número da instância UltraMsg ao grupo de WhatsApp.
+## 3. Provisionamento de um cliente novo
 
-> Em desenvolvimento local, exponha a porta com `ngrok http 3000` e use a URL do ngrok.
+Ver aviso em `backend/src/routes/provisioning.js`: hoje a criação da instância
+UltraMsg é manual (sem confirmação de API pública de criação automática). Fluxo:
 
-## 4. Como usar no grupo
+1. Dono cria a instância no painel da UltraMsg.
+2. Configura o webhook dessa instância pra `https://SEU_DOMINIO/webhook/:tenantId`
+   (o `:tenantId` é o UUID do tenant no banco).
+3. Dono chama `POST /admin/tenants/:tenantId/attach-instance` no `backend/` com
+   `{ instanceId, token }` — isso salva a conexão e libera o QR de pareamento
+   (`GET /onboarding/qr` no backend, endpoint ainda não verificado contra a API
+   real da UltraMsg).
+4. Cliente escaneia o QR; o worker de Conexão do backend detecta e ativa o tenant.
 
-1. Mandem as **fotos/PDFs dos exames** no grupo (o bot vai bufferizando).
+## 4. Como usar no grupo (depois de ativo)
+
+1. Mandem as **fotos/PDFs dos exames** no grupo (o bot vai bufferizando em
+   memória, por tenant+chat).
 2. Rodem a análise:
    ```
-   /triagem Maria Silva; Mamoplastia; usa Ozempic há 2 meses
+   /analisar
    ```
-   (`Nome; Cirurgia; anamnese opcional`)
-3. O bot responde com o relatório técnico tabelado + bloco-resumo.
+   (separem cada paciente com `❌❌❌❌` se houver mais de um no mesmo lote)
+3. O bot responde com o relatório técnico tabelado + bloco-resumo, um por paciente.
 
 ## 5. Comandos
 
 **Gerais**
-- `/triagem Nome; Cirurgia; anamnese` — analisa os exames enviados
-- `/status` — mostra o que está no buffer
-- `/limpar` — limpa os exames acumulados
+- `/analisar` ou `/triagem` — analisa os casos no buffer
+- `/status` — mostra o que está no buffer e a cota do mês
+- `/resetar`, `/reset` ou `/limpar` — limpa o buffer (admin)
 - `/cirurgias` — lista cirurgias e exames exigidos
 - `/limites` — lista valores de referência
 - `/prompt` — mostra instruções extras ativas
 - `/ajuda` — ajuda
 
-**Edição (admin)**
+**Edição (admin — definido em `tenant_configs.admin_numbers`)**
 - `/addcirurgia chave; Nome; exame1, exame2` — cria/atualiza cirurgia
 - `/delcirurgia chave`
 - `/addlimite Exame; descrição; unidade; obs` — cria/atualiza limite
@@ -75,26 +85,39 @@ npm start
 ## 6. Arquitetura
 
 ```
-WhatsApp (grupo)
+WhatsApp (grupo da clínica, número dedicado por tenant)
    │  mensagem/mídia
    ▼
-UltraMsg ──webhook──▶ Express /webhook (index.js)
+UltraMsg ──webhook──▶ Express /webhook/:tenantId (index.js)
                           │
                           ▼
-                     router.js ── comando? ──▶ commands.js
-                          │  mídia/texto              │
-                          ▼                           ▼
-                     sessions.js (buffer)         triage.js
-                                                      │ system prompt (prompt.js + config.json)
-                                                      │ mídias em base64 (ultramsg.js)
-                                                      ▼
-                                                 Claude (anthropic.js)
-                                                      │
-                                                 format.js ──▶ sendText ──▶ grupo
+                     router.js ── resolve tenant (tenant.js) + dedupe (idempotency.js)
+                          │  comando? ──▶ commands.js ──▶ quota.js / audit.js
+                          │  mídia/texto (serializado por chat, sessions.js)
+                          ▼
+                     sessions.js (buffer em memória)
+                          │ /analisar consome o buffer
+                          ▼
+                     triage.js ── system prompt (prompt.js + config.js/Postgres)
+                          │ mídias em base64 (ultramsg.js)
+                          ▼
+                     Claude (anthropic.js) ── retry em erro transiente
+                          │
+                     format.js ──▶ sendText (ultramsg.js) ──▶ grupo
 ```
+
+Config, cota e log de auditoria vêm do Postgres compartilhado com `backend/`
+(mesma `DATABASE_URL`) — não há mais estado em arquivo local (`config.json`,
+`state.json`, `media-store.json` foram removidos).
 
 ## 7. Aviso
 
-Ferramenta de **apoio à decisão**. Não substitui avaliação médica presencial.
-Atenção à LGPD: dados de pacientes trafegam por UltraMsg e Anthropic — garanta
-base legal e, se possível, restrinja `ALLOWED_CHATS`.
+Sugestão acadêmica de apoio à decisão — a conduta final é sempre do
+anestesiologista responsável, o bot nunca a substitui.
+
+**Retenção de dados**: nenhum conteúdo clínico é gravado em disco ou banco —
+buffer de exames fica só em memória (RAM do processo), com TTL de 6h. O único
+registro persistente é um log mínimo não-identificável (`triage_audit_log`:
+timestamp, tenant, status final 🟢/🟡/🔴 — sem nome de paciente, sem exame).
+Ainda assim, dados de pacientes trafegam pela UltraMsg e pela Anthropic — garanta
+base legal (LGPD) com esses subprocessadores.

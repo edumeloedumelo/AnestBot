@@ -1,4 +1,6 @@
 // Cliente da API UltraMsg: envio de texto e download de mídia recebida.
+// Multi-tenant: cada chamada recebe instanceId/token do tenant (vindos do banco),
+// não são mais fixos em variável de ambiente.
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { tmpdir } from 'os';
@@ -7,24 +9,24 @@ import { randomBytes } from 'crypto';
 
 const execFileAsync = promisify(execFile);
 
-const INSTANCE = process.env.ULTRAMSG_INSTANCE_ID;
-const TOKEN = process.env.ULTRAMSG_TOKEN;
-const BASE = `https://api.ultramsg.com/${INSTANCE}`;
-
 // WhatsApp aceita ~65k mas mensagens longas falham/cortam; mantemos pedaços seguros.
 const MAX_LEN = 4000;
 
 // PDFs acima deste tamanho são comprimidos pelo Ghostscript antes de ir ao Claude.
 const PDF_COMPRESS_THRESHOLD = 10 * 1024 * 1024; // 10 MB
 
-export async function sendText(to, body) {
+function base(instanceId) {
+  return `https://api.ultramsg.com/${instanceId}`;
+}
+
+export async function sendText(instanceId, token, to, body) {
   if (!body) return;
   const chunks = splitMessage(body, MAX_LEN);
   for (const chunk of chunks) {
-    const res = await fetch(`${BASE}/messages/chat`, {
+    const res = await fetch(`${base(instanceId)}/messages/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ token: TOKEN, to, body: chunk }),
+      body: new URLSearchParams({ token, to, body: chunk }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || data?.error) {
@@ -42,7 +44,6 @@ export function splitMessage(text, max = MAX_LEN) {
     if ((buf + '\n' + line).length > max) {
       if (buf) out.push(buf);
       if (line.length > max) {
-        // linha gigante: corta no braço
         for (let i = 0; i < line.length; i += max) out.push(line.slice(i, i + max));
         buf = '';
       } else {
@@ -57,7 +58,6 @@ export function splitMessage(text, max = MAX_LEN) {
 }
 
 // Comprime um PDF usando Ghostscript. Retorna ArrayBuffer do arquivo comprimido.
-// Usa /ebook (150 dpi) — boa legibilidade para laudos, tamanho reduzido.
 async function compressPdf(buffer) {
   const id = randomBytes(8).toString('hex');
   const inPath = `${tmpdir()}/pdf-in-${id}.pdf`;
@@ -76,7 +76,6 @@ async function compressPdf(buffer) {
     ]);
     const compressed = await readFile(outPath);
     console.error(`[pdf] comprimido: ${buffer.byteLength} → ${compressed.length} bytes`);
-    // Retorna como ArrayBuffer
     return compressed.buffer.slice(compressed.byteOffset, compressed.byteOffset + compressed.byteLength);
   } finally {
     await unlink(inPath).catch(() => {});
@@ -84,9 +83,8 @@ async function compressPdf(buffer) {
   }
 }
 
-// Baixa a mídia (imagem/pdf) de uma URL e devolve bloco pronto p/ Claude.
-// Detecta o tipo REAL pelos magic bytes — o content-type/URL do UltraMsg às vezes
-// mente (ex: arquivo .pdf que na verdade é imagem, ou download que retornou erro).
+// Baixa a mídia (imagem/pdf) de uma URL (entregue direto no payload do webhook,
+// com "Webhook Download Media: ON" na instância) e devolve bloco pronto p/ Claude.
 export async function downloadMediaBlock(url) {
   const res = await fetch(url);
   const contentType = res.headers.get('content-type') || '';
@@ -97,8 +95,7 @@ export async function downloadMediaBlock(url) {
 
   if (bytes.length === 0) throw new Error('arquivo vazio');
 
-  const magic = Array.from(bytes.slice(0, 8)).map(b => b.toString(16).padStart(2,'0')).join(' ');
-  // 1ª escolha: magic bytes (confiável). 2ª escolha: content-type do servidor.
+  const magic = Array.from(bytes.slice(0, 8)).map(b => b.toString(16).padStart(2, '0')).join(' ');
   let kind = sniffType(bytes);
   console.error(`[media] size=${bytes.length} magic=${magic} sniff=${kind}`);
   if (!kind) {
@@ -112,7 +109,6 @@ export async function downloadMediaBlock(url) {
   }
   console.error(`[media] kind-final=${kind}`);
   if (kind === 'pdf') {
-    // Só envia como PDF se realmente começar com %PDF (Claude valida isso).
     if (sniffType(bytes) === 'pdf') {
       if (bytes.length > PDF_COMPRESS_THRESHOLD) {
         console.error(`[pdf] PDF grande (${bytes.length} bytes), comprimindo...`);
@@ -128,11 +124,9 @@ export async function downloadMediaBlock(url) {
     throw new Error('rotulado como PDF mas conteúdo inválido');
   }
   if (kind) {
-    // kind é o media_type da imagem (image/jpeg, image/png, etc.)
     return { type: 'image', source: { type: 'base64', media_type: kind, data: bufferToBase64(buffer) } };
   }
 
-  // Tipo não reconhecido: tenta como texto se for legível, senão descarta.
   const textContent = new TextDecoder().decode(buffer).substring(0, 10000);
   if (/[\x20-\x7E]/.test(textContent) && !/[\x00-\x08]/.test(textContent.substring(0, 200))) {
     return { type: 'text', text: `### ARQUIVO ENVIADO\n${textContent}` };
@@ -140,17 +134,11 @@ export async function downloadMediaBlock(url) {
   throw new Error('formato de arquivo não suportado/ilegível');
 }
 
-// Identifica o tipo pelos primeiros bytes. Retorna 'pdf', um media_type de imagem, ou null.
 function sniffType(bytes) {
-  // %PDF
   if (bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46) return 'pdf';
-  // JPEG: FF D8 FF
   if (bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF) return 'image/jpeg';
-  // PNG: 89 50 4E 47
   if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47) return 'image/png';
-  // GIF: 47 49 46 38
   if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x38) return 'image/gif';
-  // WEBP: RIFF....WEBP
   if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 &&
       bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50) return 'image/webp';
   return null;
