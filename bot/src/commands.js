@@ -320,5 +320,5 @@ ${PREFIX}setprompt texto extra para o protocolo
 ${PREFIX}limparprompt
 ${PREFIX}resetar — reprocessa o histórico completo do grupo
 
-⚠️ A decisão final é sempre do anestesiologista responsável.`;
+_A decisão final é sempre do anestesiologista responsável._`;
 }

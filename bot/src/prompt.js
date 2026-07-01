@@ -90,7 +90,7 @@ Gere UM único card, exatamente neste formato (omita seções vazias para encurt
 📋 *CONDUTA*
 [1 a 2 linhas, objetivo: o que precisa ser feito]
 ━━━━━━━━━━━━━━
-⚠️ _A decisão final é sempre do anestesiologista responsável._
+_A decisão final é sempre do anestesiologista responsável._
 
 REGRAS DO CARD:
 - Cada exame/alerta/medicação em no máximo 1 linha. Nada de parágrafos longos.
