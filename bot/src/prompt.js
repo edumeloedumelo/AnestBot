@@ -90,7 +90,7 @@ Gere UM único card, exatamente neste formato (omita seções vazias para encurt
 📋 *CONDUTA*
 [1 a 2 linhas, objetivo: o que precisa ser feito]
 ━━━━━━━━━━━━━━
-⚠️ _Apoio à decisão. Não substitui avaliação presencial._
+⚠️ _Sugestão acadêmica de apoio — a conduta final é sempre do anestesista responsável._
 
 REGRAS DO CARD:
 - Cada exame/alerta/medicação em no máximo 1 linha. Nada de parágrafos longos.

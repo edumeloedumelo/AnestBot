@@ -320,5 +320,5 @@ ${PREFIX}setprompt texto extra para o protocolo
 ${PREFIX}limparprompt
 ${PREFIX}resetar — reprocessa o histórico completo do grupo
 
-⚠️ Ferramenta de apoio. Não substitui avaliação médica presencial.`;
+⚠️ Sugestão acadêmica de apoio à decisão. O bot nunca substitui o anestesista — a conduta final é sempre dele.`;
 }
