@@ -320,5 +320,5 @@ ${PREFIX}setprompt texto extra para o protocolo
 ${PREFIX}limparprompt
 ${PREFIX}resetar — reprocessa o histórico completo do grupo
 
-⚠️ Sugestão acadêmica de apoio à decisão. O bot nunca substitui o anestesista — a conduta final é sempre dele.`;
+⚠️ A decisão final é sempre do anestesiologista responsável.`;
 }
