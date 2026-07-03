@@ -9,16 +9,10 @@ function isSeparator(body) {
 }
 
 // ── início de novo caso: avaliação pré-anestésica ─────────────────────────
+// Regex tolerante a variações de acento, espaço e hífen.
+const ANAMNESE_RE = /avalia[çc][aã]o\s*pr[eé][-\s]?anest[eé]sica|equipe\s+de\s+anestesia/i;
 function isAnamnese(body) {
-  if (!body) return false;
-  const t = body.toLowerCase();
-  return (
-    t.includes('equipe de anestesia') ||
-    t.includes('avaliação pré-anestésica') ||
-    t.includes('avaliacao pre-anestesica') ||
-    t.includes('avaliacao pre anestesica') ||
-    t.includes('avaliação pre anestésica')
-  );
+  return ANAMNESE_RE.test(body || '');
 }
 
 // ── mensagem emitida pelo próprio bot (relatório ou status) — não reprocessar ──
@@ -30,16 +24,43 @@ function isBotReport(body) {
     body.includes('TRIAGEM PRÉ-OPERATÓRIA') ||
     body.includes('📋 TRIAGEM') ||
     body.includes('🧾 TRIAGEM') ||
+    body.includes('🩺 *TRIAGEM') ||
     body.includes('📋 RESUMO — TRIAGEM') ||
     body.includes('Vou gerar a triagem') ||
     body.includes('Vou analisar o caso') ||
-    // mensagens de status emitidas durante o /analisar
     body.includes('🔍 Buscando mensagens') ||
     body.includes('caso(s) novo(s) encontrado') ||
     body.includes('⏳ Analisando caso') ||
     body.includes('✅ Análise concluída') ||
     body.includes('Mensagens encontradas mas nenhum caso') ||
-    body.includes('Nenhuma mensagem nova')
+    body.includes('Nenhuma mensagem nova') ||
+    body.includes('📁 CASO') ||
+    body.includes('━━━━━━━━━━━━━━')
+  );
+}
+
+// ── URLs de documentos em mensagens de texto ──────────────────────────────
+const URL_RE = /https?:\/\/\S+/g;
+function extractDocumentUrls(text) {
+  const urls = [];
+  for (const match of (text || '').matchAll(URL_RE)) {
+    const url = match[0].replace(/[)\].,!?'"]+$/, ''); // remove pontuação final
+    if (looksLikeDocUrl(url)) urls.push(url);
+  }
+  return urls;
+}
+
+function looksLikeDocUrl(url) {
+  return (
+    /\.(pdf|docx?|xlsx?|pptx?)(\?|#|$)/i.test(url) ||
+    url.includes('acrobat.adobe.com') ||
+    url.includes('adobe.com/id/') ||
+    url.includes('drive.google.com') ||
+    url.includes('docs.google.com') ||
+    url.includes('dropbox.com') ||
+    url.includes('1drv.ms') ||
+    url.includes('onedrive.live.com') ||
+    url.includes('sharepoint.com')
   );
 }
 
@@ -66,10 +87,19 @@ export function extractSurgery(texts) {
  * Retorna array de blocos:
  * [{ index, texts, media: [{ url, caption, type }] }, ...]
  * Blocos vazios (sem anamnese nem mídia) são descartados.
+ *
+ * Comportamento de abertura de bloco:
+ * - Anamnese detectada → abre bloco explicitamente.
+ * - Qualquer texto ou mídia clínica → abre bloco implicitamente (sem descarte silencioso).
+ * - ❌❌❌❌ → fecha e separa blocos.
  */
 export function splitIntoPatients(messages) {
   const blocks = [];
   let current = null;
+
+  function ensureOpen() {
+    if (!current) current = { texts: [], media: [] };
+  }
 
   function pushCurrent() {
     if (current && (current.texts.length > 0 || current.media.length > 0)) {
@@ -81,11 +111,7 @@ export function splitIntoPatients(messages) {
   for (const m of messages) {
     const body = (m.body || '').trim();
 
-    // Ignora apenas mensagens geradas pelo próprio bot (relatórios/status).
-    // NÃO descartamos por fromMe: a avaliação pode vir do número conectado.
     if (isBotReport(body)) continue;
-
-    // Ignora comandos (/analisar, /ajuda, etc.) — não são conteúdo clínico.
     if (m.type === 'chat' && body.startsWith('/')) continue;
 
     // ❌❌❌❌ fecha o caso atual
@@ -94,24 +120,26 @@ export function splitIntoPatients(messages) {
       continue;
     }
 
-    // Anamnese detectada = início de novo caso
+    // Anamnese detectada = início explícito de novo caso
     if (isAnamnese(body)) {
       pushCurrent();
       current = { texts: [body], media: [] };
       continue;
     }
 
-    // Se ainda não há caso aberto, ignora (mensagem fora de contexto)
-    if (!current) continue;
-
     const isMedia = m.type === 'image' || m.type === 'document' || m.type === 'video';
 
     if (isMedia && m.media) {
+      ensureOpen();
       current.media.push({ url: m.media, caption: body, type: m.type });
-      // Legenda com conteúdo clínico vira texto de contexto também
       if (body) current.texts.push(body);
     } else if (m.type === 'chat' && body) {
+      ensureOpen();
       current.texts.push(body);
+      // Detecta URLs de PDF/documento compartilhado em texto (ex: link do Acrobat Reader)
+      for (const url of extractDocumentUrls(body)) {
+        current.media.push({ url, caption: 'link de documento', type: 'link' });
+      }
     }
   }
 

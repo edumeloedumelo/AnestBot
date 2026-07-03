@@ -42,7 +42,6 @@ export function splitMessage(text, max = MAX_LEN) {
     if ((buf + '\n' + line).length > max) {
       if (buf) out.push(buf);
       if (line.length > max) {
-        // linha gigante: corta no braço
         for (let i = 0; i < line.length; i += max) out.push(line.slice(i, i + max));
         buf = '';
       } else {
@@ -57,7 +56,6 @@ export function splitMessage(text, max = MAX_LEN) {
 }
 
 // Comprime um PDF usando Ghostscript. Retorna ArrayBuffer do arquivo comprimido.
-// Usa /ebook (150 dpi) — boa legibilidade para laudos, tamanho reduzido.
 async function compressPdf(buffer) {
   const id = randomBytes(8).toString('hex');
   const inPath = `${tmpdir()}/pdf-in-${id}.pdf`;
@@ -76,7 +74,6 @@ async function compressPdf(buffer) {
     ]);
     const compressed = await readFile(outPath);
     console.error(`[pdf] comprimido: ${buffer.byteLength} → ${compressed.length} bytes`);
-    // Retorna como ArrayBuffer
     return compressed.buffer.slice(compressed.byteOffset, compressed.byteOffset + compressed.byteLength);
   } finally {
     await unlink(inPath).catch(() => {});
@@ -84,23 +81,32 @@ async function compressPdf(buffer) {
   }
 }
 
-// Baixa a mídia (imagem/pdf) de uma URL e devolve bloco pronto p/ Claude.
-// Detecta o tipo REAL pelos magic bytes — o content-type/URL do UltraMsg às vezes
-// mente (ex: arquivo .pdf que na verdade é imagem, ou download que retornou erro).
-export async function downloadMediaBlock(url) {
+// Baixa a mídia (imagem/pdf/link) de uma URL e devolve bloco pronto p/ Claude.
+// isLink=true indica URL compartilhada como texto (ex: Acrobat Reader, Google Drive).
+export async function downloadMediaBlock(url, isLink = false) {
   const res = await fetch(url);
   const contentType = res.headers.get('content-type') || '';
   console.error(`[media] url=${url.substring(0, 80)} status=${res.status} content-type=${contentType}`);
+
   if (!res.ok) throw new Error(`download falhou (${res.status})`);
+
+  // Link de nuvem que retornou uma página HTML = requer autenticação, não temos acesso.
+  if (contentType.includes('text/html')) {
+    throw new Error(
+      'PDF enviado como link externo (Acrobat, Drive etc.) — não é possível acessar. ' +
+      'Peça para enviar o arquivo diretamente pelo WhatsApp.'
+    );
+  }
+
   let buffer = await res.arrayBuffer();
   let bytes = new Uint8Array(buffer);
 
   if (bytes.length === 0) throw new Error('arquivo vazio');
 
-  const magic = Array.from(bytes.slice(0, 8)).map(b => b.toString(16).padStart(2,'0')).join(' ');
-  // 1ª escolha: magic bytes (confiável). 2ª escolha: content-type do servidor.
+  const magic = Array.from(bytes.slice(0, 8)).map(b => b.toString(16).padStart(2, '0')).join(' ');
   let kind = sniffType(bytes);
   console.error(`[media] size=${bytes.length} magic=${magic} sniff=${kind}`);
+
   if (!kind) {
     if (contentType.includes('pdf')) kind = 'pdf';
     else if (contentType.startsWith('image/')) {
@@ -111,24 +117,22 @@ export async function downloadMediaBlock(url) {
     }
   }
   console.error(`[media] kind-final=${kind}`);
+
   if (kind === 'pdf') {
-    // Só envia como PDF se realmente começar com %PDF (Claude valida isso).
-    if (sniffType(bytes) === 'pdf') {
-      if (bytes.length > PDF_COMPRESS_THRESHOLD) {
-        console.error(`[pdf] PDF grande (${bytes.length} bytes), comprimindo...`);
-        try {
-          buffer = await compressPdf(buffer);
-          bytes = new Uint8Array(buffer);
-        } catch (e) {
-          console.error('[pdf] compressão falhou, usando original:', e.message);
-        }
+    if (sniffType(bytes) !== 'pdf') throw new Error('rotulado como PDF mas conteúdo inválido');
+    if (bytes.length > PDF_COMPRESS_THRESHOLD) {
+      console.error(`[pdf] PDF grande (${bytes.length} bytes), comprimindo...`);
+      try {
+        buffer = await compressPdf(buffer);
+        bytes = new Uint8Array(buffer);
+      } catch (e) {
+        console.error('[pdf] compressão falhou, usando original:', e.message);
       }
-      return { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: bufferToBase64(buffer) } };
     }
-    throw new Error('rotulado como PDF mas conteúdo inválido');
+    return { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: bufferToBase64(buffer) } };
   }
+
   if (kind) {
-    // kind é o media_type da imagem (image/jpeg, image/png, etc.)
     return { type: 'image', source: { type: 'base64', media_type: kind, data: bufferToBase64(buffer) } };
   }
 
@@ -140,17 +144,11 @@ export async function downloadMediaBlock(url) {
   throw new Error('formato de arquivo não suportado/ilegível');
 }
 
-// Identifica o tipo pelos primeiros bytes. Retorna 'pdf', um media_type de imagem, ou null.
 function sniffType(bytes) {
-  // %PDF
   if (bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46) return 'pdf';
-  // JPEG: FF D8 FF
   if (bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF) return 'image/jpeg';
-  // PNG: 89 50 4E 47
   if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47) return 'image/png';
-  // GIF: 47 49 46 38
   if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x38) return 'image/gif';
-  // WEBP: RIFF....WEBP
   if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 &&
       bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50) return 'image/webp';
   return null;

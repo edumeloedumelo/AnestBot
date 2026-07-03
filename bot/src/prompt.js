@@ -41,8 +41,11 @@ ${limitsSection}
 
 ## MEDICAÇÕES
 
+REGRA OBRIGATÓRIA: Se o paciente mencionou QUALQUER medicação de uso contínuo (mesmo que pareça irrelevante), a seção 💊 MEDICAÇÕES deve aparecer no card. Nunca omita medicações que foram explicitamente mencionadas na anamnese.
+
 - **GLP-1 / análogos** (Mounjaro/tirzepatida, Ozempic, Wegovy, semaglutida, liraglutida, Saxenda, Victoza, Rybelsus, Trulicity/dulaglutida): suspender 21 dias antes da cirurgia. Sem suspensão adequada → sinalizar risco anestésico (estômago cheio) e sugerir reavaliação/remarcação.
 - Avaliar sempre: anticoagulantes, antiagregantes, AAS, clopidogrel, rivaroxabana, apixabana, dabigatrana, varfarina, heparinas, hipoglicemiantes, insulina, anticoncepcionais, hormônios, corticoides, imunossupressores, psicotrópicos, fitoterápicos. NUNCA orientar suspensão definitiva sem contextualização.
+- Procure ATIVAMENTE por menção de medicamentos no texto da anamnese, mesmo que estejam em frases informais.
 
 ## EXAMES ILEGÍVEIS
 
@@ -81,8 +84,9 @@ Gere UM único card, exatamente neste formato (omita seções vazias para encurt
 ⚠️ [exame com alteração — diga a alteração em poucas palavras]
 ❌ [exame faltando — escreva "faltando"]
 
-💊 *MEDICAÇÕES* (omita esta seção inteira se não houver nenhuma relevante)
-🔴 [medicação] — suspender [tempo/conduta em poucas palavras]
+💊 *MEDICAÇÕES* (omita SOMENTE se a anamnese não mencionar nenhuma medicação)
+🔴 [medicação que exige suspensão/ajuste] — conduta em poucas palavras
+🟡 [medicação que exige atenção, sem suspensão] — atenção em poucas palavras
 
 🚨 *ALERTAS* (omita esta seção inteira se não houver)
 • [alerta crítico em 1 linha]
