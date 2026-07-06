@@ -1,6 +1,6 @@
 // Divide mensagens em blocos de pacientes.
-// Detecta início de caso por anamnese OU fim de caso por ❌❌❌❌.
-// Pula mensagens já respondidas pelo bot (evita reprocessar).
+// Protocolo: caso inicia com "🩺 Olá!" (ou texto de anamnese), encerra com ❌❌❌❌.
+// Qualquer mensagem fora desse envelope é ignorada (incluindo respostas do próprio bot).
 
 // ── detecção de separador ❌❌❌❌ ──────────────────────────────────────────
 function isSeparator(body) {
@@ -9,25 +9,29 @@ function isSeparator(body) {
 }
 
 // ── início de novo caso ───────────────────────────────────────────────────
-// Detecta marcador explícito "🩺 Olá!" OU texto de avaliação pré-anestésica.
-// Regex tolerante a variações de acento, espaço e hífen.
+// Gatilho principal: qualquer mensagem que COMECE com 🩺 (ex: "🩺 Olá!")
+// Gatilho secundário: texto contendo "avaliação pré-anestésica" / "equipe de anestesia"
 const ANAMNESE_RE = /avalia[çc][aã]o\s*pr[eé][-\s]?anest[eé]sica|equipe\s+de\s+anestesia/i;
 function isAnamnese(body) {
   if (!body) return false;
-  if (body.trimStart().startsWith('🩺 Olá')) return true;
+  // Gatilho principal: começa com 🩺 (ignora espaços iniciais)
+  if (body.trimStart().startsWith('🩺')) return true;
+  // Gatilho secundário: texto da avaliação pré-anestésica (tolerante a variações)
   return ANAMNESE_RE.test(body);
 }
 
-// ── mensagem emitida pelo próprio bot (relatório ou status) — não reprocessar ──
+// ── mensagens emitidas pelo próprio bot ───────────────────────────────────
+// NUNCA devem ser reprocessadas como conteúdo clínico.
 function isBotReport(body) {
   if (!body) return false;
   return (
-    // Formato novo
+    // ── Formato novo ──
     body.includes('🧾 *AVALIAÇÃO PRÉ-ANESTÉSICA') ||
     body.includes('🧾 AVALIAÇÃO PRÉ-ANESTÉSICA') ||
     body.includes('📌 *STATUS FINAL') ||
     body.includes('📌 STATUS FINAL') ||
-    // Formato anterior (compatibilidade)
+    body.includes('Apoio à decisão. Não substitui avaliação médica') ||
+    // ── Formato anterior (retrocompatibilidade) ──
     body.includes('TRIAGEM PRÉ-ANESTÉSICA') ||
     body.includes('TRIAGEM PRE-ANESTESICA') ||
     body.includes('TRIAGEM PRÉ-OPERATÓRIA') ||
@@ -37,7 +41,7 @@ function isBotReport(body) {
     body.includes('📋 RESUMO — TRIAGEM') ||
     body.includes('Vou gerar a triagem') ||
     body.includes('Vou analisar o caso') ||
-    // Mensagens de status do bot durante /analisar
+    // ── Mensagens de status do /analisar ──
     body.includes('🔍 Buscando mensagens') ||
     body.includes('caso(s) novo(s) encontrado') ||
     body.includes('⏳ Analisando caso') ||
@@ -45,7 +49,12 @@ function isBotReport(body) {
     body.includes('Mensagens encontradas mas nenhum caso') ||
     body.includes('Nenhuma mensagem nova') ||
     body.includes('📁 CASO') ||
-    body.includes('━━━━━━━━━━━━━━')
+    body.includes('━━━━━━━━━━━━━━') ||
+    // ── Outros comandos do bot ──
+    body.includes('BOT DE AVALIAÇÃO PRÉ-ANESTÉSICA') ||
+    body.includes('CIRURGIAS CADASTRADAS') ||
+    body.includes('LIMITES / VALORES DE REFERÊNCIA') ||
+    body.includes('Instruções adicionais')
   );
 }
 
@@ -54,7 +63,7 @@ const URL_RE = /https?:\/\/\S+/g;
 function extractDocumentUrls(text) {
   const urls = [];
   for (const match of (text || '').matchAll(URL_RE)) {
-    const url = match[0].replace(/[)\].,!?'"]+$/, ''); // remove pontuação final
+    const url = match[0].replace(/[)\].,!?'"]+$/, '');
     if (looksLikeDocUrl(url)) urls.push(url);
   }
   return urls;
@@ -74,7 +83,7 @@ function looksLikeDocUrl(url) {
   );
 }
 
-// ── extração de nome e cirurgia (padrões do formulário da secretaria) ─────
+// ── extração de nome e cirurgia ───────────────────────────────────────────
 export function extractName(texts) {
   const joined = texts.join('\n');
   const m =
@@ -88,7 +97,7 @@ export function extractSurgery(texts) {
   const m =
     joined.match(/Procedimento[:\s]+([^\n,]+)/i) ||
     joined.match(/Cirurgia[:\s]+([^\n,]+)/i) ||
-    joined.match(/\b(mamoplastia|mastopexia|pr[oó]tese\s+mam[aá]ria|abdominoplastia|lipoaspira[çc][aã]o|hidrolipo|lipoescultura|rinoplastia|blefaroplastia|ritidoplastia|facelift|endometriose|videolaparoscopia|robótica|lipo)\b/i);
+    joined.match(/\b(mamoplastia|mastopexia|pr[oó]tese\s+mam[aá]ria|abdominoplastia|lipoaspira[çc][aã]o|hidrolipo|lipoescultura|rinoplastia|blefaroplastia|ritidoplastia|facelift|endometriose|videolaparoscopia|rob[oó]tica|lipo)\b/i);
   return m ? m[1].trim() : '';
 }
 
@@ -96,20 +105,16 @@ export function extractSurgery(texts) {
 /**
  * Retorna array de blocos:
  * [{ index, texts, media: [{ url, caption, type }] }, ...]
- * Blocos vazios (sem anamnese nem mídia) são descartados.
  *
- * Comportamento de abertura de bloco:
- * - Anamnese detectada → abre bloco explicitamente.
- * - Qualquer texto ou mídia clínica → abre bloco implicitamente (sem descarte silencioso).
- * - ❌❌❌❌ → fecha e separa blocos.
+ * REGRAS ESTRITAS:
+ * - Caso DEVE começar com "🩺 Olá!" (ou texto de anamnese).
+ * - Caso DEVE terminar com ❌❌❌❌ (ou pela chegada do próximo caso / fim do array).
+ * - Mensagens fora de um caso aberto são IGNORADAS (inclui mídias aleatórias do grupo).
+ * - Respostas do próprio bot são ignoradas via isBotReport.
  */
 export function splitIntoPatients(messages) {
   const blocks = [];
   let current = null;
-
-  function ensureOpen() {
-    if (!current) current = { texts: [], media: [] };
-  }
 
   function pushCurrent() {
     if (current && (current.texts.length > 0 || current.media.length > 0)) {
@@ -121,7 +126,10 @@ export function splitIntoPatients(messages) {
   for (const m of messages) {
     const body = (m.body || '').trim();
 
+    // Ignora respostas do próprio bot
     if (isBotReport(body)) continue;
+
+    // Ignora comandos (/analisar, /ajuda etc.) — não são conteúdo clínico
     if (m.type === 'chat' && body.startsWith('/')) continue;
 
     // ❌❌❌❌ fecha o caso atual
@@ -130,23 +138,27 @@ export function splitIntoPatients(messages) {
       continue;
     }
 
-    // Anamnese detectada = início explícito de novo caso
+    // "🩺 Olá!" ou anamnese = início explícito de novo caso
     if (isAnamnese(body)) {
       pushCurrent();
       current = { texts: [body], media: [] };
       continue;
     }
 
+    // ── SEM CASO ABERTO: ignora tudo ──────────────────────────────────────
+    // Mídias aleatórias do grupo, conversa fora de contexto etc. são descartadas.
+    // Só entra aqui se um caso foi aberto por "🩺 Olá!" ou anamnese.
+    if (!current) continue;
+
+    // ── DENTRO DE UM CASO ─────────────────────────────────────────────────
     const isMedia = m.type === 'image' || m.type === 'document' || m.type === 'video';
 
     if (isMedia && m.media) {
-      ensureOpen();
       current.media.push({ url: m.media, caption: body, type: m.type });
       if (body) current.texts.push(body);
     } else if (m.type === 'chat' && body) {
-      ensureOpen();
       current.texts.push(body);
-      // Detecta URLs de PDF/documento compartilhado em texto (ex: link do Acrobat Reader)
+      // Detecta URLs de documentos compartilhados via link (ex: Acrobat Reader)
       for (const url of extractDocumentUrls(body)) {
         current.media.push({ url, caption: 'link de documento', type: 'link' });
       }

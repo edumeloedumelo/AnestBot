@@ -47,7 +47,7 @@ export async function handleCommand(chatId, body, msg) {
 
     case 'analisar':
     case 'triagem':
-      return doAnalisar(chatId);
+      return doAnalisar(chatId, msg);
 
     case 'status':
       return doStatus(chatId);
@@ -95,7 +95,7 @@ function requireAdmin(chatId, msg, fn) {
 // ANÁLISE PRINCIPAL
 // ─────────────────────────────────────────────
 
-async function doAnalisar(chatId) {
+async function doAnalisar(chatId, cmdMsg) {
   const lastTime = getLastTime(chatId);
 
   await sendText(chatId, `🔍 Buscando mensagens novas no grupo...`);
@@ -164,10 +164,14 @@ async function doAnalisar(chatId) {
     }
   }
 
-  // Salva o timestamp da mensagem mais recente processada (UltraMsg usa "timestamp")
-  const newest = messages[messages.length - 1];
-  const newestTime = newest?.timestamp || newest?.time;
-  if (newestTime) setLastTime(chatId, newestTime);
+  // Salva o timestamp do próprio comando /analisar como ponto de corte.
+  // Isso garante que as respostas do bot (enviadas DEPOIS do comando) não sejam
+  // re-lidas na próxima análise como se fossem casos novos.
+  const cmdTime = (cmdMsg?.timestamp || cmdMsg?.time);
+  const newestTime = (messages[messages.length - 1]?.timestamp || messages[messages.length - 1]?.time);
+  // Usa o maior entre o timestamp do comando e o da última mensagem processada.
+  const cutoff = Math.max(cmdTime || 0, newestTime || 0);
+  if (cutoff) setLastTime(chatId, cutoff);
 
   if (total > 1) {
     await sendText(chatId, `✅ Análise concluída — ${total} caso(s) processado(s).`);
