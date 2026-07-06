@@ -8,17 +8,26 @@ function isSeparator(body) {
   return /^[\s❌✖✗x×]+$/i.test(body) && body.includes('❌');
 }
 
-// ── início de novo caso: avaliação pré-anestésica ─────────────────────────
+// ── início de novo caso ───────────────────────────────────────────────────
+// Detecta marcador explícito "🩺 Olá!" OU texto de avaliação pré-anestésica.
 // Regex tolerante a variações de acento, espaço e hífen.
 const ANAMNESE_RE = /avalia[çc][aã]o\s*pr[eé][-\s]?anest[eé]sica|equipe\s+de\s+anestesia/i;
 function isAnamnese(body) {
-  return ANAMNESE_RE.test(body || '');
+  if (!body) return false;
+  if (body.trimStart().startsWith('🩺 Olá')) return true;
+  return ANAMNESE_RE.test(body);
 }
 
 // ── mensagem emitida pelo próprio bot (relatório ou status) — não reprocessar ──
 function isBotReport(body) {
   if (!body) return false;
   return (
+    // Formato novo
+    body.includes('🧾 *AVALIAÇÃO PRÉ-ANESTÉSICA') ||
+    body.includes('🧾 AVALIAÇÃO PRÉ-ANESTÉSICA') ||
+    body.includes('📌 *STATUS FINAL') ||
+    body.includes('📌 STATUS FINAL') ||
+    // Formato anterior (compatibilidade)
     body.includes('TRIAGEM PRÉ-ANESTÉSICA') ||
     body.includes('TRIAGEM PRE-ANESTESICA') ||
     body.includes('TRIAGEM PRÉ-OPERATÓRIA') ||
@@ -28,6 +37,7 @@ function isBotReport(body) {
     body.includes('📋 RESUMO — TRIAGEM') ||
     body.includes('Vou gerar a triagem') ||
     body.includes('Vou analisar o caso') ||
+    // Mensagens de status do bot durante /analisar
     body.includes('🔍 Buscando mensagens') ||
     body.includes('caso(s) novo(s) encontrado') ||
     body.includes('⏳ Analisando caso') ||
@@ -78,7 +88,7 @@ export function extractSurgery(texts) {
   const m =
     joined.match(/Procedimento[:\s]+([^\n,]+)/i) ||
     joined.match(/Cirurgia[:\s]+([^\n,]+)/i) ||
-    joined.match(/\b(mamoplastia|abdominoplastia|lipoaspira[çc][aã]o|rinoplastia|blefaroplastia|ritidoplastia|mastopexia|lipo)\b/i);
+    joined.match(/\b(mamoplastia|mastopexia|pr[oó]tese\s+mam[aá]ria|abdominoplastia|lipoaspira[çc][aã]o|hidrolipo|lipoescultura|rinoplastia|blefaroplastia|ritidoplastia|facelift|endometriose|videolaparoscopia|robótica|lipo)\b/i);
   return m ? m[1].trim() : '';
 }
 

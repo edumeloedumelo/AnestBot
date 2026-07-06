@@ -295,13 +295,16 @@ function setPrompt(chatId, args) {
 // ─────────────────────────────────────────────
 
 function helpText() {
-  return `🤖 BOT DE TRIAGEM PRÉ-ANESTÉSICA
+  return `🤖 BOT DE AVALIAÇÃO PRÉ-ANESTÉSICA
 
 COMO USAR:
-1. A secretaria envia as avaliações e exames no grupo, separando cada paciente com ❌❌❌❌
-2. Quando quiser analisar, envie:
+1. A secretaria inicia cada caso com: 🩺 Olá!
+   (ou qualquer mensagem com "avaliação pré-anestésica")
+2. Envia a anamnese, exames, fotos e PDFs do paciente
+3. Finaliza o caso com: ❌❌❌❌
+4. Quando quiser analisar, envie:
    ${PREFIX}analisar
-3. O bot lê tudo que é novo desde a última análise, separa por paciente e responde cada um
+5. O bot lê tudo que é novo, separa por paciente e responde cada um
 
 COMANDOS:
 ${PREFIX}analisar — analisa casos novos do grupo
