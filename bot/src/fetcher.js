@@ -25,9 +25,8 @@ export async function fetchNewMessages(chatId, afterTimestamp = 0) {
   const data = await res.json();
   const msgs = Array.isArray(data) ? data : (data?.messages ?? []);
 
-  // Não filtramos por fromMe aqui: a avaliação/exames podem vir do número
-  // conectado (fromMe=true). As respostas do próprio bot são descartadas no
-  // parser via isBotReport. Filtramos apenas por timestamp.
+  // Preservamos fromMe: o parser usa fromMe=true para ignorar respostas do bot.
+  // Filtramos apenas por timestamp.
   const filtered = msgs
     .filter((m) => getTime(m) > afterTimestamp)
     .sort((a, b) => getTime(a) - getTime(b));

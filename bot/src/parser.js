@@ -110,7 +110,7 @@ export function extractSurgery(texts) {
  * - Caso DEVE começar com "🩺 Olá!" (ou texto de anamnese).
  * - Caso DEVE terminar com ❌❌❌❌ (ou pela chegada do próximo caso / fim do array).
  * - Mensagens fora de um caso aberto são IGNORADAS (inclui mídias aleatórias do grupo).
- * - Respostas do próprio bot são ignoradas via isBotReport.
+ * - Respostas do próprio bot (fromMe=true) são sempre ignoradas, exceto separadores.
  */
 export function splitIntoPatients(messages) {
   const blocks = [];
@@ -126,7 +126,16 @@ export function splitIntoPatients(messages) {
   for (const m of messages) {
     const body = (m.body || '').trim();
 
-    // Ignora respostas do próprio bot
+    // fromMe=true → mensagem enviada pelo próprio bot ou pelo número conectado.
+    // Respostas do bot SEMPRE têm fromMe=true. Ignorar tudo exceto separadores ❌❌❌❌,
+    // que podem ser enviados pelo médico pelo número conectado.
+    // isBotReport() permanece como segunda barreira para mensagens sem fromMe definido.
+    if (m.fromMe === true) {
+      if (isSeparator(body)) { pushCurrent(); }
+      continue;
+    }
+
+    // Ignora respostas do próprio bot (fallback para mensagens sem fromMe)
     if (isBotReport(body)) continue;
 
     // Ignora comandos (/analisar, /ajuda etc.) — não são conteúdo clínico
