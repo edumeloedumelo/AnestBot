@@ -117,8 +117,10 @@ async function doAnalisar(chatId, cmdMsg) {
   const messagesWithMedia = messages.map((m) => {
     if ((m.type === 'image' || m.type === 'document') && !m.media) {
       const stored = loadMedia(m.id);
-      console.error(`[commands] mídia id=${m.id} type=${m.type} store=${stored ? 'ENCONTRADO' : 'AUSENTE'}`);
+      console.error(`[commands] mídia id=${m.id} type=${m.type} getMedia=NO store=${stored ? 'ENCONTRADO' : 'AUSENTE'}`);
       if (stored) return { ...m, media: stored.url };
+    } else if ((m.type === 'image' || m.type === 'document') && m.media) {
+      console.error(`[commands] mídia id=${m.id} type=${m.type} getMedia=YES`);
     }
     return m;
   });
@@ -128,7 +130,7 @@ async function doAnalisar(chatId, cmdMsg) {
   for (const m of messagesWithMedia) {
     const t = m.timestamp || m.time || 0;
     const preview = (m.body || '').trim().slice(0, 60).replace(/\n/g, '↵');
-    console.error(`  [msg] type=${m.type} fromMe=${m.fromMe} t=${t} body="${preview}"`);
+    console.error(`  [msg] type=${m.type} fromMe=${m.fromMe} t=${t} media=${m.media ? 'URL-OK' : 'SEM-URL'} body="${preview}"`);
   }
 
   const patients = splitIntoPatients(messagesWithMedia);
@@ -145,12 +147,27 @@ async function doAnalisar(chatId, cmdMsg) {
 
   for (const patient of patients) {
     const label = patient.index;
-    await sendText(chatId, `⏳ Analisando caso ${label}/${total} (${patient.media.length} exame(s), ${patient.texts.length} texto(s))...`);
+    const totalMedia = patient._mediaCount || patient.media.length;
+    const urlOk = patient.media.length;
+    const urlMissing = totalMedia - urlOk;
+    await sendText(chatId, `⏳ Analisando caso ${label}/${total} (${urlOk} exame(s) com URL, ${patient.texts.length} texto(s))...`);
+
+    // Avisa quando PDFs/imagens foram detectados mas a URL não está disponível.
+    // Isso ocorre quando o servidor foi reiniciado e os arquivos enviados antes
+    // do reinício perderam a URL do cache. Solução: reenviar os arquivos.
+    if (urlMissing > 0) {
+      await sendText(chatId,
+        `⚠️ *${urlMissing} arquivo(s) detectado(s) sem URL disponível.*\n\n` +
+        `Isso acontece quando o servidor foi reiniciado depois que os arquivos foram enviados. ` +
+        `Por favor, *reenvie os PDFs/imagens* do caso e rode /analisar novamente para incluí-los na análise.\n\n` +
+        `A análise abaixo foi feita apenas com o texto da anamnese.`
+      );
+    }
 
     try {
       const patientName = extractName(patient.texts) || `Caso ${label}`;
       const surgeryType = extractSurgery(patient.texts);
-      console.error(`[doAnalisar] caso ${label}: paciente="${patientName}" cirurgia="${surgeryType}" textos=${patient.texts.length} mídias=${patient.media.length}`);
+      console.error(`[doAnalisar] caso ${label}: paciente="${patientName}" cirurgia="${surgeryType}" textos=${patient.texts.length} mídias=${urlOk}/${totalMedia}`);
       const { fullText, errors } = await runTriage({
         patientName,
         surgeryType,

@@ -6,7 +6,10 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const STORE_PATH = path.join(__dirname, '..', 'media-store.json');
+// Usa STATE_DIR se definido (volume persistente no Railway), igual ao state.js.
+// Sem STATE_DIR o arquivo é apagado a cada redeploy — configure /data no Railway.
+const STATE_DIR = process.env.STATE_DIR || path.join(__dirname, '..');
+const STORE_PATH = path.join(STATE_DIR, 'media-store.json');
 
 let store = {};
 
@@ -16,6 +19,7 @@ function load() {
 }
 
 function save() {
+  try { fs.mkdirSync(STATE_DIR, { recursive: true }); } catch { /* já existe */ }
   fs.writeFileSync(STORE_PATH, JSON.stringify(store));
 }
 
