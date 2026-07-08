@@ -123,7 +123,16 @@ async function doAnalisar(chatId, cmdMsg) {
     return m;
   });
 
+  // Log de diagnóstico: mostra tipos e preview de cada mensagem recebida
+  console.error(`[doAnalisar] chatId=${chatId} mensagens=${messagesWithMedia.length}`);
+  for (const m of messagesWithMedia) {
+    const t = m.timestamp || m.time || 0;
+    const preview = (m.body || '').trim().slice(0, 60).replace(/\n/g, '↵');
+    console.error(`  [msg] type=${m.type} fromMe=${m.fromMe} t=${t} body="${preview}"`);
+  }
+
   const patients = splitIntoPatients(messagesWithMedia);
+  console.error(`[doAnalisar] casos identificados=${patients.length}`);
 
   if (patients.length === 0) {
     return sendText(chatId, '⚠️ Mensagens encontradas mas nenhum caso identificado. Verifique se há avaliação + exames antes do ❌❌❌❌.');
@@ -139,9 +148,12 @@ async function doAnalisar(chatId, cmdMsg) {
     await sendText(chatId, `⏳ Analisando caso ${label}/${total} (${patient.media.length} exame(s), ${patient.texts.length} texto(s))...`);
 
     try {
+      const patientName = extractName(patient.texts) || `Caso ${label}`;
+      const surgeryType = extractSurgery(patient.texts);
+      console.error(`[doAnalisar] caso ${label}: paciente="${patientName}" cirurgia="${surgeryType}" textos=${patient.texts.length} mídias=${patient.media.length}`);
       const { fullText, errors } = await runTriage({
-        patientName: extractName(patient.texts) || `Caso ${label}`,
-        surgeryType: extractSurgery(patient.texts),
+        patientName,
+        surgeryType,
         anamnesis: patient.texts.join('\n\n'),
         media: patient.media,
       });

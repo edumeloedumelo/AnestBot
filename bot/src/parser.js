@@ -1,6 +1,6 @@
 // Divide mensagens em blocos de pacientes.
-// Protocolo: caso inicia com "🩺 Olá!" (ou texto de anamnese), encerra com ❌❌❌❌.
-// Qualquer mensagem fora desse envelope é ignorada (incluindo respostas do próprio bot).
+// Protocolo: caso encerra com ❌❌❌❌. Pode ou não começar com 🩺/anamnese.
+// Respostas do próprio bot são ignoradas e marcam casos anteriores como já analisados.
 
 // ── detecção de separador ❌❌❌❌ ──────────────────────────────────────────
 function isSeparator(body) {
@@ -8,23 +8,20 @@ function isSeparator(body) {
   return /^[\s❌✖✗x×]+$/i.test(body) && body.includes('❌');
 }
 
-// ── início de novo caso ───────────────────────────────────────────────────
-// Gatilho principal: qualquer mensagem que COMECE com 🩺 (ex: "🩺 Olá!")
-// Gatilho secundário: texto contendo "avaliação pré-anestésica" / "equipe de anestesia"
+// ── início explícito de novo caso ─────────────────────────────────────────
+// Gatilho 1: começa com 🩺 ou 💡 (emojis usados no template de avaliação)
+// Gatilho 2: texto contendo "avaliação pré-anestésica" / "equipe de anestesia"
 const ANAMNESE_RE = /avalia[çc][aã]o\s*pr[eé][-\s]?anest[eé]sica|equipe\s+de\s+anestesia/i;
 function isAnamnese(body) {
   if (!body) return false;
-  // Gatilho principal: começa com 🩺 (ignora espaços iniciais)
-  if (body.trimStart().startsWith('🩺')) return true;
-  // Gatilho secundário: texto da avaliação pré-anestésica (tolerante a variações)
+  const start = body.trimStart();
+  if (start.startsWith('🩺') || start.startsWith('💡')) return true;
   return ANAMNESE_RE.test(body);
 }
 
 // ── mensagens emitidas pelo próprio bot ───────────────────────────────────
-// NUNCA devem ser reprocessadas como conteúdo clínico.
-// IMPORTANTE: não usamos fromMe=true como filtro principal porque o Dr Eduardo
-// também encaminha casos e exames a partir do número conectado (fromMe=true).
-// O isBotReport detecta respostas do bot pelo conteúdo.
+// NÃO usamos fromMe=true como filtro principal: Dr Eduardo também encaminha
+// casos e exames a partir do número conectado (fromMe=true também).
 function isBotReport(body) {
   if (!body) return false;
   return (
@@ -98,7 +95,8 @@ export function extractName(texts) {
   const joined = texts.join('\n');
   const m =
     joined.match(/Paciente[:\s]+([^\n,]+)/i) ||
-    joined.match(/Nome[:\s]+([^\n,]+)/i);
+    joined.match(/Nome[:\s]+([^\n,]+)/i) ||
+    joined.match(/Nome\s+completo[:\s]+([^\n,]+)/i);
   return m ? m[1].trim() : '';
 }
 
@@ -107,6 +105,7 @@ export function extractSurgery(texts) {
   const m =
     joined.match(/Procedimento[:\s]+([^\n,]+)/i) ||
     joined.match(/Cirurgia[:\s]+([^\n,]+)/i) ||
+    joined.match(/Cirurgia\s+programada[:\s]+([^\n,]+)/i) ||
     joined.match(/\b(mamoplastia|mastopexia|pr[oó]tese\s+mam[aá]ria|abdominoplastia|lipoaspira[çc][aã]o|hidrolipo|lipoescultura|rinoplastia|blefaroplastia|ritidoplastia|facelift|endometriose|videolaparoscopia|rob[oó]tica|lipo)\b/i);
   return m ? m[1].trim() : '';
 }
@@ -116,16 +115,20 @@ export function extractSurgery(texts) {
  * Retorna array de blocos:
  * [{ index, texts, media: [{ url, caption, type }] }, ...]
  *
- * REGRAS ESTRITAS:
- * - Caso DEVE começar com "🩺 Olá!" (ou texto de anamnese).
- * - Caso DEVE terminar com ❌❌❌❌ (ou pela chegada do próximo caso / fim do array).
- * - Mensagens fora de um caso aberto são IGNORADAS (inclui mídias aleatórias do grupo).
- * - Respostas do bot são detectadas por isBotReport e marcam os casos anteriores como
- *   já analisados — esses casos são excluídos do resultado mesmo com lastTime=0.
+ * ESTRATÉGIA DUPLA:
+ * 1. Se "🩺"/"💡"/anamnese detectado → abre caso normalmente (modo estrito).
+ * 2. Se conteúdo chega sem marcador de anamnese → acumula em prebuffer.
+ *    Quando ❌❌❌❌ chega com prebuffer não-vazio → prebuffer vira caso.
+ *    Isso garante que variações de formato ou mensagens sem cabeçalho
+ *    ainda sejam analisadas corretamente.
+ *
+ * Respostas do bot (isBotReport) marcam todos os blocos anteriores como
+ * _alreadyAnalyzed → filtrados do resultado mesmo com lastTime=0 (após redeploy).
  */
 export function splitIntoPatients(messages) {
   const blocks = [];
-  let current = null;
+  let current = null;   // caso aberto por isAnamnese
+  let prebuffer = null; // conteúdo acumulado sem isAnamnese explícita
 
   function pushCurrent() {
     if (current && (current.texts.length > 0 || current.media.length > 0)) {
@@ -134,60 +137,80 @@ export function splitIntoPatients(messages) {
     current = null;
   }
 
+  // Prebuffer vira caso quando ❌ chega sem isAnamnese. Requer conteúdo mínimo:
+  // ao menos 1 mídia OU ao menos 2 linhas de texto, para evitar falsos positivos.
+  function pushPrebuffer() {
+    if (prebuffer && (prebuffer.media.length > 0 || prebuffer.texts.length >= 2)) {
+      blocks.push(prebuffer);
+    }
+    prebuffer = null;
+  }
+
+  function addToContainer(m, body, container) {
+    const isMedia = m.type === 'image' || m.type === 'document' || m.type === 'video';
+    if (isMedia && m.media) {
+      container.media.push({ url: m.media, caption: body, type: m.type });
+      if (body) container.texts.push(body);
+    } else if (m.type === 'chat' && body) {
+      container.texts.push(body);
+      for (const url of extractDocumentUrls(body)) {
+        container.media.push({ url, caption: 'link de documento', type: 'link' });
+      }
+    }
+  }
+
   for (const m of messages) {
     const body = (m.body || '').trim();
 
-    // Resposta do bot detectada: marca TODOS os casos acumulados até aqui como
-    // já analisados. Isso garante que reanálises após redeploy do Railway (quando
-    // state.json é perdido e lastTime=0) não reprocessem casos antigos.
-    // NÃO usamos fromMe=true como filtro porque Dr Eduardo encaminha casos
-    // a partir do número conectado (fromMe=true também).
+    // Resposta do bot: marca TODOS os casos acumulados como já analisados.
+    // Garante que reanálises após redeploy (lastTime=0) não reprocessem casos antigos.
     if (isBotReport(body)) {
       for (const b of blocks) b._alreadyAnalyzed = true;
       continue;
     }
 
-    // Ignora comandos (/analisar, /ajuda etc.) — não são conteúdo clínico
+    // Ignora comandos (/analisar, /ajuda etc.)
     if (m.type === 'chat' && body.startsWith('/')) continue;
 
-    // ❌❌❌❌ fecha o caso atual
+    // ❌❌❌❌ fecha caso explícito OU prebuffer
     if (isSeparator(body)) {
-      pushCurrent();
+      if (current) {
+        pushCurrent();
+      } else {
+        pushPrebuffer();
+      }
+      prebuffer = null;
       continue;
     }
 
-    // "🩺 Olá!" ou anamnese = início explícito de novo caso
+    // Anamnese detectada explicitamente: abre caso formal,
+    // mesclando qualquer prebuffer acumulado antes (ex: exame enviado antes da anamnese).
     if (isAnamnese(body)) {
       pushCurrent();
-      current = { texts: [body], media: [] };
+      current = {
+        texts: prebuffer?.texts ? [...prebuffer.texts, body] : [body],
+        media: prebuffer?.media ? [...prebuffer.media] : [],
+      };
+      prebuffer = null;
       continue;
     }
 
-    // ── SEM CASO ABERTO: ignora tudo ──────────────────────────────────────
-    // Mídias aleatórias do grupo, conversa fora de contexto etc. são descartadas.
-    // Só entra aqui se um caso foi aberto por "🩺 Olá!" ou anamnese.
-    if (!current) continue;
-
-    // ── DENTRO DE UM CASO ─────────────────────────────────────────────────
-    const isMedia = m.type === 'image' || m.type === 'document' || m.type === 'video';
-
-    if (isMedia && m.media) {
-      current.media.push({ url: m.media, caption: body, type: m.type });
-      if (body) current.texts.push(body);
-    } else if (m.type === 'chat' && body) {
-      current.texts.push(body);
-      // Detecta URLs de documentos compartilhados via link (ex: Acrobat Reader)
-      for (const url of extractDocumentUrls(body)) {
-        current.media.push({ url, caption: 'link de documento', type: 'link' });
-      }
+    // Sem caso aberto → acumula em prebuffer (fallback para formatos sem marcador)
+    if (!current) {
+      if (!prebuffer) prebuffer = { texts: [], media: [] };
+      addToContainer(m, body, prebuffer);
+      continue;
     }
+
+    // Dentro de um caso aberto por isAnamnese
+    addToContainer(m, body, current);
   }
 
-  // Fecha último bloco (sem ❌ no final)
+  // Fecha blocos ainda abertos ao fim do array (sem ❌ final)
   pushCurrent();
+  pushPrebuffer();
 
-  // Filtra casos que já foram analisados (bot respondeu após o ❌❌❌❌ deles)
-  // e reindexa sequencialmente
+  // Filtra casos já analisados (bot respondeu após o ❌❌❌❌ deles) e reindexa
   return blocks
     .filter(b => !b._alreadyAnalyzed)
     .map((b, i) => ({ index: i + 1, ...b }));
