@@ -6,9 +6,9 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-// Usa STATE_DIR se definido (volume persistente no Railway), igual ao state.js.
-// Sem STATE_DIR o arquivo é apagado a cada redeploy — configure /data no Railway.
-const STATE_DIR = process.env.STATE_DIR || path.join(__dirname, '..');
+// Grava em /data por padrão (sobrescrito por STATE_DIR se definido).
+// Para persistência total entre redeploys: monte um volume Railway em /data.
+const STATE_DIR = process.env.STATE_DIR || '/data';
 const STORE_PATH = path.join(STATE_DIR, 'media-store.json');
 
 let store = {};

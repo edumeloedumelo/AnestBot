@@ -1,13 +1,12 @@
 // Persiste a posição de leitura por grupo (estado mínimo para não reprocessar).
-// Por padrão grava em state.json na raiz do bot.
-// Para persistir entre redeploys no Railway: monte um volume em /data e defina
-// a variável de ambiente STATE_DIR=/data no painel do Railway.
+// Grava em /data por padrão (sobrescrito por STATE_DIR se definido).
+// Para persistência total entre redeploys: monte um volume Railway em /data.
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const STATE_DIR = process.env.STATE_DIR || path.join(__dirname, '..');
+const STATE_DIR = process.env.STATE_DIR || '/data';
 const STATE_PATH = path.join(STATE_DIR, 'state.json');
 
 function load() {
