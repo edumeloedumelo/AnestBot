@@ -22,6 +22,9 @@ function isAnamnese(body) {
 
 // ── mensagens emitidas pelo próprio bot ───────────────────────────────────
 // NUNCA devem ser reprocessadas como conteúdo clínico.
+// IMPORTANTE: não usamos fromMe=true como filtro principal porque o Dr Eduardo
+// também encaminha casos e exames a partir do número conectado (fromMe=true).
+// O isBotReport detecta respostas do bot pelo conteúdo.
 function isBotReport(body) {
   if (!body) return false;
   return (
@@ -50,11 +53,18 @@ function isBotReport(body) {
     body.includes('Nenhuma mensagem nova') ||
     body.includes('📁 CASO') ||
     body.includes('━━━━━━━━━━━━━━') ||
+    // ── Erros / avisos do /analisar ──
+    body.includes('arquivo(s) não puderam ser lidos') ||
+    body.includes('Erro ao buscar mensagens') ||
     // ── Outros comandos do bot ──
     body.includes('BOT DE AVALIAÇÃO PRÉ-ANESTÉSICA') ||
     body.includes('CIRURGIAS CADASTRADAS') ||
     body.includes('LIMITES / VALORES DE REFERÊNCIA') ||
-    body.includes('Instruções adicionais')
+    body.includes('Instruções adicionais') ||
+    body.includes('📊 Status deste grupo') ||
+    body.includes('Posição de leitura resetada') ||
+    body.includes('Você não tem permissão') ||
+    body.includes('Comando desconhecido')
   );
 }
 
@@ -110,7 +120,8 @@ export function extractSurgery(texts) {
  * - Caso DEVE começar com "🩺 Olá!" (ou texto de anamnese).
  * - Caso DEVE terminar com ❌❌❌❌ (ou pela chegada do próximo caso / fim do array).
  * - Mensagens fora de um caso aberto são IGNORADAS (inclui mídias aleatórias do grupo).
- * - Respostas do próprio bot (fromMe=true) são sempre ignoradas, exceto separadores.
+ * - Respostas do bot são detectadas por isBotReport e marcam os casos anteriores como
+ *   já analisados — esses casos são excluídos do resultado mesmo com lastTime=0.
  */
 export function splitIntoPatients(messages) {
   const blocks = [];
@@ -126,17 +137,15 @@ export function splitIntoPatients(messages) {
   for (const m of messages) {
     const body = (m.body || '').trim();
 
-    // fromMe=true → mensagem enviada pelo próprio bot ou pelo número conectado.
-    // Respostas do bot SEMPRE têm fromMe=true. Ignorar tudo exceto separadores ❌❌❌❌,
-    // que podem ser enviados pelo médico pelo número conectado.
-    // isBotReport() permanece como segunda barreira para mensagens sem fromMe definido.
-    if (m.fromMe === true) {
-      if (isSeparator(body)) { pushCurrent(); }
+    // Resposta do bot detectada: marca TODOS os casos acumulados até aqui como
+    // já analisados. Isso garante que reanálises após redeploy do Railway (quando
+    // state.json é perdido e lastTime=0) não reprocessem casos antigos.
+    // NÃO usamos fromMe=true como filtro porque Dr Eduardo encaminha casos
+    // a partir do número conectado (fromMe=true também).
+    if (isBotReport(body)) {
+      for (const b of blocks) b._alreadyAnalyzed = true;
       continue;
     }
-
-    // Ignora respostas do próprio bot (fallback para mensagens sem fromMe)
-    if (isBotReport(body)) continue;
 
     // Ignora comandos (/analisar, /ajuda etc.) — não são conteúdo clínico
     if (m.type === 'chat' && body.startsWith('/')) continue;
@@ -177,5 +186,9 @@ export function splitIntoPatients(messages) {
   // Fecha último bloco (sem ❌ no final)
   pushCurrent();
 
-  return blocks.map((b, i) => ({ index: i + 1, ...b }));
+  // Filtra casos que já foram analisados (bot respondeu após o ❌❌❌❌ deles)
+  // e reindexa sequencialmente
+  return blocks
+    .filter(b => !b._alreadyAnalyzed)
+    .map((b, i) => ({ index: i + 1, ...b }));
 }
