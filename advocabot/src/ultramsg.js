@@ -3,6 +3,7 @@ import { promisify } from 'util';
 import { tmpdir } from 'os';
 import { writeFile, readFile, unlink } from 'fs/promises';
 import { randomBytes } from 'crypto';
+import mammoth from 'mammoth';
 
 const execFileAsync = promisify(execFile);
 
@@ -113,6 +114,20 @@ export async function downloadMediaBlock(url, isLink = false) {
     return { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: bufferToBase64(buffer) } };
   }
 
+  // .docx (Word) é um ZIP — extrai o texto com mammoth
+  if (kind === 'zip') {
+    try {
+      const { value } = await mammoth.extractRawText({ buffer: Buffer.from(buffer) });
+      const text = (value || '').trim();
+      if (!text) throw new Error('sem texto extraível');
+      console.error(`[media] docx extraído: ${text.length} chars`);
+      return { type: 'text', text: `### DOCUMENTO ENVIADO (Word/.docx)\n${text.substring(0, 50000)}` };
+    } catch (e) {
+      console.error('[media] extração docx falhou:', e.message);
+      throw new Error('arquivo Word (.docx) ilegível — converta para PDF e reenvie');
+    }
+  }
+
   if (kind) {
     return { type: 'image', source: { type: 'base64', media_type: kind, data: bufferToBase64(buffer) } };
   }
@@ -131,6 +146,9 @@ function sniffType(bytes) {
   if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x38) return 'image/gif';
   if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 &&
       bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50) return 'image/webp';
+  // ZIP (PK): docx/xlsx/pptx são containers ZIP
+  if (bytes[0] === 0x50 && bytes[1] === 0x4B &&
+      (bytes[2] === 0x03 || bytes[2] === 0x05 || bytes[2] === 0x07)) return 'zip';
   return null;
 }
 
