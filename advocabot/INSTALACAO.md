@@ -136,18 +136,15 @@ No WhatsApp, no grupo onde o bot está ativo:
 Deve aparecer o menu completo. Depois teste um caso:
 
 ```
-⚖️ Fui demitido sem justa causa hoje após 5 anos na empresa em São Paulo.
+start case
+
+Fui demitido sem justa causa hoje após 5 anos na empresa em São Paulo.
 Não recebi aviso prévio, FGTS ou multa. Tenho contrato assinado.
 
-❌❌❌❌
+finish case
 ```
 
-Depois envie:
-```
-/analisar
-```
-
-O bot vai:
+Ao receber `finish case`, a análise dispara automaticamente. O bot vai:
 1. 🔍 Classificar o caso → Trabalhista
 2. ⚖️ Rodar o especialista trabalhista
 3. 👨‍⚖️ CEO sintetizar o parecer final
@@ -180,17 +177,23 @@ O bot vai:
 Para que o bot analise corretamente, cada caso deve seguir:
 
 ```
-⚖️ [descrição do caso — seja detalhado]
+start case
+
+[descrição do caso — seja detalhado]
 
 [Envie os documentos: contratos, notificações, prints, PDFs]
 
-❌❌❌❌
+finish case
 ```
 
-Quando quiser analisar:
-```
-/analisar
-```
+Ao enviar `finish case`, a análise começa automaticamente — não é preciso
+nenhum comando extra.
+
+> Protocolo legado ainda aceito: abrir com ⚖️/📋, encerrar com ❌❌❌❌ e
+> rodar `/analisar` manualmente.
+
+O bot atua **somente em grupos** por padrão (`GROUPS_ONLY=true`). Para
+permitir conversas individuais, defina `GROUPS_ONLY=false` nas variáveis.
 
 ---
 

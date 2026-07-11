@@ -1,10 +1,16 @@
-import { isCommand, handleCommand } from './commands.js';
+import { isCommand, handleCommand, doAnalisar } from './commands.js';
 import { saveMedia } from './mediastore.js';
+import { sendText } from './ultramsg.js';
+import { START_CASE_RE, FINISH_CASE_RE } from './parser.js';
 
 const ALLOWED = (process.env.ALLOWED_CHATS || '')
   .split(',').map((s) => s.trim()).filter(Boolean);
 
+// Por padrão o bot só atua em grupos (@g.us). Defina GROUPS_ONLY=false para liberar DMs.
+const GROUPS_ONLY = (process.env.GROUPS_ONLY ?? 'true').toLowerCase() !== 'false';
+
 function isAllowed(chatId) {
+  if (GROUPS_ONLY && !String(chatId).endsWith('@g.us')) return false;
   if (ALLOWED.length === 0) return true;
   return ALLOWED.includes(chatId);
 }
@@ -31,7 +37,23 @@ export async function handleWebhook(payload) {
   }
 
   const body = (m.body || '').trim();
-  if (m.type === 'chat' && isCommand(body)) {
+  if (m.type !== 'chat') return;
+
+  if (isCommand(body)) {
     await handleCommand(chatId, body, m);
+    return;
+  }
+
+  // Protocolo start case / finish case
+  // (respostas do bot nunca casam com os gatilhos — sem risco de loop)
+  if (FINISH_CASE_RE.test(body)) {
+    await doAnalisar(chatId, m);
+    return;
+  }
+
+  if (START_CASE_RE.test(body)) {
+    await sendText(chatId,
+      '📂 Caso iniciado.\n\nEnvie a descrição do caso, documentos, PDFs e imagens.\n' +
+      'Quando terminar, envie *finish case* — a análise começa automaticamente.');
   }
 }

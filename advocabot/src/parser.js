@@ -1,8 +1,13 @@
 // Divide mensagens em blocos de casos jurídicos.
-// Protocolo: caso encerra com ❌❌❌❌. Pode começar com ⚖️/📋 ou texto de consulta.
+// Protocolo: "start case" abre e "finish case" encerra o caso.
+// Legado: começar com ⚖️/📋 ou texto de consulta e encerrar com ❌❌❌❌.
+
+export const START_CASE_RE = /^start\s*case\b[\s:,–—-]*/i;
+export const FINISH_CASE_RE = /^finish\s*case[\s.!]*$/i;
 
 function isSeparator(body) {
   if (!body) return false;
+  if (FINISH_CASE_RE.test(body.trim())) return true;
   return /^[\s❌✖✗x×]+$/i.test(body) && body.includes('❌');
 }
 
@@ -12,6 +17,8 @@ const CASO_RE = /consulta\s+jur[íi]dica|preciso\s+de\s+(um\s+)?advogado|assesso
 function isCaseOpener(body) {
   if (!body) return false;
   const start = body.trimStart();
+  // Gatilho principal: "start case"
+  if (START_CASE_RE.test(start)) return true;
   // Gatilhos emoji: ⚖️ ou 📋 no início
   if (start.startsWith('⚖️') || start.startsWith('📋') || start.startsWith('🔒') || start.startsWith('👨‍⚖️')) return true;
   // Gatilho texto: frases que indicam início de consulta jurídica
@@ -27,6 +34,7 @@ function isBotMessage(body) {
     body.includes('📌 *STATUS:') ||
     body.includes('📌 STATUS:') ||
     body.includes('Parecer automatizado por IA jurídica') ||
+    body.includes('📂 Caso iniciado') ||
     body.includes('🔍 Buscando mensagens') ||
     body.includes('caso(s) novo(s) encontrado') ||
     body.includes('⏳ Analisando caso') ||
@@ -168,11 +176,21 @@ export function splitIntoCases(messages) {
     }
 
     if (isCaseOpener(body)) {
+      const explicitStart = START_CASE_RE.test(body.trimStart());
+      // Caso aberto com "start case" só fecha com "finish case" (ou novo "start case"):
+      // heurísticas legadas (⚖️, "fui demitido"...) viram conteúdo, não divisor.
+      if (current && current._explicit && !explicitStart) {
+        addToContainer(m, body, current);
+        continue;
+      }
       pushCurrent();
+      // Remove o marcador "start case" do texto; mantém eventual descrição na mesma mensagem
+      const openerText = body.replace(START_CASE_RE, '').trim();
       current = {
-        texts: prebuffer?.texts ? [...prebuffer.texts, body] : [body],
+        texts: [...(prebuffer?.texts || []), ...(openerText ? [openerText] : [])],
         media: prebuffer?.media ? [...prebuffer.media] : [],
         _mediaCount: prebuffer?._mediaCount || 0,
+        _explicit: explicitStart,
       };
       prebuffer = null;
       continue;

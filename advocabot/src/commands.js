@@ -85,7 +85,7 @@ function requireAdmin(chatId, msg, fn) {
 // ANÁLISE PRINCIPAL
 // ─────────────────────────────────────────────
 
-async function doAnalisar(chatId, cmdMsg) {
+export async function doAnalisar(chatId, cmdMsg) {
   const lastTime = getLastTime(chatId);
 
   await sendText(chatId, `🔍 Buscando mensagens novas no grupo...`);
@@ -125,7 +125,7 @@ async function doAnalisar(chatId, cmdMsg) {
   console.error(`[doAnalisar] casos identificados=${cases.length}`);
 
   if (cases.length === 0) {
-    return sendText(chatId, '⚠️ Mensagens encontradas mas nenhum caso identificado.\n\nInicie o caso com ⚖️ ou 📋 e encerre com ❌❌❌❌.');
+    return sendText(chatId, '⚠️ Mensagens encontradas mas nenhum caso identificado.\n\nInicie o caso com *start case* e encerre com *finish case*.');
   }
 
   const total = cases.length;
@@ -262,13 +262,13 @@ function helpText() {
   return `🤖 ADVOCABOT — IA JURÍDICA MULTI-AGENTE
 
 COMO USAR:
-1. Inicie o caso com ⚖️ ou 📋
-   Exemplo: ⚖️ Fui demitido sem justa causa em SP após 5 anos...
-2. Envie os documentos do caso: contratos, notificações, PDFs, prints
-3. Encerre com: ❌❌❌❌
-4. Quando quiser análise, envie:
-   ${PREFIX}analisar
-5. O bot classifica o caso, roda especialistas em paralelo e o CEO entrega o parecer
+1. Inicie o caso enviando: start case
+2. Envie a descrição do caso e os documentos: contratos, notificações, PDFs, prints
+3. Finalize enviando: finish case
+   → a análise começa automaticamente
+4. O bot classifica o caso, roda especialistas em paralelo e o CEO entrega o parecer
+
+(Protocolo legado também aceito: abrir com ⚖️/📋, encerrar com ❌❌❌❌ e rodar ${PREFIX}analisar)
 
 SISTEMA MULTI-AGENTE:
 🔍 Classificador → identifica as áreas jurídicas relevantes
