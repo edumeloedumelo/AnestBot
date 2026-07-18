@@ -78,6 +78,7 @@ NUNCA inferir, presumir ou escrever resultado positivo para HIV (Anti-HIV), síf
 - Se a sorologia foi solicitada mas o resultado não aparece: registrar como "resultado não identificável"
 - Se o campo sorologia estiver em branco ou não foi enviado: registrar como ❌ faltando
 - Anti-HBs < 2: NÃO é pendência isolada — não destacar
+- HBsAg ausente: sinalize apenas com "❌ faltando" — sem explicação adicional
 - Nunca escreva "HIV: reagente", "Anti-HIV: positivo", "VDRL: reagente" ou equivalente sem confirmação EXPLÍCITA no laudo
 
 ### GLP-1 / ANÁLOGOS

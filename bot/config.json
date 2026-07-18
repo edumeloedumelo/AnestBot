@@ -89,7 +89,7 @@
     },
     {
       "key": "endometriose",
-      "name": "Endometriose por Videolaparoscopia ou Robótica",
+      "name": "Endometriose (Profunda, Videolaparoscópica, Robótica e afins)",
       "required_exams": [
         "Hemograma completo",
         "Coagulograma (TAP/INR, TTPa)",
@@ -101,6 +101,20 @@
         "Raio-X de tórax",
         "Eletrocardiograma (ECG)",
         "Risco cirúrgico"
+      ]
+    },
+    {
+      "key": "histeroscopia",
+      "name": "Histeroscopia",
+      "required_exams": [
+        "Hemograma completo",
+        "Coagulograma (TAP/INR, TTPa)",
+        "Ionograma (Sódio, Potássio, Cloreto)",
+        "Bioquímica (Ureia, Creatinina)",
+        "Sorologias (HIV, Hepatite B, Hepatite C)",
+        "Beta-HCG",
+        "Raio-X de tórax",
+        "Eletrocardiograma (ECG)"
       ]
     }
   ],
