@@ -10,7 +10,11 @@ export async function runTriage({ patientName, surgeryType, anamnesis, media }) 
 
   let contextText = `## DADOS DA PACIENTE\n`;
   contextText += `Nome: ${patientName || '(não informado)'}\n`;
-  contextText += `Cirurgia: ${surgeryType || '(não identificada — infira do contexto se possível)'}\n`;
+  if (surgeryType) {
+    contextText += `Cirurgia: ${surgeryType}\n`;
+  } else {
+    contextText += `Cirurgia: (LEIA o campo "Procedimento:" ou "Cirurgia:" na anamnese abaixo e copie o valor exato. Se esse campo existir e for legível, use-o — isso é leitura, não inferência. Se genuinamente não houver nenhum campo de procedimento na anamnese, escreva "Não informada" e solicite o procedimento na seção CONDUTA.)\n`;
+  }
   if (anamnesis && anamnesis.trim()) {
     contextText += `\n### Anamnese / Textos do grupo\n${anamnesis}\n`;
   }

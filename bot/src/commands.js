@@ -342,14 +342,16 @@ function helpText() {
 
 *PROTOCOLO DE ENVIO (obrigatório):*
 1️⃣ Digite exatamente: *xxxx*
-   (abre o caso — nada antes disso é lido)
-2️⃣ Envie a anamnese, exames, fotos e PDFs
+   (ABRE o caso — envie ANTES de qualquer mensagem do paciente)
+2️⃣ Encaminhe a ficha de anamnese preenchida pelo paciente
+   (inclui Procedimento, respostas ao questionário, exames, PDFs)
 3️⃣ Digite exatamente: *❌❌❌❌*
-   (fecha o caso — nada depois é lido)
+   (FECHA o caso)
 4️⃣ Quando quiser analisar, envie:
    ${PREFIX}analisar
 
-⚠️ Somente o que estiver ENTRE xxxx e ❌❌❌❌ será avaliado. Mensagens fora desse bloco são completamente ignoradas.
+⚠️ Somente o que estiver ENTRE *xxxx* e *❌❌❌❌* será avaliado.
+⚠️ Envie o *xxxx* ANTES de encaminhar a ficha — do contrário o Procedimento não será lido.
 
 COMANDOS:
 ${PREFIX}analisar — analisa casos novos do grupo

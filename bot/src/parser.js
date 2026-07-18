@@ -104,10 +104,13 @@ export function extractName(texts) {
 
 export function extractSurgery(texts) {
   const joined = texts.join('\n');
+  // Aceita qualquer separador após o label: dois-pontos ASCII/unicode, traço, espaço.
+  // Captura o resto da linha inteira (sem vírgula como delimitador — cirurgias combinadas
+  // raramente têm vírgula mas frequentemente têm '+', '—' e outros caracteres).
   const m =
-    joined.match(/Procedimento[:\s]+([^\n,]+)/i) ||
-    joined.match(/Cirurgia\s+programada[:\s]+([^\n,]+)/i) ||
-    joined.match(/Cirurgia[:\s]+([^\n,]+)/i) ||
+    joined.match(/Procedimento\s*[:\-：]\s*([^\n]{3,})/i) ||
+    joined.match(/Cirurgia\s+programada\s*[:\-：]\s*([^\n]{3,})/i) ||
+    joined.match(/Cirurgia\s*[:\-：]\s*([^\n]{3,})/i) ||
     joined.match(/\b(mamoplastia|mastopexia|pr[oó]tese\s+mam[aá]ria|abdominoplastia|lipoaspira[çc][aã]o|hidrolipo|lipoescultura|rinoplastia|blefaroplastia|ritidoplastia|facelift|endometriose|videolaparoscopia|rob[oó]tica|lipo)\b/i);
   return m ? m[1].trim() : '';
 }
@@ -121,7 +124,9 @@ function addToContainer(m, body, container) {
       container.media.push({ url: m.media, caption: body, type: m.type });
     }
     if (body) container.texts.push(body);
-  } else if (m.type === 'chat' && body) {
+  } else if (body) {
+    // Aceita qualquer tipo de mensagem de texto: chat, forward, extended_text etc.
+    // UltraMsg pode retornar mensagens encaminhadas com type diferente de 'chat'.
     container.texts.push(body);
     for (const url of extractDocumentUrls(body)) {
       container.media.push({ url, caption: 'link de documento', type: 'link' });

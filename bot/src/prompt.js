@@ -141,6 +141,7 @@ Gere EXATAMENTE neste formato (adapte as linhas de exame à cirurgia; omita linh
 ⚠️ _Apoio à decisão. Não substitui avaliação médica presencial._
 
 REGRAS DO FORMATO:
+- *Cirurgia:* copie literalmente o campo "Procedimento:" ou "Cirurgia:" da anamnese. Ler e copiar um campo explícito NÃO é inferência. NUNCA escreva "Não identificada" se o campo "Procedimento:" ou "Cirurgia:" estiver legível na anamnese — use o valor exato. Se genuinamente não houver nenhum campo de procedimento, escreva "Não informada" e solicite o procedimento na seção CONDUTA.
 - Cada exame em 1 linha com "• Nome: status".
 - Nas linhas de ⚠️: descreva o achado em poucas palavras após o emoji.
 - Nas linhas de ❌: escreva apenas "faltando".
