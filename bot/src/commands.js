@@ -153,7 +153,7 @@ async function doAnalisar(chatId, cmdMsg) {
     console.error(`[doAnalisar] casos identificados=${patients.length}`);
 
     if (patients.length === 0) {
-      return sendText(chatId, '⚠️ Mensagens encontradas mas nenhum caso identificado. Verifique se há avaliação + exames antes do ❌❌❌❌.');
+      return sendText(chatId, '⚠️ Nenhum caso novo encontrado.\n\nVerifique se o caso foi aberto com *xxxx* e fechado com *❌❌❌❌*.\n\nApenas o conteúdo enviado ENTRE esses dois marcadores é avaliado.');
     }
 
     const total = patients.length;
@@ -340,14 +340,16 @@ function setPrompt(chatId, args) {
 function helpText() {
   return `🤖 BOT DE AVALIAÇÃO PRÉ-ANESTÉSICA
 
-COMO USAR:
-1. A secretaria inicia cada caso com: 🩺 Olá!
-   (ou qualquer mensagem com "avaliação pré-anestésica")
-2. Envia a anamnese, exames, fotos e PDFs do paciente
-3. Finaliza o caso com: ❌❌❌❌
-4. Quando quiser analisar, envie:
+*PROTOCOLO DE ENVIO (obrigatório):*
+1️⃣ Digite exatamente: *xxxx*
+   (abre o caso — nada antes disso é lido)
+2️⃣ Envie a anamnese, exames, fotos e PDFs
+3️⃣ Digite exatamente: *❌❌❌❌*
+   (fecha o caso — nada depois é lido)
+4️⃣ Quando quiser analisar, envie:
    ${PREFIX}analisar
-5. O bot lê tudo que é novo, separa por paciente e responde cada um
+
+⚠️ Somente o que estiver ENTRE xxxx e ❌❌❌❌ será avaliado. Mensagens fora desse bloco são completamente ignoradas.
 
 COMANDOS:
 ${PREFIX}analisar — analisa casos novos do grupo
