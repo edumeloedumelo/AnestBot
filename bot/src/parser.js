@@ -63,20 +63,16 @@ function isBotMessage(body) {
 // devem marcar casos como analisados — só o laudo médico real conta.
 function isSuccessfulAnalysis(body) {
   if (!body) return false;
+  // Strings curtas e estáveis — menos sujeitas a variações de geração do Claude.
+  // CRÍTICO: apenas laudos médicos reais devem marcar _alreadyAnalyzed.
   return (
-    // Laudo atual
-    body.includes('🧾 *AVALIAÇÃO PRÉ-ANESTÉSICA') ||
-    body.includes('🧾 AVALIAÇÃO PRÉ-ANESTÉSICA') ||
-    body.includes('📌 *STATUS FINAL') ||
-    body.includes('📌 STATUS FINAL') ||
+    body.includes('AVALIAÇÃO PRÉ-ANESTÉSICA') ||
+    body.includes('STATUS FINAL') ||
     body.includes('Apoio à decisão. Não substitui avaliação médica') ||
     // Laudos de versões anteriores
     body.includes('TRIAGEM PRÉ-ANESTÉSICA') ||
     body.includes('TRIAGEM PRE-ANESTESICA') ||
     body.includes('TRIAGEM PRÉ-OPERATÓRIA') ||
-    body.includes('📋 TRIAGEM') ||
-    body.includes('🧾 TRIAGEM') ||
-    body.includes('🩺 *TRIAGEM') ||
     body.includes('Vou gerar a triagem') ||
     body.includes('Vou analisar o caso')
   );
@@ -190,7 +186,22 @@ export function splitIntoPatients(messages) {
     // Só marca _alreadyAnalyzed se for um laudo real (não erros ou status).
     if (isBotMessage(body)) {
       if (isSuccessfulAnalysis(body)) {
+        // Marca todos os blocos já fechados como analisados
         for (const b of blocks) b._alreadyAnalyzed = true;
+        // CRÍTICO: também fecha e marca o caso em construção (current/prebuffer).
+        // Sem isso, quando o ❌ chega APÓS a resposta do bot (msgs→bot_response→❌),
+        // o prebuffer é empurrado para blocks DEPOIS desta marcação e escapa do filtro,
+        // causando reanálise do caso já respondido.
+        if (current) {
+          current._alreadyAnalyzed = true;
+          blocks.push(current);
+          current = null;
+        }
+        if (prebuffer) {
+          prebuffer._alreadyAnalyzed = true;
+          blocks.push(prebuffer);
+          prebuffer = null;
+        }
       }
       continue;
     }

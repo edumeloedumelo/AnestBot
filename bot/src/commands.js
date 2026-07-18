@@ -9,6 +9,12 @@ import { runTriage } from './triage.js';
 import { formatTriageReply } from './format.js';
 
 const PREFIX = process.env.TRIGGER_PREFIX || '/';
+
+// Lock por chatId: impede dois /analisar simultâneos processarem os mesmos casos.
+// Sem isso, enquanto o Claude processa (até 2 min), um segundo /analisar busca
+// as mesmas mensagens e gera resposta duplicada para o mesmo paciente.
+const analyzing = new Set();
+
 const ADMINS = (process.env.ADMIN_NUMBERS || '')
   .split(',')
   .map((s) => s.trim().replace(/\D/g, ''))
@@ -96,97 +102,118 @@ function requireAdmin(chatId, msg, fn) {
 // ─────────────────────────────────────────────
 
 async function doAnalisar(chatId, cmdMsg) {
+  // Lock por chatId: impede que dois /analisar simultâneos processem os mesmos casos.
+  if (analyzing.has(chatId)) {
+    return sendText(chatId, '⏳ Já há uma análise em andamento para este grupo. Aguarde a conclusão antes de rodar /analisar novamente.');
+  }
+  analyzing.add(chatId);
+
+  // Registra o timestamp do comando IMEDIATAMENTE como novo ponto de corte.
+  // Isso fecha a janela de race condition: qualquer /analisar que chegar agora
+  // (enquanto o Claude processa) vai ver um lastTime atualizado e não buscará
+  // as mesmas mensagens de novo.
+  const cmdTime = cmdMsg?.timestamp || cmdMsg?.time;
+  if (cmdTime) setLastTime(chatId, cmdTime);
+
   const lastTime = getLastTime(chatId);
 
-  await sendText(chatId, `🔍 Buscando mensagens novas no grupo...`);
-
-  let messages;
   try {
-    messages = await fetchNewMessages(chatId, lastTime);
-  } catch (e) {
-    console.error('[doAnalisar] fetchNewMessages error:', e);
-    return sendText(chatId, `❌ Erro ao buscar mensagens: ${e.message}`);
-  }
+    await sendText(chatId, `🔍 Buscando mensagens novas no grupo...`);
 
-  if (messages.length === 0) {
-    return sendText(chatId, `✅ Nenhuma mensagem nova desde a última análise.\n\nSe acabou de enviar as avaliações, tente /resetar e depois /analisar.`);
-  }
-
-  // Mescla URLs de mídia do store persistente (GET API não retorna media URLs).
-  // As URLs são salvas pelo webhook quando "Webhook Download Media: ON" no UltraMsg.
-  const messagesWithMedia = messages.map((m) => {
-    if ((m.type === 'image' || m.type === 'document') && !m.media) {
-      const stored = loadMedia(m.id);
-      console.error(`[commands] mídia id=${m.id} type=${m.type} store=${stored ? 'ENCONTRADO' : 'AUSENTE'}`);
-      if (stored) return { ...m, media: stored.url };
-    }
-    return m;
-  });
-
-  // Log de diagnóstico: mostra tipos e preview de cada mensagem recebida
-  console.error(`[doAnalisar] chatId=${chatId} mensagens=${messagesWithMedia.length}`);
-  for (const m of messagesWithMedia) {
-    const t = m.timestamp || m.time || 0;
-    const preview = (m.body || '').trim().slice(0, 60).replace(/\n/g, '↵');
-    console.error(`  [msg] type=${m.type} fromMe=${m.fromMe} t=${t} body="${preview}"`);
-  }
-
-  const patients = splitIntoPatients(messagesWithMedia);
-  console.error(`[doAnalisar] casos identificados=${patients.length}`);
-
-  if (patients.length === 0) {
-    return sendText(chatId, '⚠️ Mensagens encontradas mas nenhum caso identificado. Verifique se há avaliação + exames antes do ❌❌❌❌.');
-  }
-
-  const total = patients.length;
-  await sendText(chatId, `📋 ${total} caso(s) novo(s) encontrado(s). Iniciando análise...`);
-
-  let lastProcessedTime = lastTime;
-
-  for (const patient of patients) {
-    const label = patient.index;
-    await sendText(chatId, `⏳ Analisando caso ${label}/${total} (${patient.media.length} exame(s), ${patient.texts.length} texto(s))...`);
-
+    let messages;
     try {
-      const patientName = extractName(patient.texts) || `Caso ${label}`;
-      const surgeryType = extractSurgery(patient.texts);
-      console.error(`[doAnalisar] caso ${label}: paciente="${patientName}" cirurgia="${surgeryType}" textos=${patient.texts.length} mídias=${patient.media.length}`);
-      const { fullText, errors } = await runTriage({
-        patientName,
-        surgeryType,
-        anamnesis: patient.texts.join('\n\n'),
-        media: patient.media,
-      });
-
-      // Cabeçalho de separação entre pacientes
-      if (total > 1) {
-        await sendText(chatId, `━━━━━━━━━━━━━━━━━━━━\n📁 CASO ${label}/${total}\n━━━━━━━━━━━━━━━━━━━━`);
-      }
-
-      for (const m of formatTriageReply(fullText)) {
-        await sendText(chatId, m);
-      }
-
-      if (errors.length) {
-        await sendText(chatId, `⚠️ Caso ${label}: ${errors.length} arquivo(s) não puderam ser lidos e foram ignorados.`);
-      }
+      messages = await fetchNewMessages(chatId, lastTime);
     } catch (e) {
-      console.error(`[analisar] erro no caso ${label}:`, e);
-      await sendText(chatId, `❌ Erro no caso ${label}: ${e.message}`);
+      console.error('[doAnalisar] fetchNewMessages error:', e);
+      return sendText(chatId, `❌ Erro ao buscar mensagens: ${e.message}`);
     }
-  }
 
-  // Salva o timestamp do próprio comando /analisar como ponto de corte.
-  // Isso garante que as respostas do bot (enviadas DEPOIS do comando) não sejam
-  // re-lidas na próxima análise como se fossem casos novos.
-  const cmdTime = (cmdMsg?.timestamp || cmdMsg?.time);
-  const newestTime = (messages[messages.length - 1]?.timestamp || messages[messages.length - 1]?.time);
-  // Usa o maior entre o timestamp do comando e o da última mensagem processada.
-  const cutoff = Math.max(cmdTime || 0, newestTime || 0);
-  if (cutoff) setLastTime(chatId, cutoff);
+    if (messages.length === 0) {
+      return sendText(chatId, `✅ Nenhuma mensagem nova desde a última análise.\n\nSe acabou de enviar as avaliações, tente /resetar e depois /analisar.`);
+    }
 
-  if (total > 1) {
-    await sendText(chatId, `✅ Análise concluída — ${total} caso(s) processado(s).`);
+    // Mescla URLs de mídia do store persistente (GET API não retorna media URLs).
+    const messagesWithMedia = messages.map((m) => {
+      if ((m.type === 'image' || m.type === 'document') && !m.media) {
+        const stored = loadMedia(m.id);
+        console.error(`[commands] mídia id=${m.id} type=${m.type} store=${stored ? 'ENCONTRADO' : 'AUSENTE'}`);
+        if (stored) return { ...m, media: stored.url };
+      }
+      return m;
+    });
+
+    console.error(`[doAnalisar] chatId=${chatId} mensagens=${messagesWithMedia.length}`);
+    for (const m of messagesWithMedia) {
+      const t = m.timestamp || m.time || 0;
+      const preview = (m.body || '').trim().slice(0, 60).replace(/\n/g, '↵');
+      console.error(`  [msg] type=${m.type} fromMe=${m.fromMe} t=${t} body="${preview}"`);
+    }
+
+    const patients = splitIntoPatients(messagesWithMedia);
+    console.error(`[doAnalisar] casos identificados=${patients.length}`);
+
+    if (patients.length === 0) {
+      return sendText(chatId, '⚠️ Mensagens encontradas mas nenhum caso identificado. Verifique se há avaliação + exames antes do ❌❌❌❌.');
+    }
+
+    const total = patients.length;
+    await sendText(chatId, `📋 ${total} caso(s) novo(s) encontrado(s). Iniciando análise...`);
+
+    for (const patient of patients) {
+      const label = patient.index;
+      const totalMedia = patient._mediaCount || patient.media.length;
+      const urlOk = patient.media.length;
+      const urlMissing = totalMedia - urlOk;
+      await sendText(chatId, `⏳ Analisando caso ${label}/${total} (${urlOk} exame(s) com URL, ${patient.texts.length} texto(s))...`);
+
+      if (urlMissing > 0) {
+        await sendText(chatId,
+          `⚠️ *${urlMissing} arquivo(s) detectado(s) sem URL disponível.*\n\n` +
+          `Isso acontece quando o servidor foi reiniciado depois que os arquivos foram enviados. ` +
+          `Por favor, *reenvie os PDFs/imagens* do caso e rode /analisar novamente para incluí-los na análise.\n\n` +
+          `A análise abaixo foi feita apenas com o texto da anamnese.`
+        );
+      }
+
+      try {
+        const patientName = extractName(patient.texts) || `Caso ${label}`;
+        const surgeryType = extractSurgery(patient.texts);
+        console.error(`[doAnalisar] caso ${label}: paciente="${patientName}" cirurgia="${surgeryType}" textos=${patient.texts.length} mídias=${urlOk}/${totalMedia}`);
+        const { fullText, errors } = await runTriage({
+          patientName,
+          surgeryType,
+          anamnesis: patient.texts.join('\n\n'),
+          media: patient.media,
+        });
+
+        if (total > 1) {
+          await sendText(chatId, `━━━━━━━━━━━━━━━━━━━━\n📁 CASO ${label}/${total}\n━━━━━━━━━━━━━━━━━━━━`);
+        }
+
+        for (const m of formatTriageReply(fullText)) {
+          await sendText(chatId, m);
+        }
+
+        if (errors.length) {
+          await sendText(chatId, `⚠️ Caso ${label}: ${errors.length} arquivo(s) não puderam ser lidos e foram ignorados.`);
+        }
+      } catch (e) {
+        console.error(`[analisar] erro no caso ${label}:`, e);
+        await sendText(chatId, `❌ Erro no caso ${label}: ${e.message}`);
+      }
+    }
+
+    // Atualiza para o maior entre timestamp do comando e da última mensagem.
+    const newestTime = messages[messages.length - 1]?.timestamp || messages[messages.length - 1]?.time;
+    const cutoff = Math.max(cmdTime || 0, newestTime || 0);
+    if (cutoff) setLastTime(chatId, cutoff);
+
+    if (total > 1) {
+      await sendText(chatId, `✅ Análise concluída — ${total} caso(s) processado(s).`);
+    }
+  } finally {
+    // Libera o lock sempre, mesmo em caso de erro inesperado.
+    analyzing.delete(chatId);
   }
 }
 
