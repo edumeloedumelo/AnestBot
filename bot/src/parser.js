@@ -104,15 +104,19 @@ export function extractName(texts) {
 
 export function extractSurgery(texts) {
   const joined = texts.join('\n');
-  // Aceita qualquer separador após o label: dois-pontos ASCII/unicode, traço, espaço.
-  // Captura o resto da linha inteira (sem vírgula como delimitador — cirurgias combinadas
-  // raramente têm vírgula mas frequentemente têm '+', '—' e outros caracteres).
+  // Captura o valor do campo Procedimento/Cirurgia, inclusive quando o texto quebra
+  // em mais de uma linha (ex.: "Mastopexia com\npróteses + lipo de axilas").
+  // Para no próximo campo (🔷/🔹/Data/Telefone/Observação/pergunta numerada) ou linha em branco.
+  const stop = /(?=\n\s*(?:🔷|🔹|🔶|Data\b|Telefone\b|Observ|Paciente\b|\d️?⃣|[-_—]{3,})|\n\n|$)/;
+  const field = (label) => new RegExp(`${label}\\s*[:\\-：]\\s*([\\s\\S]{3,180}?)${stop.source}`, 'i');
   const m =
-    joined.match(/Procedimento\s*[:\-：]\s*([^\n]{3,})/i) ||
-    joined.match(/Cirurgia\s+programada\s*[:\-：]\s*([^\n]{3,})/i) ||
-    joined.match(/Cirurgia\s*[:\-：]\s*([^\n]{3,})/i) ||
-    joined.match(/\b(mamoplastia|mastopexia|pr[oó]tese\s+mam[aá]ria|abdominoplastia|lipoaspira[çc][aã]o|hidrolipo|lipoescultura|rinoplastia|blefaroplastia|ritidoplastia|facelift|endometriose|videolaparoscopia|rob[oó]tica|lipo)\b/i);
-  return m ? m[1].trim() : '';
+    joined.match(field('Procedimento')) ||
+    joined.match(field('Cirurgia\\s+programada')) ||
+    joined.match(field('Cirurgia')) ||
+    joined.match(/\b(mamoplastia|mastopexia|mammy\s*makeover|pr[oó]tese\s+mam[aá]ria|abdominoplastia|lipoaspira[çc][aã]o|hidrolipo|lipoescultura|rinoplastia|blefaroplastia|ritidoplastia|facelift|endometriose|histeroscopia|videolaparoscopia|rob[oó]tica|lipo)\b/i);
+  if (!m) return '';
+  // Normaliza: junta quebras de linha internas num espaço só.
+  return m[1].replace(/\s*\n\s*/g, ' ').trim();
 }
 
 // ── adiciona conteúdo a um caso aberto ───────────────────────────────────

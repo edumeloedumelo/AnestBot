@@ -182,6 +182,9 @@ async function doAnalisar(chatId, cmdMsg) {
         const patientName = extractName(patient.texts) || `Caso ${label}`;
         const surgeryType = extractSurgery(patient.texts);
         console.error(`[doAnalisar] caso ${label}: paciente="${patientName}" cirurgia="${surgeryType}" textos=${patient.texts.length} mídias=${urlOk}/${totalMedia}`);
+        // Diagnóstico: mostra o conteúdo de texto capturado para o caso. Se a anamnese
+        // (com "Procedimento:") não aparecer aqui, ela ficou FORA do bloco xxxx/❌❌❌❌.
+        console.error(`[doAnalisar] caso ${label} TEXTOS capturados:\n---\n${patient.texts.join('\n---\n').slice(0, 1200)}\n---`);
         const { fullText, errors } = await runTriage({
           patientName,
           surgeryType,
