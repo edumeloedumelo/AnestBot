@@ -20,7 +20,13 @@ function load() {
 
 function save() {
   try { fs.mkdirSync(STATE_DIR, { recursive: true }); } catch { /* já existe */ }
-  fs.writeFileSync(STORE_PATH, JSON.stringify(store));
+  try {
+    const tmp = STORE_PATH + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(store));
+    fs.renameSync(tmp, STORE_PATH);
+  } catch (e) {
+    console.error('[mediastore] falha ao salvar (ignorado):', e.message);
+  }
 }
 
 load();

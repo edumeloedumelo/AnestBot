@@ -132,22 +132,39 @@ function addToContainer(m, body, container) {
       container.media.push({ url, caption: 'link de documento', type: 'link' });
     }
   }
+  // Rastreamento para dedup durável e gate de recência.
+  if (m.id) container._msgIds.push(m.id);
+  const t = m.timestamp || m.time || 0;
+  if (t > container._maxTime) container._maxTime = t;
+}
+
+function newContainer() {
+  return { texts: [], media: [], _mediaCount: 0, _msgIds: [], _maxTime: 0 };
 }
 
 // ── parser principal ───────────────────────────────────────────────────────
 /**
- * Protocolo de delimitação:
- *   xxxx        → abre explicitamente um caso (opcional mas recomendado)
- *   ❌❌❌❌     → fecha o caso
+ * Protocolo ESTRITO (regra ABSOLUTA):
+ *   xxxx        → ABRE um caso
+ *   ❌❌❌❌     → FECHA o caso
  *
- * xxxx é OPCIONAL: se ❌❌❌❌ for recebido sem xxxx anterior, o conteúdo
- * acumulado desde o último ❌❌❌❌ (prebuffer) é tratado como o caso.
- * O prebuffer é limpo a cada ❌❌❌❌, prevenindo contaminação entre casos.
+ * SOMENTE o conteúdo enviado ENTRE xxxx e ❌❌❌❌ é avaliado.
+ * Qualquer mensagem fora de um caso aberto (sem xxxx ativo) é IGNORADA —
+ * sem prebuffer, sem detecção por emoji/texto. Isso elimina definitivamente
+ * a contaminação por anamneses antigas, guias ou exames avulsos.
+ *
+ * Proteção tripla contra reanálise de casos antigos:
+ *   1. Gate de recência: descarta blocos cujo conteúdo é todo ≤ lastTime.
+ *   2. Dedup durável: descarta blocos cujas mensagens já foram processadas.
+ *   3. Heurístico de laudo (_alreadyAnalyzed): defesa adicional.
+ *
+ * @param {Array} messages
+ * @param {{ lastTime?: number, processedIds?: Set<string> }} opts
  */
-export function splitIntoPatients(messages) {
+export function splitIntoPatients(messages, opts = {}) {
+  const { lastTime = 0, processedIds = null } = opts;
   const blocks = [];
-  let current = null;   // caso aberto explicitamente com xxxx
-  let prebuffer = null; // acumula conteúdo fora de xxxx (limpo a cada ❌❌❌❌)
+  let current = null; // caso ativo (aberto por xxxx, ainda não fechado)
 
   function hasContent(c) {
     return c && (c.texts.length > 0 || c.media.length > 0 || (c._mediaCount || 0) > 0);
@@ -161,6 +178,7 @@ export function splitIntoPatients(messages) {
   for (const m of messages) {
     const body = (m.body || '').trim();
 
+    // Mensagem do bot: nunca é conteúdo clínico.
     if (isBotMessage(body)) {
       if (isSuccessfulAnalysis(body)) {
         for (const b of blocks) b._alreadyAnalyzed = true;
@@ -169,51 +187,59 @@ export function splitIntoPatients(messages) {
           blocks.push(current);
           current = null;
         }
-        prebuffer = null; // conteúdo antes do laudo já foi analisado
       }
       continue;
     }
 
+    // Comandos (/analisar etc.): ignorar.
     if (m.type === 'chat' && body.startsWith('/')) continue;
 
-    // ❌❌❌❌ → fecha o caso
+    // ❌❌❌❌ → fecha o caso atual.
     if (isSeparator(body)) {
-      if (current) {
-        // Caso aberto com xxxx: fecha normalmente
-        pushCurrent();
-      } else if (hasContent(prebuffer)) {
-        // xxxx foi omitido: usa o prebuffer como caso
-        blocks.push(prebuffer);
-      }
-      prebuffer = null; // limpa entre casos — protege contra contaminação
+      pushCurrent();
       continue;
     }
 
-    // xxxx → abre caso explícito, descarta prebuffer acumulado
+    // xxxx → abre novo caso. Se havia um caso aberto sem ❌, fecha primeiro.
     if (isCaseOpener(body)) {
       pushCurrent();
-      prebuffer = null;
-      current = { texts: [], media: [], _mediaCount: 0 };
+      current = newContainer();
       continue;
     }
 
+    // Dentro de caso aberto (entre xxxx e ❌❌❌❌): acumula conteúdo.
     if (current) {
       addToContainer(m, body, current);
       continue;
     }
 
-    // Fora de caso: acumula no prebuffer (usado se ❌❌❌❌ vier sem xxxx)
-    if (!prebuffer) prebuffer = { texts: [], media: [], _mediaCount: 0 };
-    addToContainer(m, body, prebuffer);
+    // FORA de qualquer caso (sem xxxx ativo): IGNORAR completamente (regra ABSOLUTA).
+    console.error(`[parser] ignorando mensagem fora de bloco: type=${m.type} body="${body.slice(0, 40)}"`);
   }
 
   // Caso ainda aberto ao fim (sem ❌❌❌❌ final): considera válido e inclui.
   pushCurrent();
 
-  const result = blocks
-    .filter(b => !b._alreadyAnalyzed)
-    .map((b, i) => ({ index: i + 1, ...b }));
+  let result = blocks.filter(b => !b._alreadyAnalyzed);
+  const afterLaudo = result.length;
 
-  console.error(`[parser] blocos total=${blocks.length} já_analisados=${blocks.filter(b => b._alreadyAnalyzed).length} novos=${result.length}`);
+  // 1. Gate de recência: bloco cujo conteúdo é todo ≤ lastTime é de sessão antiga.
+  if (lastTime > 0) {
+    result = result.filter(b => (b._maxTime || 0) > lastTime);
+  }
+  const afterRecency = result.length;
+
+  // 2. Dedup durável: bloco cujas mensagens já foram TODAS processadas é reanálise.
+  if (processedIds && processedIds.size) {
+    result = result.filter(b => {
+      const ids = b._msgIds || [];
+      if (ids.length === 0) return true; // sem IDs, não dá pra deduplicar — mantém
+      return !ids.every(id => processedIds.has(id));
+    });
+  }
+
+  result = result.map((b, i) => ({ index: i + 1, ...b }));
+
+  console.error(`[parser] blocos=${blocks.length} pós-laudo=${afterLaudo} pós-recência=${afterRecency} pós-dedup=${result.length} (lastTime=${lastTime})`);
   return result;
 }

@@ -44,20 +44,43 @@ function resolvePath() {
         console.error('[config] novo limite adicionado ao volume:', l.exam_name);
       }
     }
-    if (changed) fs.writeFileSync(PERSISTENT_PATH, JSON.stringify(persisted, null, 2));
+    if (changed) atomicWrite(PERSISTENT_PATH, persisted);
   } catch (e) {
     console.error('[config] merge falhou, usando volume existente:', e.message);
   }
   return PERSISTENT_PATH;
 }
 
+// Escrita ATÔMICA: grava em .tmp e renomeia. Evita config.json truncado se o
+// processo for morto no meio de um deploy (o que corromperia todas as leituras).
+function atomicWrite(target, obj) {
+  const tmp = target + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(obj, null, 2));
+  fs.renameSync(tmp, target);
+}
+
 const CONFIG_PATH = resolvePath();
+
+function readConfigSafe() {
+  // Tenta o caminho persistente; se corrompido, cai para o bundled (nunca lança).
+  for (const p of [CONFIG_PATH, BUNDLED_PATH]) {
+    try {
+      const c = JSON.parse(fs.readFileSync(p, 'utf-8'));
+      if (p !== CONFIG_PATH) console.error('[config] config persistido corrompido — usando bundled como fallback');
+      return c;
+    } catch (e) {
+      console.error(`[config] falha ao ler ${p}:`, e.message);
+    }
+  }
+  console.error('[config] nenhum config legível — usando estrutura vazia');
+  return {};
+}
 
 let cache = null;
 
 export function getConfig() {
   if (!cache) {
-    cache = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
+    cache = readConfigSafe();
     cache.surgeries ||= [];
     cache.examLimits ||= [];
     cache.extraPrompt ||= '';
@@ -67,7 +90,11 @@ export function getConfig() {
 
 export function saveConfig(cfg) {
   cache = cfg;
-  fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2));
+  try {
+    atomicWrite(CONFIG_PATH, cfg);
+  } catch (e) {
+    console.error('[config] falha ao salvar (mantido em memória):', e.message);
+  }
 }
 
 export function updateConfig(mutator) {

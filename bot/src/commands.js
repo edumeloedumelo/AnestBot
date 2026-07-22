@@ -1,6 +1,6 @@
 // Parsing e handlers dos comandos do WhatsApp.
 import { getConfig, updateConfig } from './config.js';
-import { getLastTime, setLastTime, resetGroup } from './state.js';
+import { getLastTime, setLastTime, resetGroup, getProcessed, markProcessed } from './state.js';
 import { fetchNewMessages } from './fetcher.js';
 import { splitIntoPatients, extractName, extractSurgery } from './parser.js';
 import { loadMedia } from './mediastore.js';
@@ -106,23 +106,23 @@ async function doAnalisar(chatId, cmdMsg) {
   if (analyzing.has(chatId)) {
     return sendText(chatId, '⏳ Já há uma análise em andamento para este grupo. Aguarde a conclusão antes de rodar /analisar novamente.');
   }
+
+  // O lock e TODO acesso a estado ficam dentro do try/finally: assim, se qualquer
+  // operação de estado falhar, o finally SEMPRE libera o lock (evita travar o grupo).
   analyzing.add(chatId);
-
-  // Registra o timestamp do comando IMEDIATAMENTE como novo ponto de corte.
-  // Isso fecha a janela de race condition: qualquer /analisar que chegar agora
-  // (enquanto o Claude processa) vai ver um lastTime atualizado e não buscará
-  // as mesmas mensagens de novo.
-  const cmdTime = cmdMsg?.timestamp || cmdMsg?.time;
-  if (cmdTime) setLastTime(chatId, cmdTime);
-
-  const lastTime = getLastTime(chatId);
-
   try {
+    const cmdTime = cmdMsg?.timestamp || cmdMsg?.time || 0;
+
+    // Corte da sessão ANTERIOR (não sobrescrever com "agora" — senão o gate de
+    // recência descartaria o caso atual). É lido antes de qualquer escrita.
+    const prevCutoff = getLastTime(chatId);
+    const processedIds = getProcessed(chatId);
+
     await sendText(chatId, `🔍 Buscando mensagens novas no grupo...`);
 
     let messages;
     try {
-      messages = await fetchNewMessages(chatId, lastTime);
+      messages = await fetchNewMessages(chatId, prevCutoff);
     } catch (e) {
       console.error('[doAnalisar] fetchNewMessages error:', e);
       return sendText(chatId, `❌ Erro ao buscar mensagens: ${e.message}`);
@@ -142,22 +142,25 @@ async function doAnalisar(chatId, cmdMsg) {
       return m;
     });
 
-    console.error(`[doAnalisar] chatId=${chatId} mensagens=${messagesWithMedia.length}`);
+    console.error(`[doAnalisar] chatId=${chatId} mensagens=${messagesWithMedia.length} prevCutoff=${prevCutoff}`);
     for (const m of messagesWithMedia) {
       const t = m.timestamp || m.time || 0;
       const preview = (m.body || '').trim().slice(0, 60).replace(/\n/g, '↵');
       console.error(`  [msg] type=${m.type} fromMe=${m.fromMe} t=${t} body="${preview}"`);
     }
 
-    const patients = splitIntoPatients(messagesWithMedia);
+    const patients = splitIntoPatients(messagesWithMedia, { lastTime: prevCutoff, processedIds });
     console.error(`[doAnalisar] casos identificados=${patients.length}`);
 
     if (patients.length === 0) {
-      return sendText(chatId, '⚠️ Nenhum caso novo encontrado.\n\nVerifique se o caso foi aberto com *xxxx* e fechado com *❌❌❌❌*.\n\nApenas o conteúdo enviado ENTRE esses dois marcadores é avaliado.');
+      return sendText(chatId, '⚠️ Nenhum caso novo encontrado.\n\nLembre: o caso precisa ser aberto com *xxxx* e fechado com *❌❌❌❌*. Apenas o conteúdo enviado ENTRE esses dois marcadores é avaliado.');
     }
 
     const total = patients.length;
     await sendText(chatId, `📋 ${total} caso(s) novo(s) encontrado(s). Iniciando análise...`);
+
+    let analyzedCount = 0;
+    let newestAnalyzedTime = 0;
 
     for (const patient of patients) {
       const label = patient.index;
@@ -197,16 +200,23 @@ async function doAnalisar(chatId, cmdMsg) {
         if (errors.length) {
           await sendText(chatId, `⚠️ Caso ${label}: ${errors.length} arquivo(s) não puderam ser lidos e foram ignorados.`);
         }
+
+        // Marca as mensagens deste caso como processadas (dedup durável).
+        markProcessed(chatId, patient._msgIds || []);
+        analyzedCount++;
+        if ((patient._maxTime || 0) > newestAnalyzedTime) newestAnalyzedTime = patient._maxTime;
       } catch (e) {
         console.error(`[analisar] erro no caso ${label}:`, e);
         await sendText(chatId, `❌ Erro no caso ${label}: ${e.message}`);
       }
     }
 
-    // Atualiza para o maior entre timestamp do comando e da última mensagem.
-    const newestTime = messages[messages.length - 1]?.timestamp || messages[messages.length - 1]?.time;
-    const cutoff = Math.max(cmdTime || 0, newestTime || 0);
-    if (cutoff) setLastTime(chatId, cutoff);
+    // Avança o corte SOMENTE se ao menos um caso foi analisado — assim, se o usuário
+    // esqueceu o ❌❌❌❌, o conteúdo não fica "atrás" do corte e pode ser reanalisado.
+    if (analyzedCount > 0) {
+      const cutoff = Math.max(prevCutoff, cmdTime, newestAnalyzedTime);
+      if (cutoff) setLastTime(chatId, cutoff);
+    }
 
     if (total > 1) {
       await sendText(chatId, `✅ Análise concluída — ${total} caso(s) processado(s).`);
