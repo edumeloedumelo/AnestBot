@@ -136,70 +136,75 @@ function addToContainer(m, body, container) {
 
 // ── parser principal ───────────────────────────────────────────────────────
 /**
- * Protocolo ESTRITO de delimitação:
- *   xxxx        → abre um caso (qualquer conteúdo anterior é ignorado)
- *   ❌❌❌❌     → fecha o caso aberto
+ * Protocolo de delimitação:
+ *   xxxx        → abre explicitamente um caso (opcional mas recomendado)
+ *   ❌❌❌❌     → fecha o caso
  *
- * Apenas mensagens enviadas ENTRE xxxx e ❌❌❌❌ entram na análise.
- * Qualquer coisa fora desse bloco (anamneses antigas, guias, exames avulsos,
- * documentos de outros pacientes) é descartada silenciosamente.
- * Sem prebuffer. Sem detecção por emoji ou texto.
+ * xxxx é OPCIONAL: se ❌❌❌❌ for recebido sem xxxx anterior, o conteúdo
+ * acumulado desde o último ❌❌❌❌ (prebuffer) é tratado como o caso.
+ * O prebuffer é limpo a cada ❌❌❌❌, prevenindo contaminação entre casos.
  */
 export function splitIntoPatients(messages) {
   const blocks = [];
-  let current = null; // caso ativo (aberto por xxxx, ainda não fechado)
+  let current = null;   // caso aberto explicitamente com xxxx
+  let prebuffer = null; // acumula conteúdo fora de xxxx (limpo a cada ❌❌❌❌)
+
+  function hasContent(c) {
+    return c && (c.texts.length > 0 || c.media.length > 0 || (c._mediaCount || 0) > 0);
+  }
 
   function pushCurrent() {
-    if (current && (current.texts.length > 0 || current.media.length > 0 || (current._mediaCount || 0) > 0)) {
-      blocks.push(current);
-    }
+    if (hasContent(current)) blocks.push(current);
     current = null;
   }
 
   for (const m of messages) {
     const body = (m.body || '').trim();
 
-    // Mensagem do bot: nunca é conteúdo clínico.
-    // Se for um laudo real, marca os casos já fechados (e o atual, se aberto) como analisados.
     if (isBotMessage(body)) {
       if (isSuccessfulAnalysis(body)) {
         for (const b of blocks) b._alreadyAnalyzed = true;
-        // Marca o caso ainda aberto (não fechado com ❌) para não reanalisar.
         if (current) {
           current._alreadyAnalyzed = true;
           blocks.push(current);
           current = null;
         }
+        prebuffer = null; // conteúdo antes do laudo já foi analisado
       }
       continue;
     }
 
-    // Comandos (/analisar, /ajuda etc.): ignorar.
     if (m.type === 'chat' && body.startsWith('/')) continue;
 
-    // ❌❌❌❌ → fecha o caso atual.
+    // ❌❌❌❌ → fecha o caso
     if (isSeparator(body)) {
-      pushCurrent();
+      if (current) {
+        // Caso aberto com xxxx: fecha normalmente
+        pushCurrent();
+      } else if (hasContent(prebuffer)) {
+        // xxxx foi omitido: usa o prebuffer como caso
+        blocks.push(prebuffer);
+      }
+      prebuffer = null; // limpa entre casos — protege contra contaminação
       continue;
     }
 
-    // xxxx → abre novo caso. Se havia um caso aberto sem ❌, fecha primeiro.
+    // xxxx → abre caso explícito, descarta prebuffer acumulado
     if (isCaseOpener(body)) {
       pushCurrent();
+      prebuffer = null;
       current = { texts: [], media: [], _mediaCount: 0 };
       continue;
     }
 
-    // Dentro de caso aberto (entre xxxx e ❌❌❌❌): acumula conteúdo.
     if (current) {
       addToContainer(m, body, current);
       continue;
     }
 
-    // FORA de qualquer caso (sem xxxx ativo): IGNORAR completamente.
-    // Isso descarta anamneses antigas, guias, documentos avulsos e qualquer
-    // mensagem enviada antes do xxxx ou depois do ❌❌❌❌.
-    console.error(`[parser] ignorando mensagem fora de bloco: type=${m.type} body="${body.slice(0, 40)}"`);
+    // Fora de caso: acumula no prebuffer (usado se ❌❌❌❌ vier sem xxxx)
+    if (!prebuffer) prebuffer = { texts: [], media: [], _mediaCount: 0 };
+    addToContainer(m, body, prebuffer);
   }
 
   // Caso ainda aberto ao fim (sem ❌❌❌❌ final): considera válido e inclui.

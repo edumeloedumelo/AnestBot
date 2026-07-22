@@ -340,18 +340,13 @@ function setPrompt(chatId, args) {
 function helpText() {
   return `🤖 BOT DE AVALIAÇÃO PRÉ-ANESTÉSICA
 
-*PROTOCOLO DE ENVIO (obrigatório):*
-1️⃣ Digite exatamente: *xxxx*
-   (ABRE o caso — envie ANTES de qualquer mensagem do paciente)
-2️⃣ Encaminhe a ficha de anamnese preenchida pelo paciente
-   (inclui Procedimento, respostas ao questionário, exames, PDFs)
-3️⃣ Digite exatamente: *❌❌❌❌*
-   (FECHA o caso)
-4️⃣ Quando quiser analisar, envie:
-   ${PREFIX}analisar
+*PROTOCOLO DE ENVIO:*
+1️⃣ (Opcional) Digite *xxxx* para abrir o caso
+2️⃣ Encaminhe a ficha, exames, PDFs e imagens
+3️⃣ Digite *❌❌❌❌* para fechar o caso
+4️⃣ Envie ${PREFIX}analisar
 
-⚠️ Somente o que estiver ENTRE *xxxx* e *❌❌❌❌* será avaliado.
-⚠️ Envie o *xxxx* ANTES de encaminhar a ficha — do contrário o Procedimento não será lido.
+O *❌❌❌❌* é o único marcador obrigatório — tudo enviado desde o último *❌❌❌❌* será avaliado. O *xxxx* é recomendado para excluir mensagens antigas desnecessárias.
 
 COMANDOS:
 ${PREFIX}analisar — analisa casos novos do grupo
