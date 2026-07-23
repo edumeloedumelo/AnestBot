@@ -104,7 +104,20 @@ export async function downloadMediaBlock(url, isLink = false) {
   if (bytes.length === 0) throw new Error('arquivo vazio');
 
   const magic = Array.from(bytes.slice(0, 8)).map(b => b.toString(16).padStart(2, '0')).join(' ');
-  let kind = sniffType(bytes);
+
+  // Alguns downloads (observado em produção: PDFs via UltraMsg) chegam com bytes
+  // de lixo/framing na frente do arquivo real (ex.: 4 bytes de length-prefix antes
+  // do "%PDF-"). Sem isso, um arquivo 100% válido era rejeitado como "conteúdo
+  // inválido". Varremos uma janela inicial procurando a marca real e CORTAMOS o
+  // buffer nesse ponto — não basta identificar o tipo, o conteúdo enviado ao
+  // Claude/Ghostscript precisa começar exatamente na marca.
+  const found = findMagicOffset(bytes);
+  if (found && found.offset > 0) {
+    console.error(`[media] marca de arquivo encontrada no offset ${found.offset} (não em 0) — removendo ${found.offset} byte(s) de lixo inicial`);
+    buffer = buffer.slice(found.offset);
+    bytes = new Uint8Array(buffer);
+  }
+  let kind = found ? found.kind : null;
   console.error(`[media] size=${bytes.length} magic=${magic} sniff=${kind}`);
 
   if (!kind) {
@@ -144,14 +157,29 @@ export async function downloadMediaBlock(url, isLink = false) {
   throw new Error('formato de arquivo não suportado/ilegível');
 }
 
-function sniffType(bytes) {
-  if (bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46) return 'pdf';
-  if (bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF) return 'image/jpeg';
-  if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47) return 'image/png';
-  if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x38) return 'image/gif';
-  if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 &&
-      bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50) return 'image/webp';
+// Bytes a examinar em busca de uma marca de arquivo conhecida antes de desistir.
+// Cobre o caso real observado (4 bytes de length-prefix) com folga.
+const MAGIC_SCAN_WINDOW = 32;
+
+// Varre uma janela inicial (não só o byte 0) procurando marcas de arquivo
+// conhecidas. Retorna { kind, offset } ou null. Tolera bytes de lixo/framing
+// na frente do conteúdo real (ex.: length-prefix, artefato de CDN/proxy).
+function findMagicOffset(bytes) {
+  const max = Math.min(bytes.length - 4, MAGIC_SCAN_WINDOW);
+  for (let i = 0; i <= max; i++) {
+    if (bytes[i] === 0x25 && bytes[i + 1] === 0x50 && bytes[i + 2] === 0x44 && bytes[i + 3] === 0x46) return { kind: 'pdf', offset: i };
+    if (bytes[i] === 0xFF && bytes[i + 1] === 0xD8 && bytes[i + 2] === 0xFF) return { kind: 'image/jpeg', offset: i };
+    if (bytes[i] === 0x89 && bytes[i + 1] === 0x50 && bytes[i + 2] === 0x4E && bytes[i + 3] === 0x47) return { kind: 'image/png', offset: i };
+    if (bytes[i] === 0x47 && bytes[i + 1] === 0x49 && bytes[i + 2] === 0x46 && bytes[i + 3] === 0x38) return { kind: 'image/gif', offset: i };
+    if (bytes[i] === 0x52 && bytes[i + 1] === 0x49 && bytes[i + 2] === 0x46 && bytes[i + 3] === 0x46 &&
+        bytes[i + 8] === 0x57 && bytes[i + 9] === 0x45 && bytes[i + 10] === 0x42 && bytes[i + 11] === 0x50) return { kind: 'image/webp', offset: i };
+  }
   return null;
+}
+
+function sniffType(bytes) {
+  const found = findMagicOffset(bytes);
+  return found ? found.kind : null;
 }
 
 function bufferToBase64(buffer) {

@@ -55,6 +55,7 @@ ${limitsSection}
 Toda cirurgia mamária exige Mamografia OU USG de mamas com classificação BIRADS explícita.
 - BIRADS 1 ou 2 → aceitável.
 - BIRADS 3, 4, 5 ou 6 → NÃO liberar automaticamente. Obrigatório: encaminhamento ao mastologista + laudo/parecer. Sem parecer = PENDÊNCIA CRÍTICA.
+- Se BIRADS 3-6 estiver acompanhado de parecer/encaminhamento assinado por médico mastologista (identificável pelo CRM e/ou especialidade "mastologista"/"mastologia" explicitada no documento, mesmo que manuscrito) autorizando ou não contraindicando a cirurgia, considere a pendência RESOLVIDA — NUNCA marque 🚨 PENDÊNCIA CRÍTICA neste caso. Classifique como ⚠️ (COMPLETO COM ALERTAS), citando o parecer na linha do exame, ex.: "USG mamas: ⚠️ BIRADS 3 — parecer do mastologista Dr. [nome] (CRM [número]) presente, autoriza cirurgia". Se o parecer contraindicar ou recomendar investigação adicional, sinalizar 🚨 conforme o teor do parecer.
 - Nunca presumir BIRADS se não estiver visível no exame.
 
 ### HEMOGLOBINA
@@ -111,6 +112,8 @@ Não exigir novos exames de imagem em cirurgias de reparo. Apenas registrar quan
 
 IMPORTANTE: A resposta vai para WhatsApp. Use o negrito do WhatsApp com UM asterisco (*texto*), emojis como sinalização. NÃO use marcadores de título markdown (#). NÃO use cercas de crase. NÃO use tabelas com "|". Seja CONCISO e OBJETIVO.
 
+NUNCA escreva texto, saudação, lista de documentos analisados ou raciocínio ANTES do card. A resposta deve começar EXATAMENTE com "🧾 *AVALIAÇÃO PRÉ-ANESTÉSICA*" como primeira linha — sem introdução do tipo "Vou analisar os documentos..." ou "Documentos identificados:". Pense internamente, mas a saída deve ser SOMENTE o card abaixo, do início ao fim.
+
 Gere EXATAMENTE neste formato (adapte as linhas de exame à cirurgia; omita linhas de exames que não se aplicam; inclua Beta-HCG apenas para pacientes do sexo feminino):
 
 🧾 *AVALIAÇÃO PRÉ-ANESTÉSICA*
@@ -129,7 +132,8 @@ Gere EXATAMENTE neste formato (adapte as linhas de exame à cirurgia; omita linh
 • ECG: ✅ / ⚠️ [achado curto] / ❌ faltando
 • RX tórax: ✅ / ⚠️ [achado curto] / ❌ faltando
 • Risco cirúrgico: ✅ / ⚠️ [achado curto] / ❌ faltando
-• [Exame específico da cirurgia, ex: USG mamas]: ✅ / ⚠️ [achado] / ❌ faltando
+• Mamografia/USG mamas: ✅ / ⚠️ [BIRADS + achado, ver regra MAMA/BIRADS] / ❌ faltando  ← obrigatório em cirurgia mamária, nunca omitir esta linha
+• [Outro exame específico da cirurgia, se houver]: ✅ / ⚠️ [achado] / ❌ faltando
 
 💊 *MEDICAÇÕES* (omita SOMENTE se a anamnese não mencionar nenhuma medicação)
 🔴 [medicação que exige suspensão] — conduta

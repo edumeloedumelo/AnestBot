@@ -206,7 +206,10 @@ async function doAnalisar(chatId, cmdMsg) {
         }
 
         if (errors.length) {
-          await sendText(chatId, `⚠️ Caso ${label}: ${errors.length} arquivo(s) não puderam ser lidos e foram ignorados.`);
+          // Lista o motivo específico de cada falha (nome do arquivo + erro) —
+          // um contador genérico escondia o problema real e dificultava o diagnóstico.
+          const list = errors.map(e => `• ${e}`).join('\n');
+          await sendText(chatId, `⚠️ Caso ${label}: ${errors.length} arquivo(s) não puderam ser lidos e foram ignorados:\n${list}`);
         }
 
         // Marca as mensagens deste caso como processadas (dedup durável) e guarda

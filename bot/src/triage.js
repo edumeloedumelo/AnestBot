@@ -25,14 +25,17 @@ export async function runTriage({ patientName, surgeryType, anamnesis, media }) 
   const errors = [];
   console.error(`[triage] ${(media || []).length} mídia(s) para processar`);
   for (const m of media || []) {
+    const label = m.caption || m.url || 'arquivo sem nome';
     console.error(`[triage] baixando: url=${m.url ? m.url.substring(0, 80) : 'AUSENTE'} type=${m.type}`);
-    if (!m.url) { errors.push('URL de mídia ausente'); continue; }
+    if (!m.url) { errors.push(`${label}: URL de mídia ausente`); continue; }
     try {
       const block = await downloadMediaBlock(m.url, m.type === 'link');
       console.error(`[triage] bloco adicionado: type=${block.type}`);
       contentBlocks.push(block);
     } catch (e) {
-      errors.push(e.message);
+      // Inclui o nome do arquivo no erro — sem isso, o usuário só via um
+      // contador genérico e não conseguia saber QUAL arquivo falhou nem por quê.
+      errors.push(`${label}: ${e.message}`);
       console.error('[triage] mídia falhou:', m.url, e.message);
     }
   }
