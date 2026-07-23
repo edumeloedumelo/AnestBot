@@ -146,6 +146,22 @@ function newContainer() {
   return { texts: [], media: [], _mediaCount: 0, _msgIds: [], _maxTime: 0 };
 }
 
+// Resolve o texto de uma mensagem de forma robusta. Mensagens ENCAMINHADAS e de
+// tipos diferentes de "chat" às vezes trazem o texto fora de m.body (em text,
+// caption, quotedMsgBody etc.). Sem isso, a anamnese encaminhada era descartada.
+export function getMessageBody(m) {
+  const candidates = [
+    m.body, m.text, m.caption, m.message, m.content,
+    m.quotedMsgBody, m.conversation,
+    m.extendedTextMessage?.text,
+    m.msg, m.data,
+  ];
+  for (const c of candidates) {
+    if (typeof c === 'string' && c.trim()) return c;
+  }
+  return '';
+}
+
 // ── parser principal ───────────────────────────────────────────────────────
 /**
  * Protocolo ESTRITO (regra ABSOLUTA):
@@ -180,7 +196,13 @@ export function splitIntoPatients(messages, opts = {}) {
   }
 
   for (const m of messages) {
-    const body = (m.body || '').trim();
+    const body = getMessageBody(m).trim();
+
+    // Diagnóstico: revela o payload cru de mensagens sem body/texto reconhecido
+    // (ex.: encaminhadas com o texto em outro campo) para depurar casos perdidos.
+    if (!body && m.type !== 'image' && m.type !== 'document' && m.type !== 'video') {
+      console.error(`[parser] mensagem sem texto reconhecido — payload cru: ${JSON.stringify(m).slice(0, 500)}`);
+    }
 
     // Mensagem do bot: nunca é conteúdo clínico.
     if (isBotMessage(body)) {

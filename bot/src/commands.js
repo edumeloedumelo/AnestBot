@@ -2,7 +2,7 @@
 import { getConfig, updateConfig } from './config.js';
 import { getLastTime, setLastTime, resetGroup, getProcessed, markProcessed } from './state.js';
 import { fetchNewMessages } from './fetcher.js';
-import { splitIntoPatients, extractName, extractSurgery } from './parser.js';
+import { splitIntoPatients, extractName, extractSurgery, getMessageBody } from './parser.js';
 import { loadMedia } from './mediastore.js';
 import { sendText } from './ultramsg.js';
 import { runTriage } from './triage.js';
@@ -145,7 +145,7 @@ async function doAnalisar(chatId, cmdMsg) {
     console.error(`[doAnalisar] chatId=${chatId} mensagens=${messagesWithMedia.length} prevCutoff=${prevCutoff}`);
     for (const m of messagesWithMedia) {
       const t = m.timestamp || m.time || 0;
-      const preview = (m.body || '').trim().slice(0, 60).replace(/\n/g, '↵');
+      const preview = getMessageBody(m).trim().slice(0, 60).replace(/\n/g, '↵');
       console.error(`  [msg] type=${m.type} fromMe=${m.fromMe} t=${t} body="${preview}"`);
     }
 
