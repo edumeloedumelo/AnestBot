@@ -191,17 +191,16 @@ async function doAnalisar(chatId, cmdMsg) {
         // (com "Procedimento:") não aparecer aqui, ela ficou FORA do bloco xxxx/❌❌❌❌.
         console.error(`[doAnalisar] caso ${label} TEXTOS capturados:\n---\n${patient.texts.join('\n---\n').slice(0, 1200)}\n---`);
 
-        // Aviso proativo: se não achamos nome/cirurgia E o caso tem um card
-        // encaminhado com corpo suspeitosamente curto, é muito provável que o
-        // WhatsApp cortou o corpo do template ao encaminhar (só o cabeçalho
-        // sobrevive — "Paciente:"/"Procedimento:"/"Telefone:" se perdem antes de
-        // chegar aqui). Isso NÃO é um bug de leitura — o texto nunca chega ao
-        // servidor. Avisa o médico a fazer copiar-e-colar manual em vez de
-        // encaminhar o card, o que resolve na hora.
-        if (!surgeryType && patient._hasForwardedShortText) {
+        // Aviso proativo: se não achamos nome/cirurgia E o caso tem uma mensagem
+        // curta de terceiro (provável card/template cujo corpo com os campos
+        // preenchidos não chegou ao servidor — confirmado em produção que isso
+        // acontece com E sem o flag de encaminhamento). Isso NÃO é um bug de
+        // leitura — o texto nunca chega ao servidor. Avisa o médico a digitar/
+        // colar os dados como mensagem de texto simples nova.
+        if (!surgeryType && patient._hasShortThirdPartyText) {
           await sendText(chatId,
-            `⚠️ *Aviso:* a ficha de anamnese parece ter sido enviada como card encaminhado, e o WhatsApp cortou o texto (só o cabeçalho chegou — "Paciente:", "Procedimento:" etc. se perderam).\n\n` +
-            `*Solução:* copie o texto da ficha (toque e segure → Copiar) e cole como mensagem nova, em vez de encaminhar o card. Depois rode ${PREFIX}resetar e ${PREFIX}analisar de novo.`
+            `⚠️ *Aviso:* não consegui ler o "Procedimento:"/"Paciente:" da ficha enviada — o texto com esses campos parece não estar chegando ao servidor (provável limitação do card/template do WhatsApp usado para enviar a ficha).\n\n` +
+            `*Solução:* digite ou cole o nome do(a) paciente e o procedimento como uma mensagem de TEXTO SIMPLES nova (ex.: "Paciente: Fulana\\nProcedimento: Mastopexia com prótese") dentro do bloco xxxx/❌❌❌❌, sem usar o card/template. Depois rode ${PREFIX}resetar e ${PREFIX}analisar de novo.`
           );
         }
 

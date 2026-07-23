@@ -138,11 +138,12 @@ function addToContainer(m, body, container) {
     for (const url of extractDocumentUrls(body)) {
       container.media.push({ url, caption: 'link de documento', type: 'link' });
     }
-    // Sinaliza card de template encaminhado com corpo cortado (ver diagnóstico
-    // acima) — usado por commands.js para avisar o usuário proativamente em vez
-    // de deixar o bot simplesmente reportar "cirurgia não informada" sem explicação.
-    if (m.isForwarded && body.length < 200) {
-      container._hasForwardedShortText = true;
+    // Sinaliza mensagem curta de terceiro dentro do caso (ver diagnóstico acima)
+    // — usado por commands.js para avisar o usuário proativamente em vez de
+    // deixar o bot simplesmente reportar "cirurgia não informada" sem explicação.
+    // Não exige isForwarded: o corte acontece com ou sem esse flag.
+    if (m.type === 'chat' && m.fromMe === false && body.length < 250) {
+      container._hasShortThirdPartyText = true;
     }
   }
   // Rastreamento para dedup durável, gate de recência e retry cirúrgico (/resetar).
@@ -226,13 +227,15 @@ export function splitIntoPatients(messages, opts = {}) {
       console.error(`[parser] mensagem sem texto reconhecido — payload cru: ${JSON.stringify(m).slice(0, 500)}`);
     }
 
-    // Diagnóstico: mensagens de texto ENCAMINHADAS com corpo suspeitosamente curto
-    // (< 200 caracteres) são um forte indício de que o WhatsApp/UltraMsg cortou o
-    // corpo de um card de template ao encaminhar — só o cabeçalho sobrevive, os
-    // campos preenchidos (Paciente/Procedimento/Telefone) se perdem antes de
-    // chegar ao nosso servidor. Loga o payload cru completo para confirmar.
-    if (m.type === 'chat' && m.isForwarded && body && body.length < 200) {
-      console.error(`[parser] ⚠️ mensagem encaminhada com corpo curto (${body.length} chars) — possível corte de template do WhatsApp. payload cru: ${JSON.stringify(m).slice(0, 800)}`);
+    // Diagnóstico: mensagens de texto de terceiros (não do médico/bot) com corpo
+    // suspeitosamente curto são um forte indício de que o WhatsApp/UltraMsg entrega
+    // só um cabeçalho/template — os campos preenchidos (Paciente/Procedimento/
+    // Telefone) nunca chegam ao servidor, independente de ser forward ou cópia.
+    // NÃO exige isForwarded (evidência real mostrou o corte acontecer também sem
+    // esse flag). Dump COMPLETO do payload cru — sem cap curto — para expor
+    // qualquer campo de template (ex.: hydratedTemplate) que estejamos perdendo.
+    if (m.type === 'chat' && m.fromMe === false && body && body.length < 250) {
+      console.error(`[parser] ⚠️ mensagem curta (${body.length} chars) de terceiro — possível perda de campos de template. payload cru COMPLETO: ${JSON.stringify(m)}`);
     }
 
     // Mensagem do bot: nunca é conteúdo clínico.
