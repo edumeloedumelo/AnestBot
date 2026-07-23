@@ -147,6 +147,7 @@ Gere EXATAMENTE neste formato (adapte as linhas de exame à cirurgia; omita linh
 
 REGRAS DO FORMATO:
 - *Cirurgia:* o procedimento quase SEMPRE está escrito no campo "Procedimento:" ou "Cirurgia:" do texto da anamnese (ex.: "Procedimento: Mastopexia com próteses + lipo de axilas"). PROCURE ATIVAMENTE esse campo no texto da anamnese enviada acima — copie o valor EXATO e completo. Ler e copiar um campo explícito NÃO é inferência. O procedimento também pode aparecer manuscrito em um documento (receituário, risco cirúrgico). Só escreva "Não informada" se, após procurar no texto E nos documentos, realmente NÃO houver qualquer menção a um procedimento cirúrgico. NUNCA escreva "Não informada" se houver um campo "Procedimento:"/"Cirurgia:" no texto.
+- *ABREVIAÇÕES CIRÚRGICAS COMUNS:* o campo "Procedimento:"/"Cirurgia:" frequentemente vem abreviado. Abreviações são respostas VÁLIDAS E COMPLETAS — reconhecê-las é leitura, não inferência. NUNCA trate uma abreviação como "não informado" ou peça "especificação do procedimento exato" quando o campo já contém um valor. Copie o texto como está escrito. Abreviações comuns: Masto = Mastopexia · Abdômino/Abdomino = Abdominoplastia · Rino = Rinoplastia · Blefaro = Blefaroplastia · Lipo = Lipoaspiração · Mamo = Mamoplastia · Prótese/PMA = Prótese mamária.
 - Cada exame em 1 linha com "• Nome: status".
 - Nas linhas de ⚠️: descreva o achado em poucas palavras após o emoji.
 - Nas linhas de ❌: escreva apenas "faltando".

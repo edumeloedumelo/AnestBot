@@ -31,7 +31,6 @@ function isBotMessage(body) {
     body.includes('caso(s) novo(s) encontrado') ||
     body.includes('⏳ Analisando caso') ||
     body.includes('✅ Análise concluída') ||
-    body.includes('Mensagens encontradas mas nenhum caso') ||
     body.includes('Nenhuma mensagem nova') ||
     body.includes('Nenhum caso novo encontrado') ||
     body.includes('📁 CASO') ||
@@ -47,8 +46,7 @@ function isBotMessage(body) {
     body.includes('Posição de leitura resetada') ||
     body.includes('Você não tem permissão') ||
     body.includes('Comando desconhecido') ||
-    body.includes('Já há uma análise em andamento') ||
-    body.includes('Verifique se o caso foi aberto com xxxx')
+    body.includes('Já há uma análise em andamento')
   );
 }
 
@@ -126,6 +124,11 @@ function addToContainer(m, body, container) {
     container._mediaCount = (container._mediaCount || 0) + 1;
     if (m.media) {
       container.media.push({ url: m.media, caption: body, type: m.type });
+    } else {
+      // Sem URL: guarda o nome do arquivo (body costuma ser o filename do WhatsApp
+      // quando não há legenda) para o aviso ao usuário poder listar QUAIS falharam.
+      container.missingMediaNames = container.missingMediaNames || [];
+      container.missingMediaNames.push(body || `arquivo ${m.type} sem nome`);
     }
     if (body) container.texts.push(body);
   } else if (body) {
@@ -148,13 +151,25 @@ function newContainer() {
 
 // Resolve o texto de uma mensagem de forma robusta. Mensagens ENCAMINHADAS e de
 // tipos diferentes de "chat" às vezes trazem o texto fora de m.body (em text,
-// caption, quotedMsgBody etc.). Sem isso, a anamnese encaminhada era descartada.
+// caption, quotedMsgBody etc.), e APIs baseadas em bibliotecas estilo Baileys
+// aninham o texto dentro de um objeto "message" (m.message.conversation,
+// m.message.extendedTextMessage.text) em vez de uma string simples — por isso
+// testamos tanto campos string diretos quanto caminhos aninhados de objeto.
 export function getMessageBody(m) {
   const candidates = [
-    m.body, m.text, m.caption, m.message, m.content,
+    m.body, m.text, m.caption, m.content,
     m.quotedMsgBody, m.conversation,
     m.extendedTextMessage?.text,
-    m.msg, m.data,
+    m.msg,
+    // Campos que podem ser string OU objeto aninhado, dependendo da lib subjacente:
+    typeof m.message === 'string' ? m.message : undefined,
+    m.message?.conversation,
+    m.message?.extendedTextMessage?.text,
+    m.message?.extendedTextMessage?.contextInfo?.quotedMessage?.conversation,
+    m.contextInfo?.quotedMessage?.conversation,
+    typeof m.data === 'string' ? m.data : undefined,
+    m.data?.body,
+    m.data?.message,
   ];
   for (const c of candidates) {
     if (typeof c === 'string' && c.trim()) return c;

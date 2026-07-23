@@ -48,8 +48,17 @@ export async function runTriage({ patientName, surgeryType, anamnesis, media }) 
 
 // Tenta reprocessar removendo apenas o(s) bloco(s) que causaram a rejeição da API.
 // Estratégia: extrai índice do erro quando possível; senão remove do final um a um.
+//
+// IMPORTANTE: contentBlocks[0] é SEMPRE o texto da anamnese (nome, cirurgia, dados
+// da paciente) — nunca mídia. Jamais removê-lo aqui: se removido, a análise
+// continuaria "com sucesso" mas sem NENHUM dado clínico, gerando "Cirurgia: Não
+// informada" mesmo quando o campo estava presente no texto original.
 async function retryWithoutBadBlocks(system, contentBlocks, originalError, errors) {
-  const isMediaError = /content\.\d+|pdf|image|base64|invalid_request/i.test(originalError.message);
+  // Regex restrito: exige menção explícita a um bloco de CONTEÚDO (imagem/documento/
+  // base64) junto com o índice — não basta ser um invalid_request_error genérico,
+  // que cobriria qualquer erro 400 da Anthropic (prompt grande demais, etc.) e
+  // acionaria essa remoção destrutiva por engano.
+  const isMediaError = /content\.\d+.*(image|document|pdf|base64)|(image|document|pdf|base64).*content\.\d+/is.test(originalError.message);
   if (!isMediaError || contentBlocks.length <= 1) throw originalError;
 
   console.error('[triage] análise com mídia falhou, tentando remover blocos ruins:', originalError.message);
@@ -58,6 +67,10 @@ async function retryWithoutBadBlocks(system, contentBlocks, originalError, error
   const idxMatch = originalError.message.match(/content\.(\d+)/);
   if (idxMatch) {
     const badIdx = parseInt(idxMatch[1]);
+    if (badIdx === 0) {
+      // Índice 0 é sempre o texto da anamnese — nunca remover. Trata como erro real.
+      throw originalError;
+    }
     const reduced = contentBlocks.filter((_, i) => i !== badIdx);
     try {
       const text = await analyze(system, reduced);

@@ -170,11 +170,13 @@ async function doAnalisar(chatId, cmdMsg) {
       await sendText(chatId, `⏳ Analisando caso ${label}/${total} (${urlOk} exame(s) com URL, ${patient.texts.length} texto(s))...`);
 
       if (urlMissing > 0) {
+        const names = (patient.missingMediaNames || []).slice(0, urlMissing);
+        const namesList = names.length ? `\n${names.map(n => `• ${n}`).join('\n')}\n` : '';
         await sendText(chatId,
-          `⚠️ *${urlMissing} arquivo(s) detectado(s) sem URL disponível.*\n\n` +
-          `Isso acontece quando o servidor foi reiniciado depois que os arquivos foram enviados. ` +
-          `Por favor, *reenvie os PDFs/imagens* do caso e rode /analisar novamente para incluí-los na análise.\n\n` +
-          `A análise abaixo foi feita apenas com o texto da anamnese.`
+          `⚠️ *${urlMissing} arquivo(s) sem URL disponível — não foram enviados à análise:*\n${namesList}\n` +
+          `Isso pode acontecer por falha no download do arquivo ou reinício do servidor. ` +
+          `Por favor, *reenvie estes arquivos* e rode /analisar novamente para incluí-los na análise.\n\n` +
+          `A análise abaixo foi feita apenas com o texto disponível.`
         );
       }
 
@@ -353,13 +355,13 @@ function setPrompt(chatId, args) {
 function helpText() {
   return `🤖 BOT DE AVALIAÇÃO PRÉ-ANESTÉSICA
 
-*PROTOCOLO DE ENVIO:*
-1️⃣ (Opcional) Digite *xxxx* para abrir o caso
+*PROTOCOLO DE ENVIO (obrigatório):*
+1️⃣ Digite *xxxx* para abrir o caso
 2️⃣ Encaminhe a ficha, exames, PDFs e imagens
 3️⃣ Digite *❌❌❌❌* para fechar o caso
 4️⃣ Envie ${PREFIX}analisar
 
-O *❌❌❌❌* é o único marcador obrigatório — tudo enviado desde o último *❌❌❌❌* será avaliado. O *xxxx* é recomendado para excluir mensagens antigas desnecessárias.
+Os marcadores *xxxx* (abertura) e *❌❌❌❌* (fechamento) são AMBOS obrigatórios. Apenas o conteúdo enviado ENTRE eles é avaliado — tudo fora é ignorado, sem exceção.
 
 COMANDOS:
 ${PREFIX}analisar — analisa casos novos do grupo
