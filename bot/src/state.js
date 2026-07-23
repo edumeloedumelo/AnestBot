@@ -10,6 +10,10 @@ const STATE_PATH = path.join(STATE_DIR, 'state.json');
 // Máximo de IDs de mensagens já processadas guardados por grupo (evita crescimento infinito).
 const MAX_PROCESSED_IDS = 3000;
 
+// Quantos dos últimos casos analisados guardamos para permitir "corrigir" (retry
+// cirúrgico) sem reler o histórico inteiro do grupo.
+const MAX_RECENT_CASES = 20;
+
 function load() {
   try {
     return JSON.parse(fs.readFileSync(STATE_PATH, 'utf-8'));
@@ -33,8 +37,9 @@ function save(data) {
 }
 
 function entry(data, chatId) {
-  if (!data[chatId]) data[chatId] = { lastTime: 0, processed: [] };
+  if (!data[chatId]) data[chatId] = { lastTime: 0, processed: [], recentCases: [] };
   if (!Array.isArray(data[chatId].processed)) data[chatId].processed = [];
+  if (!Array.isArray(data[chatId].recentCases)) data[chatId].recentCases = [];
   return data[chatId];
 }
 
@@ -66,6 +71,51 @@ export function markProcessed(chatId, ids) {
   save(data);
 }
 
+// Registra um caso recém-analisado (para permitir retry cirúrgico via /resetar).
+// Guarda apenas os últimos MAX_RECENT_CASES — não é o histórico completo do grupo.
+export function recordCase(chatId, { msgIds, minTime, maxTime, patientName }) {
+  if (!msgIds || msgIds.length === 0) return;
+  const data = load();
+  const e = entry(data, chatId);
+  e.recentCases.push({ msgIds, minTime, maxTime, patientName: patientName || '' });
+  e.recentCases = e.recentCases.slice(-MAX_RECENT_CASES);
+  save(data);
+}
+
+// RETRY CIRÚRGICO (regra absoluta): reabre apenas os N casos mais recentes para
+// reanálise — NUNCA o histórico inteiro do grupo. Remove os IDs desses casos do
+// dedup e recua o corte de leitura só o suficiente para incluí-los de novo.
+// Casos mais antigos que esses continuam protegidos (dedup intacto para eles).
+export function retryRecentCases(chatId, n = 1) {
+  const data = load();
+  const e = entry(data, chatId);
+  const targets = e.recentCases.slice(-n);
+  if (targets.length === 0) {
+    return { retried: 0, patientNames: [] };
+  }
+
+  const targetIds = new Set(targets.flatMap(c => c.msgIds));
+  e.processed = e.processed.filter(id => !targetIds.has(id));
+
+  const minTimeAcrossTargets = Math.min(...targets.map(c => c.minTime).filter(t => t > 0));
+  if (Number.isFinite(minTimeAcrossTargets) && minTimeAcrossTargets > 0) {
+    e.lastTime = Math.min(e.lastTime, minTimeAcrossTargets - 1);
+  }
+
+  // Remove os casos-alvo da lista de recentes (serão regravados quando reanalisados).
+  e.recentCases = e.recentCases.slice(0, e.recentCases.length - targets.length);
+
+  save(data);
+  return {
+    retried: targets.length,
+    patientNames: targets.map(c => c.patientName).filter(Boolean),
+  };
+}
+
+// RESET TOTAL (perigoso): apaga TODO o estado do grupo — o bot vai reler e
+// reavaliar TODO o histórico disponível na próxima análise. Use apenas em
+// emergências reais (nunca para corrigir um caso específico — para isso,
+// use retryRecentCases via /resetar).
 export function resetGroup(chatId) {
   const data = load();
   delete data[chatId];

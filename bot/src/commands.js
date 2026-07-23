@@ -1,6 +1,6 @@
 // Parsing e handlers dos comandos do WhatsApp.
 import { getConfig, updateConfig } from './config.js';
-import { getLastTime, setLastTime, resetGroup, getProcessed, markProcessed } from './state.js';
+import { getLastTime, setLastTime, resetGroup, getProcessed, markProcessed, recordCase, retryRecentCases } from './state.js';
 import { fetchNewMessages } from './fetcher.js';
 import { splitIntoPatients, extractName, extractSurgery, getMessageBody } from './parser.js';
 import { loadMedia } from './mediastore.js';
@@ -60,7 +60,10 @@ export async function handleCommand(chatId, body, msg) {
 
     case 'resetar':
     case 'reset':
-      return requireAdmin(chatId, msg, () => doReset(chatId));
+      return requireAdmin(chatId, msg, () => doRetryRecent(chatId, args));
+
+    case 'resetartudo':
+      return requireAdmin(chatId, msg, () => doResetTudo(chatId));
 
     case 'cirurgias':
       return listSurgeries(chatId);
@@ -206,8 +209,16 @@ async function doAnalisar(chatId, cmdMsg) {
           await sendText(chatId, `⚠️ Caso ${label}: ${errors.length} arquivo(s) não puderam ser lidos e foram ignorados.`);
         }
 
-        // Marca as mensagens deste caso como processadas (dedup durável).
+        // Marca as mensagens deste caso como processadas (dedup durável) e guarda
+        // o caso na lista de recentes, para permitir retry cirúrgico via /resetar
+        // sem precisar reler o histórico inteiro do grupo.
         markProcessed(chatId, patient._msgIds || []);
+        recordCase(chatId, {
+          msgIds: patient._msgIds || [],
+          minTime: patient._minTime || 0,
+          maxTime: patient._maxTime || 0,
+          patientName,
+        });
         analyzedCount++;
         if ((patient._maxTime || 0) > newestAnalyzedTime) newestAnalyzedTime = patient._maxTime;
       } catch (e) {
@@ -245,9 +256,34 @@ async function doStatus(chatId) {
   return sendText(chatId, `📊 Status deste grupo:\n• Última análise: ${date}\n\nUse ${PREFIX}analisar para rodar a triagem dos casos novos.`);
 }
 
-async function doReset(chatId) {
+// /resetar — RETRY CIRÚRGICO (regra absoluta): reabre apenas o(s) último(s)
+// caso(s) analisado(s) para correção, SEM reler nem reavaliar o histórico
+// inteiro do grupo. Uso: /resetar (retenta 1 caso) ou /resetar 3 (últimos 3).
+async function doRetryRecent(chatId, args) {
+  const n = Math.max(1, Math.min(20, parseInt(args, 10) || 1));
+  const { retried, patientNames } = retryRecentCases(chatId, n);
+
+  if (retried === 0) {
+    return sendText(chatId, '⚠️ Nenhum caso recente encontrado para corrigir neste grupo.');
+  }
+
+  const names = patientNames.length ? `\n${patientNames.map(n => `• ${n}`).join('\n')}` : '';
+  return sendText(chatId,
+    `🔄 ${retried} caso(s) recente(s) reaberto(s) para correção:${names}\n\n` +
+    `Rode ${PREFIX}analisar para reprocessá-los. Casos mais antigos NÃO serão reavaliados.`
+  );
+}
+
+// /resetartudo — RESET TOTAL (perigoso, admin). Apaga TODO o estado do grupo;
+// o bot vai reler e reavaliar TODO o histórico disponível. Use só em emergência
+// real (ex.: reconfigurar o bot do zero) — nunca para corrigir um caso específico.
+async function doResetTudo(chatId) {
   resetGroup(chatId);
-  return sendText(chatId, '🔄 Posição de leitura resetada. Na próxima análise, o bot lerá TODAS as mensagens disponíveis do grupo.');
+  return sendText(chatId,
+    '⚠️ RESET TOTAL: posição de leitura e histórico de casos apagados.\n\n' +
+    'Na próxima análise, o bot lerá e reavaliará TODAS as mensagens disponíveis do grupo — ' +
+    'incluindo pacientes já analisados anteriormente. Use com cuidado.'
+  );
 }
 
 // ─────────────────────────────────────────────
@@ -378,7 +414,8 @@ ${PREFIX}addlimite Exame; descrição; unidade; obs
 ${PREFIX}dellimite Exame
 ${PREFIX}setprompt texto extra para o protocolo
 ${PREFIX}limparprompt
-${PREFIX}resetar — reprocessa o histórico completo do grupo
+${PREFIX}resetar [N] — corrige o(s) último(s) N caso(s) analisado(s) (padrão: 1), sem reler o histórico
+${PREFIX}resetartudo — ⚠️ apaga TODO o estado e reavalia o histórico inteiro do grupo (uso raro/emergencial)
 
 ⚠️ Ferramenta de apoio. Não substitui avaliação médica presencial.`;
 }

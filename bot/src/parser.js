@@ -139,14 +139,15 @@ function addToContainer(m, body, container) {
       container.media.push({ url, caption: 'link de documento', type: 'link' });
     }
   }
-  // Rastreamento para dedup durável e gate de recência.
+  // Rastreamento para dedup durável, gate de recência e retry cirúrgico (/resetar).
   if (m.id) container._msgIds.push(m.id);
   const t = m.timestamp || m.time || 0;
   if (t > container._maxTime) container._maxTime = t;
+  if (t > 0 && (container._minTime === 0 || t < container._minTime)) container._minTime = t;
 }
 
 function newContainer() {
-  return { texts: [], media: [], _mediaCount: 0, _msgIds: [], _maxTime: 0 };
+  return { texts: [], media: [], _mediaCount: 0, _msgIds: [], _maxTime: 0, _minTime: 0 };
 }
 
 // Resolve o texto de uma mensagem de forma robusta. Mensagens ENCAMINHADAS e de
