@@ -179,10 +179,17 @@ export function getMessageBody(m) {
     m.data?.body,
     m.data?.message,
   ];
+  // Retorna o candidato MAIS LONGO (não o primeiro não-vazio). Motivo: evidência
+  // real mostrou m.body chegando como um PREVIEW curto (só a primeira linha) em
+  // algumas mensagens de terceiros, enquanto outro campo já testado aqui (ex.:
+  // m.text, m.message.conversation) pode conter o texto completo. Se sempre
+  // pegássemos o primeiro campo não-vazio, o texto completo nesses outros campos
+  // nunca seria alcançado — m.body "ganhava" antes por estar primeiro na lista.
+  let best = '';
   for (const c of candidates) {
-    if (typeof c === 'string' && c.trim()) return c;
+    if (typeof c === 'string' && c.trim().length > best.length) best = c.trim();
   }
-  return '';
+  return best;
 }
 
 // ── parser principal ───────────────────────────────────────────────────────
