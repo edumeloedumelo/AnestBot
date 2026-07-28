@@ -261,27 +261,38 @@ export function splitIntoPatients(messages, opts = {}) {
     // Comandos (/analisar etc.): ignorar.
     if (m.type === 'chat' && body.startsWith('/')) continue;
 
-    // ❌❌❌❌ → fecha o caso atual.
-    if (isSeparator(body)) {
-      pushCurrent();
-      continue;
-    }
+    // Detecta os marcadores xxxx / ❌❌❌❌ mesmo quando estão COLADOS ao conteúdo
+    // na MESMA mensagem. Evidência real: usuários enviam "xxxx\n\n[card da anamnese]"
+    // ou "[conteúdo]\n❌❌❌❌" numa única mensagem — antes, isso não era reconhecido
+    // como marcador (exigíamos a mensagem inteira ser só o marcador) e o card era
+    // descartado. Agora olhamos a PRIMEIRA e a ÚLTIMA linha da mensagem.
+    const lines = body.split('\n');
+    let opensHere = false;
+    let closesHere = false;
+    if (lines.length && isCaseOpener(lines[0])) { opensHere = true; lines.shift(); }
+    if (lines.length && isSeparator(lines[lines.length - 1])) { closesHere = true; lines.pop(); }
+    const inner = lines.join('\n').trim();
 
-    // xxxx → abre novo caso. Se havia um caso aberto sem ❌, fecha primeiro.
-    if (isCaseOpener(body)) {
+    // xxxx no início → abre novo caso (fecha o anterior se estava aberto sem ❌).
+    if (opensHere) {
       pushCurrent();
       current = newContainer();
-      continue;
     }
 
-    // Dentro de caso aberto (entre xxxx e ❌❌❌❌): acumula conteúdo.
-    if (current) {
-      addToContainer(m, body, current);
-      continue;
+    // Conteúdo (o que sobrou depois de remover marcadores das pontas).
+    if (inner) {
+      if (current) {
+        addToContainer(m, inner, current);
+      } else {
+        // FORA de qualquer caso (sem xxxx ativo): IGNORAR (regra ABSOLUTA).
+        console.error(`[parser] ignorando mensagem fora de bloco: type=${m.type} body="${inner.slice(0, 40)}"`);
+      }
     }
 
-    // FORA de qualquer caso (sem xxxx ativo): IGNORAR completamente (regra ABSOLUTA).
-    console.error(`[parser] ignorando mensagem fora de bloco: type=${m.type} body="${body.slice(0, 40)}"`);
+    // ❌❌❌❌ no fim → fecha o caso atual.
+    if (closesHere) {
+      pushCurrent();
+    }
   }
 
   // Caso ainda aberto ao fim (sem ❌❌❌❌ final): considera válido e inclui.
