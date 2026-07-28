@@ -3,7 +3,7 @@ import { getConfig, updateConfig } from './config.js';
 import { getLastTime, setLastTime, resetGroup, getProcessed, markProcessed, recordCase, retryRecentCases } from './state.js';
 import { fetchNewMessages } from './fetcher.js';
 import { splitIntoPatients, extractName, extractSurgery, getMessageBody } from './parser.js';
-import { loadMedia, loadText } from './mediastore.js';
+import { loadMedia, loadText, loadTextByTime } from './mediastore.js';
 import { sendText } from './ultramsg.js';
 import { runTriage } from './triage.js';
 import { formatTriageReply } from './format.js';
@@ -149,10 +149,12 @@ async function doAnalisar(chatId, cmdMsg) {
         if (stored) out = { ...out, media: stored.url };
       }
       if (m.type === 'chat') {
-        const storedText = loadText(m.id);
+        // Tenta por id exato; se não achar, tenta por (chat, timestamp) — mais
+        // robusto porque o timestamp é estável entre webhook e GET.
+        const storedText = loadText(m.id) || loadTextByTime(chatId, m.timestamp || m.time);
         const getBody = getMessageBody(m);
         if (storedText && storedText.length > getBody.length) {
-          console.error(`[commands] texto do webhook (${storedText.length} chars) > GET (${getBody.length}) id=${m.id} — usando webhook`);
+          console.error(`[commands] texto do webhook (${storedText.length} chars) > GET (${getBody.length}) id=${m.id} t=${m.timestamp || m.time} — usando webhook`);
           out = { ...out, body: storedText };
         }
       }

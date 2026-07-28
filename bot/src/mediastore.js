@@ -45,14 +45,25 @@ export function loadMedia(msgId) {
 // webhook entrega o texto completo em tempo real — guardamos por id para usar no
 // /analisar, garantindo que o texto integral chegue ao Claude (paralelo ao que
 // já fazemos com URLs de mídia). Chave prefixada 'txt:' para não colidir com mídia.
-export function saveText(msgId, text) {
+export function saveText(msgId, text, chatId, timestamp) {
   if (!text) return;
-  store['txt:' + msgId] = { text, savedAt: Date.now() };
+  const entry = { text, savedAt: Date.now() };
+  store['txt:' + msgId] = entry;
+  // Índice adicional por (chat, timestamp): o timestamp de uma mensagem do WhatsApp
+  // é ESTÁVEL entre o webhook e o GET /chats/messages, enquanto o id pode vir em
+  // formatos diferentes. Isso permite recuperar o texto completo mesmo quando os
+  // ids não batem exatamente entre as duas fontes.
+  if (chatId && timestamp) store['tt:' + chatId + ':' + timestamp] = entry;
   save();
 }
 
 export function loadText(msgId) {
   return store['txt:' + msgId]?.text || null;
+}
+
+export function loadTextByTime(chatId, timestamp) {
+  if (!chatId || !timestamp) return null;
+  return store['tt:' + chatId + ':' + timestamp]?.text || null;
 }
 
 // Remove entradas com mais de 14 dias

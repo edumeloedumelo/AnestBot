@@ -52,8 +52,8 @@ export async function handleWebhook(payload) {
   if (m.type === 'chat') {
     const full = getMessageBody(m);
     if (full && !full.trim().startsWith('/')) {
-      saveText(m.id, full);
-      console.error(`[router] texto salvo id=${m.id} len=${full.length}`);
+      saveText(m.id, full, m.from, m.timestamp || m.time);
+      console.error(`[router] texto salvo id=${m.id} t=${m.timestamp || m.time} len=${full.length}`);
     }
   }
 
