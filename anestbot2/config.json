@@ -1,0 +1,159 @@
+{
+  "extraPrompt": "",
+  "surgeries": [
+    {
+      "key": "protese_mamaria",
+      "name": "Inclusão de Prótese Mamária",
+      "required_exams": [
+        "Hemograma completo",
+        "Coagulograma (TAP/INR, TTPa)",
+        "Ionograma (Sódio, Potássio, Cloreto)",
+        "Bioquímica (Ureia, Creatinina)",
+        "Urina tipo I / EAS",
+        "Mamografia OU USG de mamas com classificação BIRADS",
+        "Sorologias (HIV, Hepatite B, Hepatite C)",
+        "Beta-HCG",
+        "Raio-X de tórax",
+        "Eletrocardiograma (ECG)",
+        "Risco cirúrgico"
+      ]
+    },
+    {
+      "key": "mamoplastia",
+      "name": "Mastopexia / Mamoplastia de Aumento ou Redução (com ou sem prótese)",
+      "required_exams": [
+        "Hemograma completo",
+        "Coagulograma (TAP/INR, TTPa)",
+        "Ionograma (Sódio, Potássio, Cloreto)",
+        "Bioquímica (Ureia, Creatinina)",
+        "Urina tipo I / EAS",
+        "Mamografia OU USG de mamas com classificação BIRADS",
+        "Sorologias (HIV, Hepatite B, Hepatite C)",
+        "Beta-HCG",
+        "Raio-X de tórax",
+        "Eletrocardiograma (ECG)",
+        "Risco cirúrgico"
+      ]
+    },
+    {
+      "key": "abdominoplastia",
+      "name": "Abdominoplastia",
+      "required_exams": [
+        "Hemograma completo",
+        "Coagulograma (TAP/INR, TTPa)",
+        "Ionograma (Sódio, Potássio, Cloreto)",
+        "Bioquímica (Ureia, Creatinina)",
+        "Urina tipo I / EAS",
+        "USG de abdome total",
+        "USG de parede abdominal",
+        "Sorologias (HIV, Hepatite B, Hepatite C)",
+        "Beta-HCG",
+        "Raio-X de tórax",
+        "Eletrocardiograma (ECG)",
+        "Risco cirúrgico"
+      ]
+    },
+    {
+      "key": "lipo",
+      "name": "Lipoaspiração / Hidrolipo / Lipoescultura (com ou sem Argoplasma)",
+      "required_exams": [
+        "Hemograma completo",
+        "Coagulograma (TAP/INR, TTPa)",
+        "Ionograma (Sódio, Potássio, Cloreto)",
+        "Bioquímica (Ureia, Creatinina)",
+        "Urina tipo I / EAS",
+        "USG de abdome total",
+        "USG de parede abdominal",
+        "Sorologias (HIV, Hepatite B, Hepatite C)",
+        "Beta-HCG",
+        "Raio-X de tórax",
+        "Eletrocardiograma (ECG)",
+        "Risco cirúrgico"
+      ]
+    },
+    {
+      "key": "facial",
+      "name": "Facelift / Blefaroplastia / Rinoplastia",
+      "required_exams": [
+        "Hemograma completo",
+        "Coagulograma (TAP/INR, TTPa)",
+        "Ionograma (Sódio, Potássio, Cloreto)",
+        "Bioquímica (Ureia, Creatinina)",
+        "Urina tipo I / EAS",
+        "Sorologias (HIV, Hepatite B, Hepatite C)",
+        "Beta-HCG",
+        "Raio-X de tórax",
+        "Eletrocardiograma (ECG)",
+        "Risco cirúrgico"
+      ]
+    },
+    {
+      "key": "endometriose",
+      "name": "Endometriose (Profunda, Videolaparoscópica, Robótica e afins)",
+      "required_exams": [
+        "Hemograma completo",
+        "Coagulograma (TAP/INR, TTPa)",
+        "Ionograma (Sódio, Potássio, Cloreto)",
+        "Bioquímica (Ureia, Creatinina)",
+        "Urina tipo I / EAS",
+        "Sorologias (HIV, Hepatite B, Hepatite C)",
+        "Beta-HCG",
+        "Raio-X de tórax",
+        "Eletrocardiograma (ECG)",
+        "Risco cirúrgico"
+      ]
+    },
+    {
+      "key": "histeroscopia",
+      "name": "Histeroscopia",
+      "required_exams": [
+        "Hemograma completo",
+        "Coagulograma (TAP/INR, TTPa)",
+        "Ionograma (Sódio, Potássio, Cloreto)",
+        "Bioquímica (Ureia, Creatinina)",
+        "Sorologias (HIV, Hepatite B, Hepatite C)",
+        "Beta-HCG",
+        "Raio-X de tórax",
+        "Eletrocardiograma (ECG)"
+      ]
+    }
+  ],
+  "examLimits": [
+    {
+      "exam_name": "Hemoglobina (Hb)",
+      "description": "Não liberar com Hb < 12 g/dL. Investigar anemia.",
+      "unit": "g/dL",
+      "notes": "Hb < 12 = pendência crítica."
+    },
+    {
+      "exam_name": "Plaquetas",
+      "description": "Aceitável >= 150.000. Entre 100.000-150.000 avaliar. < 100.000 não liberar.",
+      "unit": "/mm³",
+      "notes": ""
+    },
+    {
+      "exam_name": "INR",
+      "description": "Aceitável <= 1,3 em paciente sem anticoagulante. Investigar se elevado.",
+      "unit": "",
+      "notes": ""
+    },
+    {
+      "exam_name": "Glicemia de jejum",
+      "description": "Aceitável < 126 mg/dL. Valores elevados sugerem diabetes não controlado.",
+      "unit": "mg/dL",
+      "notes": ""
+    },
+    {
+      "exam_name": "Beta-HCG",
+      "description": "Positivo contraindica cirurgia eletiva.",
+      "unit": "",
+      "notes": "Positivo = pendência crítica."
+    },
+    {
+      "exam_name": "PCR (Proteína C Reativa)",
+      "description": "Considerar alterada APENAS se > 10. PCR ≤ 10 não é pendência relevante isoladamente.",
+      "unit": "mg/L",
+      "notes": ""
+    }
+  ]
+}
