@@ -1,6 +1,7 @@
-// Recebe o payload do webhook UltraMsg e processa comandos + cacheia mídias recebidas.
+// Recebe o payload do webhook UltraMsg e processa comandos + cacheia mídias e textos recebidos.
 import { isCommand, handleCommand } from './commands.js';
-import { saveMedia } from './mediastore.js';
+import { saveMedia, saveText } from './mediastore.js';
+import { getMessageBody } from './parser.js';
 
 const ALLOWED = (process.env.ALLOWED_CHATS || '')
   .split(',')
@@ -41,6 +42,18 @@ export async function handleWebhook(payload) {
       // UltraMsg, ou arquivo grande demais para o plano hospedar. Sem URL, o exame
       // não poderá ser analisado — logamos para diagnóstico.
       console.error(`[router] ⚠️ ${m.type} recebido SEM media URL id=${m.id} body="${(m.body || '').slice(0, 40)}" — verifique "Webhook Download Media: ON" e o limite de tamanho do plano UltraMsg`);
+    }
+  }
+
+  // Persiste o TEXTO completo de mensagens de chat recebidas via webhook.
+  // O GET /chats/messages pode truncar o corpo de mensagens longas (ex.: card de
+  // anamnese) — o webhook entrega o texto integral em tempo real. Guardamos por id
+  // para usar no /analisar. Loga o tamanho para diagnosticar truncamento do GET.
+  if (m.type === 'chat') {
+    const full = getMessageBody(m);
+    if (full && !full.trim().startsWith('/')) {
+      saveText(m.id, full);
+      console.error(`[router] texto salvo id=${m.id} len=${full.length}`);
     }
   }
 

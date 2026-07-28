@@ -40,6 +40,21 @@ export function loadMedia(msgId) {
   return store[msgId] || null;
 }
 
+// Cache de TEXTO recebido via webhook. Motivo: o GET /chats/messages da UltraMsg
+// pode truncar o corpo de mensagens longas (ex.: card de anamnese completo). O
+// webhook entrega o texto completo em tempo real — guardamos por id para usar no
+// /analisar, garantindo que o texto integral chegue ao Claude (paralelo ao que
+// já fazemos com URLs de mídia). Chave prefixada 'txt:' para não colidir com mídia.
+export function saveText(msgId, text) {
+  if (!text) return;
+  store['txt:' + msgId] = { text, savedAt: Date.now() };
+  save();
+}
+
+export function loadText(msgId) {
+  return store['txt:' + msgId]?.text || null;
+}
+
 // Remove entradas com mais de 14 dias
 export function cleanupOld() {
   const cutoff = Date.now() - 14 * 24 * 60 * 60 * 1000;

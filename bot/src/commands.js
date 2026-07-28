@@ -3,7 +3,7 @@ import { getConfig, updateConfig } from './config.js';
 import { getLastTime, setLastTime, resetGroup, getProcessed, markProcessed, recordCase, retryRecentCases } from './state.js';
 import { fetchNewMessages } from './fetcher.js';
 import { splitIntoPatients, extractName, extractSurgery, getMessageBody } from './parser.js';
-import { loadMedia } from './mediastore.js';
+import { loadMedia, loadText } from './mediastore.js';
 import { sendText } from './ultramsg.js';
 import { runTriage } from './triage.js';
 import { formatTriageReply } from './format.js';
@@ -135,14 +135,28 @@ async function doAnalisar(chatId, cmdMsg) {
       return sendText(chatId, `✅ Nenhuma mensagem nova desde a última análise.\n\nSe acabou de enviar as avaliações, tente /resetar e depois /analisar.`);
     }
 
-    // Mescla URLs de mídia do store persistente (GET API não retorna media URLs).
+    // Mescla dados do store persistente (populado pelo webhook em tempo real):
+    // - URLs de mídia (GET API não retorna media URLs)
+    // - TEXTO completo (GET pode truncar o corpo de mensagens longas, ex.: card de
+    //   anamnese — o webhook guardou o texto integral). Se o texto do webhook for
+    //   mais longo que o do GET, usamos ele: garante que a ficha completa (com
+    //   "Procedimento:") chegue ao Claude.
     const messagesWithMedia = messages.map((m) => {
+      let out = m;
       if ((m.type === 'image' || m.type === 'document') && !m.media) {
         const stored = loadMedia(m.id);
         console.error(`[commands] mídia id=${m.id} type=${m.type} store=${stored ? 'ENCONTRADO' : 'AUSENTE'}`);
-        if (stored) return { ...m, media: stored.url };
+        if (stored) out = { ...out, media: stored.url };
       }
-      return m;
+      if (m.type === 'chat') {
+        const storedText = loadText(m.id);
+        const getBody = getMessageBody(m);
+        if (storedText && storedText.length > getBody.length) {
+          console.error(`[commands] texto do webhook (${storedText.length} chars) > GET (${getBody.length}) id=${m.id} — usando webhook`);
+          out = { ...out, body: storedText };
+        }
+      }
+      return out;
     });
 
     console.error(`[doAnalisar] chatId=${chatId} mensagens=${messagesWithMedia.length} prevCutoff=${prevCutoff}`);
