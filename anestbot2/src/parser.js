@@ -17,22 +17,30 @@ export function isSeparator(line) {
 }
 
 // ── mensagens do próprio bot: nunca são conteúdo clínico ────────────────────
+// IMPORTANTE: usamos assinaturas EXCLUSIVAS da saída do bot (negrito com *
+// asteriscos, emojis específicos, frases de UI). NÃO usamos substrings que uma
+// ficha de anamnese digitada por humano possa conter — em especial:
+//   • "━━━━━━━━━━━━━━" (as fichas usam esses separadores entre as perguntas!)
+//   • "Avaliação Pré-Anestésica" em texto (o card do bot é "*AVALIAÇÃO
+//     PRÉ-ANESTÉSICA*", com asteriscos e caixa alta — a ficha não tem asteriscos)
 const BOT_MARKERS = [
-  'AVALIAÇÃO PRÉ-ANESTÉSICA', 'STATUS FINAL',
-  'Apoio à decisão. Não substitui avaliação médica',
-  '🔍 Buscando', 'caso(s) novo(s) encontrado', '⏳ Analisando caso',
-  '✅ Análise concluída', 'Nenhum caso novo', 'Nenhuma mensagem nova',
-  '📁 CASO', '━━━━━━━━━━━━━━', 'arquivo(s) não puderam ser lidos',
-  'BOT DE AVALIAÇÃO', 'CIRURGIAS CADASTRADAS', 'LIMITES / VALORES',
-  'Instruções adicionais', '📊 Status', 'Posição de leitura resetada',
-  'caso(s) recente(s) reaberto', 'Já há uma análise em andamento',
-  'Nenhum caso recente encontrado', 'não tem permissão', 'Comando desconhecido',
+  '*AVALIAÇÃO PRÉ-ANESTÉSICA*',                     // cabeçalho do laudo (negrito)
+  '*STATUS FINAL:*',                                // status do laudo (negrito)
+  'Apoio à decisão. Não substitui avaliação médica', // rodapé do laudo
+  '🔍 Verificando casos', '🔍 Buscando mensagens',
+  'caso(s) novo(s). Iniciando', '⏳ Analisando caso', '✅ Análise concluída',
+  '📁 CASO', '⚠️ Nenhum caso novo encontrado', 'Nenhuma mensagem nova',
+  '🔄 ', 'caso(s) reaberto', 'Já há uma análise em andamento',
+  '⚠️ Nenhum caso recente', '⛔ Você não tem permissão', '❓ Comando desconhecido',
+  '🤖 ANESTBOT', '🔪 CIRURGIAS CADASTRADAS', '📊 LIMITES / VALORES',
+  '📊 Status do grupo', '📝 Instruções adicionais', '📝 Nenhuma instrução',
+  'Estado do grupo apagado', 'arquivo(s) sem URL', 'arquivo(s) com problema',
 ];
 function isBotMessage(body) {
   return !!body && BOT_MARKERS.some((s) => body.includes(s));
 }
-// Só um laudo real marca casos como já analisados.
-const LAUDO_MARKERS = ['AVALIAÇÃO PRÉ-ANESTÉSICA', 'STATUS FINAL', 'Apoio à decisão. Não substitui avaliação médica'];
+// Só o laudo REAL do bot (formato exato, com asteriscos) marca casos como analisados.
+const LAUDO_MARKERS = ['*AVALIAÇÃO PRÉ-ANESTÉSICA*', 'Apoio à decisão. Não substitui avaliação médica'];
 function isLaudo(body) {
   return !!body && LAUDO_MARKERS.some((s) => body.includes(s));
 }
@@ -48,7 +56,7 @@ export function extractName(texts) {
 
 export function extractSurgery(texts) {
   const j = texts.join('\n');
-  const stop = /(?=\n\s*(?:🔷|🔹|🔶|Data\b|Telefone\b|Observ|Paciente\b|\d️?⃣|[-_—]{3,})|\n\n|$)/;
+  const stop = /(?=\n\s*(?:🔷|🔹|🔶|Data\b|Telefone\b|Observ|Paciente\b|\d️?⃣|[-_—━─]{3,})|\n\n|$)/;
   const field = (label) => new RegExp(`${label}\\s*[:\\-：]\\s*([\\s\\S]{3,180}?)${stop.source}`, 'i');
   const m = j.match(field('Procedimento'))
         || j.match(field('Cirurgia\\s+programada'))

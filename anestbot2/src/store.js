@@ -19,10 +19,17 @@ const MAX_PROCESSED_IDS = 4000;      // ids de mensagens já analisadas por grup
 const MAX_RECENT_CASES = 30;         // casos recentes p/ retry cirúrgico (/resetar)
 
 let db = {};
+let seqCounter = 0; // ordenação estável; semeado no load p/ ser monotônico entre restarts
 
 function load() {
   try { db = JSON.parse(fs.readFileSync(STORE_PATH, 'utf-8')); }
   catch { db = {}; }
+  // Semeia o contador com o maior _seq já existente (sobrevive a reinícios).
+  let mx = 0;
+  for (const c of Object.values(db)) {
+    for (const m of (c?.messages || [])) if (typeof m._seq === 'number' && m._seq > mx) mx = m._seq;
+  }
+  seqCounter = mx + 1;
 }
 
 function save() {
@@ -54,10 +61,13 @@ export function appendMessage(chatId, msg) {
   const c = chat(chatId);
   const idx = c.messages.findIndex((m) => m.id === msg.id);
   if (idx >= 0) {
-    // Mescla: preserva campos já existentes, sobrescreve com os novos não-vazios.
-    c.messages[idx] = { ...c.messages[idx], ...pruneEmpty(msg) };
+    // Mescla: preserva campos existentes E o _seq original (não reordena a
+    // mensagem quando a mídia chega depois do texto com o mesmo id).
+    const keepSeq = c.messages[idx]._seq;
+    c.messages[idx] = { ...c.messages[idx], ...pruneEmpty(msg), _seq: keepSeq };
   } else {
-    c.messages.push(msg);
+    // O store atribui o _seq (fonte única) — ignora qualquer _seq do chamador.
+    c.messages.push({ ...msg, _seq: seqCounter++ });
     if (c.messages.length > MAX_MESSAGES_PER_CHAT) {
       c.messages = c.messages.slice(-MAX_MESSAGES_PER_CHAT);
     }
@@ -77,7 +87,8 @@ function pruneEmpty(obj) {
 export function getMessages(chatId) {
   const c = db[chatId];
   if (!c || !Array.isArray(c.messages)) return [];
-  return [...c.messages].sort((a, b) => (a.timestamp - b.timestamp) || (a._seq - b._seq));
+  // Guardas ?? 0 evitam comparador NaN em mensagens legadas sem timestamp/_seq.
+  return [...c.messages].sort((a, b) => ((a.timestamp || 0) - (b.timestamp || 0)) || ((a._seq ?? 0) - (b._seq ?? 0)));
 }
 
 // Dedup durável: ids de mensagens já analisadas.

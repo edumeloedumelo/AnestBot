@@ -50,7 +50,9 @@ Crie um repositório vazio (ex.: `ANESTBOT.20`) e suba este diretório nele.
   - `ULTRAMSG_TOKEN` = seu token
   - `ANTHROPIC_API_KEY` = sua chave da Anthropic
   - `STATE_DIR` = `/data`
-  - (opcional) `ADMIN_NUMBERS` = números admin separados por vírgula
+  - **`ADMIN_NUMBERS`** = números admin separados por vírgula. ⚠️ **Configure em
+    produção**: se ficar vazio, QUALQUER membro do grupo pode rodar comandos de
+    admin (`/resetartudo`, `/setprompt`, `/addcirurgia` etc.).
   - (opcional) `ALLOWED_CHATS` = ids de grupos permitidos (vazio = todos)
   - (opcional) `ANTHROPIC_MODEL` (padrão `claude-sonnet-4-6`)
 - O `railway.json` já define builder Dockerfile, healthcheck `/health` e

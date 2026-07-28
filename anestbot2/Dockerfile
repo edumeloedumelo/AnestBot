@@ -3,6 +3,6 @@ RUN apt-get update && apt-get install -y ghostscript --no-install-recommends && 
 RUN mkdir -p /data
 WORKDIR /app
 COPY package*.json ./
-RUN npm install --omit=dev
+RUN npm ci --omit=dev
 COPY . .
 CMD ["node", "src/index.js"]

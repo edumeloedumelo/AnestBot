@@ -122,5 +122,20 @@ t('formatReply não corta se marcador citado em prosa antes', () => {
   assert.ok(!out.includes('como pediu'));
 });
 
+// ── CASO 9: ficha com separadores ━━━ e título em CAIXA ALTA não é confundida ─
+t('ficha com ━━━ e título AVALIAÇÃO PRÉ-ANESTÉSICA (caixa alta) não é descartada', () => {
+  const ficha = 'xxxx\n\n📋 AVALIAÇÃO PRÉ-ANESTÉSICA\n🔹 Paciente: Ana\n🔹 Procedimento: Rinoplastia\n━━━━━━━━━━━━━━\n1️⃣ Pressão? Não\n━━━━━━━━━━━━━━\n2️⃣ Diabetes? Não';
+  const cases = splitIntoCases([M('chat', ficha), M('chat', '❌❌❌❌')], new Set());
+  assert.equal(cases.length, 1);
+  assert.equal(extractSurgery(cases[0].texts), 'Rinoplastia'); // ━ não entra no valor
+});
+
+// ── CASO 10: laudo REAL do bot (com asteriscos) marca como analisado ─────────
+t('laudo real do bot (*AVALIAÇÃO PRÉ-ANESTÉSICA*) marca caso como analisado', () => {
+  const msgs = [M('chat', 'xxxx'), M('chat', 'Paciente: X\nProcedimento: Lipo'), M('chat', '❌❌❌❌'),
+    M('chat', '🧾 *AVALIAÇÃO PRÉ-ANESTÉSICA*\n━━━\n📌 *STATUS FINAL:* ✅')];
+  assert.equal(splitIntoCases(msgs, new Set()).length, 0);
+});
+
 console.log(`\n${fail === 0 ? '🎉' : '⚠️'} ${pass} passaram, ${fail} falharam`);
 process.exit(fail === 0 ? 0 : 1);

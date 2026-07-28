@@ -10,8 +10,6 @@ function isAllowed(chatId) {
   return ALLOWED.length === 0 || ALLOWED.includes(chatId);
 }
 
-let seq = 0; // desempate estável de ordenação para mensagens do mesmo segundo
-
 // Extrai o texto de forma robusta. Mensagens encaminhadas / de tipos diversos /
 // de APIs estilo Baileys trazem o texto em campos variados (às vezes aninhados).
 export function getBody(m) {
@@ -72,7 +70,6 @@ export async function handleWebhook(payload) {
       caption: isMedia ? body : '',
       timestamp,
       fromMe: !!m.fromMe,
-      _seq: seq++,
     });
     if (isMedia) {
       console.error(`[webhook] mídia gravada chat=${chatId} type=${type} url=${m.media ? 'sim' : 'AUSENTE'}`);
