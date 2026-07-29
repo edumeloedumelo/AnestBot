@@ -30,7 +30,7 @@ sozinhos numa mensagem ou colados ao conteúdo — ambos funcionam.
 ## Deploy (passo a passo)
 
 ### 1. Repositório GitHub
-Crie um repositório vazio (ex.: `ANESTBOT.20`) e suba este diretório nele.
+Crie um repositório vazio (ex.: `ANESTBOT.2.0`) e suba este diretório nele.
 
 ### 2. UltraMsg
 - Crie/uma instância nova em https://ultramsg.com e conecte o número do WhatsApp.
@@ -72,6 +72,22 @@ tamanho completo do card. No `/analisar`, `[analisar] ... cirurgia="..."`.
 `/analisar` · `/status` · `/cirurgias` · `/limites` · `/prompt` · `/resetar [N]` ·
 `/ajuda` — e (admin) `/addcirurgia` · `/delcirurgia` · `/addlimite` · `/dellimite` ·
 `/setprompt` · `/limparprompt` · `/resetartudo`.
+
+### /resetar — o que ele faz (novo na 2.0)
+
+1. **Reabre APENAS o último caso** (ou os últimos N com `/resetar N`) — os casos
+   antigos NUNCA são reanalisados.
+2. **Dispara a verificação automática de erros**: varre o estado do bot
+   (histórico, dedup, config, volume, API), **corrige sozinho** o que for
+   corrigível e **comunica cada correção** no grupo.
+3. **Reanalisa o caso reaberto automaticamente** — não precisa mandar
+   `/analisar` de novo.
+
+### Comandos do próprio número conectado
+
+O número conectado à UltraMsg também pode enviar comandos (evento
+`message_create`). Para que ele use comandos de **admin**, inclua-o em
+`ADMIN_NUMBERS`.
 
 ## Testes
 

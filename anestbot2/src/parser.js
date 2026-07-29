@@ -25,7 +25,8 @@ export function isSeparator(line) {
 //     PRÉ-ANESTÉSICA*", com asteriscos e caixa alta — a ficha não tem asteriscos)
 const BOT_MARKERS = [
   '*AVALIAÇÃO PRÉ-ANESTÉSICA*',                     // cabeçalho do laudo (negrito)
-  '*STATUS FINAL:*',                                // status do laudo (negrito)
+  '*STATUS FINAL:*', '📌 *STATUS:*',                // status do laudo (negrito)
+  '🔧 *VERIFICAÇÃO AUTOMÁTICA*', 'checagem(ns) OK', // relatório do /resetar
   'Apoio à decisão. Não substitui avaliação médica', // rodapé do laudo
   '🔍 Verificando casos', '🔍 Buscando mensagens',
   'caso(s) novo(s). Iniciando', '⏳ Analisando caso', '✅ Análise concluída',

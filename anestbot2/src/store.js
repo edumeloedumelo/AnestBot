@@ -126,6 +126,55 @@ export function retryRecentCases(chatId, n = 1) {
   return { retried: targets.length, patientNames: targets.map((t) => t.patientName).filter(Boolean) };
 }
 
+// Verificação/correção automática do estado do grupo (chamada pelo /resetar).
+// Corrige apenas problemas SEGUROS de corrigir; devolve a lista do que foi feito.
+export function selfHealChat(chatId) {
+  const fixes = [];
+  const c = db[chatId];
+  if (!c) return fixes;
+
+  // Estruturas ausentes/corrompidas → recria.
+  for (const k of ['messages', 'processed', 'recentCases']) {
+    if (!Array.isArray(c[k])) { c[k] = []; fixes.push(`Estrutura "${k}" corrompida — recriada`); }
+  }
+
+  // Mensagens sem id não podem ser deduplicadas → remove.
+  const before = c.messages.length;
+  c.messages = c.messages.filter((m) => m && m.id);
+  if (c.messages.length < before) fixes.push(`${before - c.messages.length} mensagem(ns) sem id removida(s)`);
+
+  // Ids duplicados → mantém a mais completa (a de maior corpo/mídia).
+  const byId = new Map();
+  for (const m of c.messages) {
+    const prev = byId.get(m.id);
+    if (!prev) { byId.set(m.id, m); continue; }
+    const score = (x) => (x.body || '').length + (x.mediaUrl ? 1000 : 0);
+    byId.set(m.id, score(m) >= score(prev) ? { ...prev, ...m, _seq: prev._seq } : prev);
+  }
+  if (byId.size < c.messages.length) {
+    fixes.push(`${c.messages.length - byId.size} mensagem(ns) duplicada(s) mescladas`);
+    c.messages = [...byId.values()];
+  }
+
+  // Timestamps inválidos (NaN/negativos) quebram a ordenação → herda o timestamp
+  // da mensagem anterior (em ordem de chegada/_seq), preservando a posição.
+  let badTs = 0;
+  let lastGood = 0;
+  for (const m of [...c.messages].sort((a, b) => (a._seq ?? 0) - (b._seq ?? 0))) {
+    if (typeof m.timestamp !== 'number' || !isFinite(m.timestamp) || m.timestamp < 0) { m.timestamp = lastGood; badTs++; }
+    else lastGood = m.timestamp;
+  }
+  if (badTs) fixes.push(`${badTs} timestamp(s) inválido(s) corrigido(s)`);
+
+  // Ids de processed inválidos → remove.
+  const pBefore = c.processed.length;
+  c.processed = c.processed.filter((id) => typeof id === 'string' && id);
+  if (c.processed.length < pBefore) fixes.push(`${pBefore - c.processed.length} id(s) inválido(s) removido(s) do dedup`);
+
+  if (fixes.length) save();
+  return fixes;
+}
+
 // /resetartudo — apaga TODO o estado do grupo (histórico + dedup).
 export function resetChat(chatId) {
   delete db[chatId];

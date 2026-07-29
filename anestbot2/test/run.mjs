@@ -1,7 +1,8 @@
 // Suíte de testes da ANESTBOT 2.0 — cobre os cenários que falhavam na 1.0.
 // Roda offline (sem rede): exercita store → webhook → parser → extração.
 import assert from 'assert';
-import { getBody } from '../src/webhook.js';
+import { getBody, resolveChatId } from '../src/webhook.js';
+import { appendMessage, getMessages, selfHealChat, resetChat } from '../src/store.js';
 import { splitIntoCases, extractName, extractSurgery, isCaseOpener, isSeparator } from '../src/parser.js';
 import { formatReply } from '../src/format.js';
 
@@ -135,6 +136,50 @@ t('laudo real do bot (*AVALIAÇÃO PRÉ-ANESTÉSICA*) marca caso como analisado'
   const msgs = [M('chat', 'xxxx'), M('chat', 'Paciente: X\nProcedimento: Lipo'), M('chat', '❌❌❌❌'),
     M('chat', '🧾 *AVALIAÇÃO PRÉ-ANESTÉSICA*\n━━━\n📌 *STATUS FINAL:* ✅')];
   assert.equal(splitIntoCases(msgs, new Set()).length, 0);
+});
+
+// ── CASO 11: mensagens do PRÓPRIO número (fromMe) vão para o chat certo ──────
+t('resolveChatId: fromMe usa "to" (grupo), recebida usa "from"', () => {
+  assert.equal(resolveChatId({ fromMe: true, from: '5599@c.us', to: 'grupo@g.us' }), 'grupo@g.us');
+  assert.equal(resolveChatId({ fromMe: false, from: 'grupo@g.us', to: '5599@c.us' }), 'grupo@g.us');
+  assert.equal(resolveChatId({ fromMe: true, from: 'grupo@g.us' }), 'grupo@g.us'); // sem "to": cai no from
+});
+
+// ── CASO 12: laudo com o NOVO visual (📌 *STATUS:* no topo) segue reconhecido ─
+t('laudo novo visual marca caso como analisado', () => {
+  const msgs = [M('chat', 'xxxx'), M('chat', 'Paciente: X\nProcedimento: Lipo'), M('chat', '❌❌❌❌'),
+    M('chat', '🧾 *AVALIAÇÃO PRÉ-ANESTÉSICA*\n━━━\n🧍 *Paciente:* X\n📌 *STATUS:* ✅\n━━━\n⚠️ _Apoio à decisão. Não substitui avaliação médica presencial._')];
+  assert.equal(splitIntoCases(msgs, new Set()).length, 0);
+});
+
+// ── CASO 13: relatório da verificação automática não vira conteúdo clínico ───
+t('relatório 🔧 VERIFICAÇÃO AUTOMÁTICA é ignorado pelo parser', () => {
+  const msgs = [M('chat', 'xxxx'), M('chat', '🔧 *VERIFICAÇÃO AUTOMÁTICA*\n✅ Nenhum erro encontrado.\n_5 checagem(ns) OK._'), M('chat', 'Procedimento: Lipo'), M('chat', '❌❌❌❌')];
+  const cases = splitIntoCases(msgs, new Set());
+  assert.equal(cases.length, 1);
+  assert.ok(!cases[0].texts.join('\n').includes('VERIFICAÇÃO'));
+});
+
+// ── CASO 14: selfHealChat corrige estado corrompido sem tocar no válido ──────
+t('selfHealChat: remove sem-id, mescla duplicadas, corrige timestamp', () => {
+  const chatId = 'selfheal-test@g.us';
+  resetChat(chatId);
+  appendMessage(chatId, { id: 'ok1', chatId, type: 'chat', body: 'xxxx', timestamp: 100 });
+  appendMessage(chatId, { id: 'ok2', chatId, type: 'chat', body: 'Procedimento: Lipo', timestamp: NaN }); // ts inválido
+  const fixes = selfHealChat(chatId);
+  assert.ok(fixes.some((f) => f.includes('timestamp')), 'deveria corrigir timestamp: ' + JSON.stringify(fixes));
+  const msgs = getMessages(chatId);
+  assert.equal(msgs.length, 2); // nada válido foi perdido
+  assert.equal(splitIntoCases([...msgs, { id: 'ok3', type: 'chat', body: '❌❌❌❌' }], new Set()).length, 1);
+  resetChat(chatId);
+});
+
+t('selfHealChat: sem problemas → nenhuma correção', () => {
+  const chatId = 'selfheal-clean@g.us';
+  resetChat(chatId);
+  appendMessage(chatId, { id: 'a', chatId, type: 'chat', body: 'oi', timestamp: 1 });
+  assert.deepEqual(selfHealChat(chatId), []);
+  resetChat(chatId);
 });
 
 console.log(`\n${fail === 0 ? '🎉' : '⚠️'} ${pass} passaram, ${fail} falharam`);

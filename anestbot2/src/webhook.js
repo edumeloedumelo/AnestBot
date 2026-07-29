@@ -33,6 +33,13 @@ export function getBody(m) {
   return best;
 }
 
+// Resolve o id do GRUPO/CONVERSA. Em mensagens do PRÓPRIO número (fromMe /
+// message_create) a UltraMsg manda from=próprio número e to=grupo — o chat é o "to".
+export function resolveChatId(m) {
+  if (m.fromMe && m.to) return m.to;
+  return m.from;
+}
+
 export async function handleWebhook(payload) {
   if (!payload) return;
 
@@ -43,7 +50,7 @@ export async function handleWebhook(payload) {
   const m = payload.data;
   if (!m || !m.id) return;
 
-  const chatId = m.from;
+  const chatId = resolveChatId(m);
   if (!isAllowed(chatId)) return;
 
   const type = m.type || 'chat';

@@ -8,7 +8,7 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
-    "test": "node test/run.mjs"
+    "test": "STATE_DIR=/tmp/anestbot2-test node test/run.mjs"
   },
   "engines": { "node": ">=18" },
   "dependencies": {

@@ -5,6 +5,7 @@ import { splitIntoCases, extractName, extractSurgery } from './parser.js';
 import { runTriage } from './triage.js';
 import { formatReply } from './format.js';
 import { sendText } from './ultramsg.js';
+import { runSelfCheck, formatSelfCheck } from './selfcheck.js';
 
 const PREFIX = process.env.TRIGGER_PREFIX || '/';
 const analyzing = new Set(); // lock por grupo
@@ -110,12 +111,29 @@ async function doStatus(chatId) {
   return sendText(chatId, `📊 Status do grupo:\n• Última mensagem recebida: ${d}\n\nUse ${PREFIX}analisar para rodar a triagem.`);
 }
 
+// /resetar [N] — 3 passos automáticos:
+//   1. Reabre APENAS o(s) último(s) caso(s) — os antigos NUNCA são reanalisados.
+//   2. Dispara a verificação automática de erros (store/config/volume/API) e
+//      corrige o que for corrigível, comunicando cada correção.
+//   3. Reanalisa o caso reaberto sozinho — sem precisar mandar /analisar de novo.
 async function doRetry(chatId, args) {
+  if (analyzing.has(chatId)) return sendText(chatId, '⏳ Já há uma análise em andamento neste grupo. Aguarde.');
   const n = Math.max(1, Math.min(30, parseInt(args, 10) || 1));
   const { retried, patientNames } = retryRecentCases(chatId, n);
-  if (retried === 0) return sendText(chatId, '⚠️ Nenhum caso recente para corrigir.');
-  const names = patientNames.length ? `\n${patientNames.map((x) => `• ${x}`).join('\n')}` : '';
-  return sendText(chatId, `🔄 ${retried} caso(s) reaberto(s) para correção:${names}\n\nRode ${PREFIX}analisar para reprocessá-los. Casos antigos não serão tocados.`);
+
+  if (retried > 0) {
+    const names = patientNames.length ? `\n${patientNames.map((x) => `• ${x}`).join('\n')}` : '';
+    await sendText(chatId, `🔄 ${retried} último(s) caso(s) reaberto(s):${names}\n\n_Casos antigos permanecem intactos._`);
+  } else {
+    await sendText(chatId, '⚠️ Nenhum caso recente para reabrir. Rodando só a verificação automática...');
+  }
+
+  // Gatilho: verificação automática de erros + correção + comunicação.
+  const report = await runSelfCheck(chatId);
+  await sendText(chatId, formatSelfCheck(report));
+
+  // Reanalisa automaticamente o caso reaberto.
+  if (retried > 0) return doAnalisar(chatId);
 }
 
 function listSurgeries(chatId) {
@@ -177,7 +195,7 @@ ${PREFIX}status — última atividade do grupo
 ${PREFIX}cirurgias — lista cirurgias/exames exigidos
 ${PREFIX}limites — valores de referência
 ${PREFIX}prompt — instruções extras ativas
-${PREFIX}resetar [N] — reprocessa o(s) último(s) N caso(s)
+${PREFIX}resetar [N] — reabre SÓ o(s) último(s) caso(s) + verificação automática de erros + reanálise
 ${PREFIX}ajuda — esta mensagem
 
 ADMIN: ${PREFIX}addcirurgia · ${PREFIX}delcirurgia · ${PREFIX}addlimite · ${PREFIX}dellimite · ${PREFIX}setprompt · ${PREFIX}limparprompt · ${PREFIX}resetartudo
