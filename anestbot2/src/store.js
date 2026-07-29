@@ -54,6 +54,18 @@ function chat(chatId) {
   return c;
 }
 
+// Estado do "portão" de captura: true = há um caso aberto (xxxx sem ❌❌❌❌).
+// Persistente — sobrevive a restarts/redeploys no meio de um caso.
+export function isCaseOpen(chatId) {
+  return !!db[chatId]?.caseOpen;
+}
+export function setCaseOpen(chatId, open) {
+  const c = chat(chatId);
+  if (!!c.caseOpen === !!open) return;
+  c.caseOpen = !!open;
+  save();
+}
+
 // Grava uma mensagem normalizada. Deduplica por id (o webhook pode reenviar).
 // Atualiza a mensagem se ela já existe (ex.: mídia que chega depois do texto).
 export function appendMessage(chatId, msg) {

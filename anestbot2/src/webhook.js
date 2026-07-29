@@ -1,6 +1,7 @@
 // Normaliza o payload do webhook UltraMsg e grava a mensagem no store.
 // Também dispara comandos (/analisar etc.) quando a mensagem é um comando.
-import { appendMessage } from './store.js';
+import { appendMessage, isCaseOpen, setCaseOpen } from './store.js';
+import { isCaseOpener, isSeparator } from './parser.js';
 import { isCommand, handleCommand } from './commands.js';
 
 const ALLOWED = (process.env.ALLOWED_CHATS || '')
@@ -40,6 +41,21 @@ export function resolveChatId(m) {
   return m.from;
 }
 
+// Decide se a mensagem é capturada e qual passa a ser o estado do bloco.
+//   • "xxxx" na 1ª linha ABRE o caso (mesmo colado ao card)
+//   • "❌❌❌❌" na última linha FECHA o caso (mesmo colado ao conteúdo)
+//   • texto/mídia só são gravados com caso aberto (ou na própria msg de marcador)
+export function gateDecision(open, type, body) {
+  if (type !== 'chat') return { store: open, nowOpen: open }; // mídia: só dentro do bloco
+  const lines = (body || '').trim().split('\n');
+  const opens = lines.length > 0 && isCaseOpener(lines[0]);
+  const closes = lines.length > 0 && isSeparator(lines[lines.length - 1]);
+  return {
+    store: opens || closes || open,
+    nowOpen: closes ? false : (opens ? true : open),
+  };
+}
+
 export async function handleWebhook(payload) {
   if (!payload) return;
 
@@ -63,9 +79,19 @@ export async function handleWebhook(payload) {
     return;
   }
 
-  // Grava conteúdo relevante: texto (chat) ou mídia (image/document/video).
+  // ── PORTÃO DE CAPTURA (regra absoluta) ────────────────────────────────────
+  // O webhook SÓ captura conteúdo entre xxxx e ❌❌❌❌. Conversa fora de um
+  // caso aberto NÃO é gravada — nem texto, nem mídia. Comandos (acima) sempre
+  // funcionam, em grupo ou no privado.
   const isMedia = type === 'image' || type === 'document' || type === 'video';
-  const hasContent = (type === 'chat' && body) || (isMedia);
+  const { store, nowOpen } = gateDecision(isCaseOpen(chatId), type, body);
+  if (type === 'chat') setCaseOpen(chatId, nowOpen);
+
+  const hasContent = store && ((type === 'chat' && body) || isMedia);
+
+  if (!hasContent && ((type === 'chat' && body) || isMedia)) {
+    console.error(`[webhook] fora de bloco xxxx/❌❌❌❌ — ignorado chat=${chatId} type=${type}`);
+  }
 
   if (hasContent) {
     appendMessage(chatId, {

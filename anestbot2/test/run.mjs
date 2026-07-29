@@ -1,7 +1,7 @@
 // Suíte de testes da ANESTBOT 2.0 — cobre os cenários que falhavam na 1.0.
 // Roda offline (sem rede): exercita store → webhook → parser → extração.
 import assert from 'assert';
-import { getBody, resolveChatId } from '../src/webhook.js';
+import { getBody, resolveChatId, gateDecision } from '../src/webhook.js';
 import { appendMessage, getMessages, selfHealChat, resetChat } from '../src/store.js';
 import { splitIntoCases, extractName, extractSurgery, isCaseOpener, isSeparator } from '../src/parser.js';
 import { formatReply } from '../src/format.js';
@@ -180,6 +180,35 @@ t('selfHealChat: sem problemas → nenhuma correção', () => {
   appendMessage(chatId, { id: 'a', chatId, type: 'chat', body: 'oi', timestamp: 1 });
   assert.deepEqual(selfHealChat(chatId), []);
   resetChat(chatId);
+});
+
+// ── CASO 15: PORTÃO — webhook só captura entre xxxx e ❌❌❌❌ ────────────────
+t('gate: conversa fora de bloco NÃO é capturada', () => {
+  const d = gateDecision(false, 'chat', 'bom dia pessoal, alguém viu a escala?');
+  assert.deepEqual(d, { store: false, nowOpen: false });
+});
+t('gate: mídia fora de bloco NÃO é capturada', () => {
+  assert.equal(gateDecision(false, 'image', '').store, false);
+});
+t('gate: xxxx abre e é capturado (inclusive colado ao card)', () => {
+  assert.deepEqual(gateDecision(false, 'chat', 'xxxx'), { store: true, nowOpen: true });
+  assert.deepEqual(gateDecision(false, 'chat', 'Xxxx\n\n🩺 Olá!\n🔹 Procedimento: Rino'), { store: true, nowOpen: true });
+});
+t('gate: conteúdo e mídia DENTRO do bloco são capturados', () => {
+  assert.equal(gateDecision(true, 'chat', '🔹 Paciente: Ana').store, true);
+  assert.equal(gateDecision(true, 'document', 'exames.pdf').store, true);
+});
+t('gate: ❌❌❌❌ fecha o bloco (inclusive colado ao conteúdo)', () => {
+  assert.deepEqual(gateDecision(true, 'chat', '❌❌❌❌'), { store: true, nowOpen: false });
+  assert.deepEqual(gateDecision(true, 'chat', 'última info\n❌❌❌❌'), { store: true, nowOpen: false });
+});
+t('gate: depois de fechar, conversa volta a ser ignorada', () => {
+  const c1 = gateDecision(true, 'chat', '❌❌❌❌');
+  assert.equal(gateDecision(c1.nowOpen, 'chat', 'obrigado!').store, false);
+  assert.equal(gateDecision(c1.nowOpen, 'image', '').store, false);
+});
+t('gate: caso completo numa mensagem só abre e fecha', () => {
+  assert.deepEqual(gateDecision(false, 'chat', 'xxxx\n🔹 Procedimento: Lipo\n❌❌❌❌'), { store: true, nowOpen: false });
 });
 
 console.log(`\n${fail === 0 ? '🎉' : '⚠️'} ${pass} passaram, ${fail} falharam`);
