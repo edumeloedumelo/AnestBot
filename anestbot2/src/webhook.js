@@ -125,7 +125,9 @@ export async function handleWebhook(payload) {
   const { store, nowOpen, opens, closes } = gateDecision(wasOpen, type, body);
   if (type === 'chat') {
     setCaseOpen(chatId, nowOpen);
-    if (closes) recordCaseClosed(chatId, timestamp); // cobre também xxxx…❌❌❌❌ na mesma msg
+    // Só quando FECHA um caso real (aberto antes ou aberto nesta mensagem) —
+    // um ❌❌❌❌ redundante não vira marco de fechamento (prescrição do coordenador).
+    if (closes && (wasOpen || opens)) recordCaseClosed(chatId, timestamp);
   }
 
   const hasContent = store && ((type === 'chat' && body) || isMedia);

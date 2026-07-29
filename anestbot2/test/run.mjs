@@ -352,6 +352,24 @@ t('mídia já analisada não é re-adotada (reentrega do webhook)', () => {
   resetChat(chatId);
 });
 
+// ── CASO 18c: ❌❌❌❌ redundante não desloca o marco de fechamento ────────────
+const { lastClosedTime } = await import('../src/store.js');
+async function ta(name, fn) {
+  try { await fn(); console.log(`✅ ${name}`); pass++; }
+  catch (e) { console.log(`❌ ${name}\n   ${e.message}`); fail++; }
+}
+await ta('❌❌❌❌ redundante (sem caso aberto) não atualiza lastClosedTs', async () => {
+  const chatId = 'dup-close@g.us';
+  resetChat(chatId);
+  const { handleWebhook } = await import('../src/webhook.js');
+  const ev = (id, body, ts) => handleWebhook({ event_type: 'message_received', data: { id, from: chatId, type: 'chat', body, timestamp: ts } });
+  await ev('d1', 'xxxx\nPaciente: Diana\nProcedimento: Lipo', 5000);
+  await ev('d2', '❌❌❌❌', 5010);
+  await ev('d3', '❌❌❌❌', 5060); // redundante
+  assert.equal(lastClosedTime(chatId), 5010, 'marco deve permanecer no fechamento real');
+  resetChat(chatId);
+});
+
 // ── CASO 19: eco do bot reconhecido e descartável ────────────────────────────
 t('recordBotText/isBotText: resposta enviada pelo bot é reconhecida no eco', () => {
   const chatId = 'eco@g.us';
