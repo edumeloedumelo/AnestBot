@@ -390,18 +390,55 @@ await ta('processImage sem ImageMagick: fallback null, sem lançar, buffer intac
   assert.equal(r, null);
   assert.deepEqual(Array.from(new Uint8Array(original.buffer)), Array.from(copy), 'buffer não pode ser mutado');
 });
-t('buildTriageContext lista ARQUIVOS ENVIADOS (sanitizados) quando há mídia', () => {
+t('buildTriageContext: lista SÓ arquivos realmente anexados', () => {
   const ctx = buildTriageContext({
     patientName: 'Karolliny', surgeryType: 'Abdominoplastia', anamnesis: 'ficha',
-    media: [{ caption: 'ECG\ncom quebra de linha', type: 'image' }, { caption: '', type: 'document' }],
+    attachedFiles: ['ECG.jpg', 'hemograma.pdf'],
   });
-  assert.ok(ctx.includes('ARQUIVOS ENVIADOS (2 arquivo(s)'));
-  assert.ok(ctx.includes('1. ECG com quebra de linha'), 'legenda sanitizada sem \\n');
-  assert.ok(ctx.includes('2. arquivo document'));
+  assert.ok(ctx.includes('ARQUIVOS ENVIADOS (2 arquivo(s) ANEXADOS'));
+  assert.ok(ctx.includes('1. ECG.jpg') && ctx.includes('2. hemograma.pdf'));
+  assert.ok(!ctx.includes('FALHA NO RECEBIMENTO'));
 });
-t('buildTriageContext sem mídia omite a seção de arquivos', () => {
-  const ctx = buildTriageContext({ patientName: 'X', surgeryType: 'Lipo', anamnesis: 'a', media: [] });
-  assert.ok(!ctx.includes('ARQUIVOS ENVIADOS'));
+t('buildTriageContext: downloads que falharam viram seção própria (nunca "ilegível")', () => {
+  const ctx = buildTriageContext({
+    patientName: 'X', surgeryType: 'Lipo', anamnesis: 'a',
+    attachedFiles: ['ok.pdf'], failedFiles: ['urina.pdf'],
+  });
+  assert.ok(ctx.includes('ARQUIVOS COM FALHA NO RECEBIMENTO'));
+  assert.ok(ctx.includes('falha no recebimento — reenviar'));
+  assert.ok(ctx.includes('NUNCA os classifique como ilegíveis'));
+});
+t('buildTriageContext sem mídia omite as seções de arquivos', () => {
+  const ctx = buildTriageContext({ patientName: 'X', surgeryType: 'Lipo', anamnesis: 'a' });
+  assert.ok(!ctx.includes('ARQUIVOS ENVIADOS') && !ctx.includes('FALHA NO RECEBIMENTO'));
+});
+
+// ── CASO 21: REPRODUÇÃO DA PRODUÇÃO 29/07 18h — webhook de mídia atrasado ────
+const { shouldNotifyLate } = await import('../src/webhook.js');
+t('PRODUÇÃO: exames enviados DENTRO do caso chegam DEPOIS do ❌❌❌❌ → entram no caso, em silêncio', () => {
+  const chatId = 'prod2907@g.us';
+  resetChat(chatId);
+  // textos chegam primeiro (webhook rápido)
+  appendMessage(chatId, { id: 'p1', chatId, type: 'chat', body: 'xxxx\nPaciente: Veronica\nProcedimento: Abdominoplastia', timestamp: 9000 });
+  appendMessage(chatId, { id: 'p2', chatId, type: 'chat', body: '❌❌❌❌', timestamp: 9060 });
+  recordCaseClosed(chatId, 9060);
+  // 8 exames ENVIADOS às 9010-9050 (antes do fechamento), webhooks chegam depois
+  const fates = [];
+  for (let i = 0; i < 8; i++) {
+    fates.push(handleOrphanMedia(chatId, { id: 'pm' + i, chatId, type: 'image', body: `exame${i}.jpg`, mediaUrl: `http://x/${i}.jpg`, caption: `exame${i}.jpg`, timestamp: 9010 + i * 5 }));
+  }
+  assert.ok(fates.every((f) => f === 'inside'), 'todas devem entrar DENTRO do caso: ' + fates.join(','));
+  const cases = splitIntoCases(getMessages(chatId), new Set());
+  assert.equal(cases.length, 1);
+  assert.equal(cases[0].media.length, 8, 'os 8 exames devem estar no caso');
+  assert.equal(extractName(cases[0].texts), 'Veronica');
+  resetChat(chatId);
+});
+t('aviso 📎 tem throttle: no máximo 1 a cada 120s por grupo', () => {
+  const chatId = 'throttle@g.us';
+  assert.equal(shouldNotifyLate(chatId, 1000_000), true);
+  assert.equal(shouldNotifyLate(chatId, 1000_000 + 30_000), false);
+  assert.equal(shouldNotifyLate(chatId, 1000_000 + 121_000), true);
 });
 
 console.log(`\n${fail === 0 ? '🎉' : '⚠️'} ${pass} passaram, ${fail} falharam`);

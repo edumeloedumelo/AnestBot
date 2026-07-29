@@ -146,7 +146,8 @@ export async function processImage(buffer) {
       `jpg:${outPath}`,
     ], { timeout: 30_000, killSignal: 'SIGKILL' });
     const out = await readFile(outPath);
-    if (out.length === 0) throw new Error('saída vazia');
+    // Sanidade: saída precisa ser um JPEG real e não-trivial, senão fallback.
+    if (out.length < 5000 || out[0] !== 0xFF || out[1] !== 0xD8) throw new Error('saída inválida do convert');
     console.error(`[media] imagem normalizada: ${buffer.byteLength} → ${out.length} bytes`);
     return { buffer: out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength), kind: 'image/jpeg' };
   } catch (e) {

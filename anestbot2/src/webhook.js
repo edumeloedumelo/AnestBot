@@ -65,18 +65,37 @@ export function gateDecision(open, type, body) {
   };
 }
 
-// Mídia FORA de bloco. Se chegou logo após um ❌❌❌❌ (≤120s), pertence ao caso
-// que acabou de fechar — é anexada a ELE (timestamp do fechamento), nunca ao
-// próximo. Caso contrário fica pendente para adoção quando um caso abrir.
-// Devolve 'late' (anexada ao caso fechado) ou 'pending'.
+// Mídia FORA de bloco (o webhook de mídia da UltraMsg chega MINUTOS depois do
+// texto — este é o fluxo NORMAL, não exceção). Decisão pelo timestamp de ENVIO
+// do WhatsApp, não pela ordem de chegada:
+//   'inside'  — enviada ANTES do ❌❌❌❌ (caso recente): entra DENTRO do caso,
+//               com o timestamp original (ordena no lugar certo). SILENCIOSA.
+//   'late'    — enviada logo APÓS o fechamento (≤120s): anexada ao caso fechado.
+//   'pending' — resto: aguarda um caso abrir.
 export function handleOrphanMedia(chatId, msg) {
   const closed = lastClosedTime(chatId);
-  if (closed && (msg.timestamp || 0) >= closed && (msg.timestamp || 0) - closed <= LATE_MEDIA_WINDOW_S) {
-    appendMessage(chatId, { ...msg, timestamp: closed });
-    return 'late';
+  const ts = msg.timestamp || 0;
+  if (closed) {
+    if (ts <= closed + 1 && closed - ts <= 3600) {
+      appendMessage(chatId, msg); // timestamp original → dentro do caso
+      return 'inside';
+    }
+    if (ts > closed && ts - closed <= LATE_MEDIA_WINDOW_S) {
+      appendMessage(chatId, { ...msg, timestamp: closed });
+      return 'late';
+    }
   }
   pushPendingMedia(chatId, msg);
   return 'pending';
+}
+
+// Aviso de exame atrasado: no máximo 1 por grupo a cada 120s (nunca spam).
+const lastLateNotice = new Map();
+export function shouldNotifyLate(chatId, now = Date.now()) {
+  const last = lastLateNotice.get(chatId) || 0;
+  if (now - last < LATE_MEDIA_WINDOW_S * 1000) return false;
+  lastLateNotice.set(chatId, now);
+  return true;
 }
 
 export async function handleWebhook(payload) {
@@ -137,9 +156,13 @@ export async function handleWebhook(payload) {
       id: m.id, chatId, type, body, mediaUrl: m.media || '', caption: body,
       timestamp, fromMe: !!m.fromMe,
     });
-    if (fate === 'late') {
+    if (fate === 'inside') {
+      console.error(`[webhook] mídia com envio anterior ao ❌❌❌❌ — incluída no caso chat=${chatId}`);
+    } else if (fate === 'late') {
       console.error(`[webhook] mídia após ❌❌❌❌ — anexada ao caso FECHADO chat=${chatId}`);
-      await sendText(chatId, `📎 Exame recebido após o ❌❌❌❌ — anexado ao caso ANTERIOR. Rode /analisar para reprocessá-lo já com este exame.`);
+      if (shouldNotifyLate(chatId)) {
+        await sendText(chatId, `📎 Exame(s) recebido(s) após o ❌❌❌❌ — anexado(s) ao caso ANTERIOR. Rode /analisar para reprocessar com os exames incluídos.`);
+      }
     } else {
       console.error(`[webhook] mídia fora de bloco — pendente chat=${chatId} type=${type}`);
     }
