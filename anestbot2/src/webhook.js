@@ -36,7 +36,11 @@ export function getBody(m) {
 
 // Resolve o id do GRUPO/CONVERSA. Em mensagens do PRÓPRIO número (fromMe /
 // message_create) a UltraMsg manda from=próprio número e to=grupo — o chat é o "to".
+// Robustez extra: se um dos lados é um GRUPO (@g.us), o chat é sempre o grupo.
 export function resolveChatId(m) {
+  const isGroup = (s) => typeof s === 'string' && s.endsWith('@g.us');
+  if (isGroup(m.from)) return m.from;
+  if (isGroup(m.to)) return m.to;
   if (m.fromMe && m.to) return m.to;
   return m.from;
 }
@@ -67,14 +71,21 @@ export async function handleWebhook(payload) {
   if (!m || !m.id) return;
 
   const chatId = resolveChatId(m);
-  if (!isAllowed(chatId)) return;
 
   const type = m.type || 'chat';
   const body = getBody(m);
+
+  // Log de TODO evento — essencial para depurar webhook/comandos nos logs do Railway.
+  console.error(`[webhook] evento=${et || 'msg'} from=${m.from} to=${m.to || '-'} fromMe=${!!m.fromMe} type=${type} len=${body.length} chat=${chatId}`);
+
+  if (!isAllowed(chatId)) { console.error(`[webhook] chat não permitido: ${chatId}`); return; }
+
   const timestamp = Number(m.timestamp || m.time || Math.floor(Date.now() / 1000));
 
   // Comando (/analisar etc.): dispara, mas NÃO grava no store (mantém o histórico limpo).
+  // Funciona em grupo e no privado, inclusive vindo do próprio número conectado.
   if (type === 'chat' && isCommand(body)) {
+    console.error(`[webhook] comando "${body.trim().split(/\s/)[0]}" chat=${chatId} fromMe=${!!m.fromMe}`);
     await handleCommand(chatId, body, m);
     return;
   }
