@@ -21,7 +21,10 @@ function parse(body) {
   return { cmd: (sp === -1 ? t : t.slice(0, sp)).toLowerCase(), args: sp === -1 ? '' : t.slice(sp + 1).trim() };
 }
 function senderNumber(msg) { return (msg.author || msg.from || '').replace(/@.*/, '').replace(/\D/g, ''); }
-function isAdmin(msg) { return ADMINS.length === 0 || ADMINS.includes(senderNumber(msg)); }
+function isAdmin(msg) {
+  if (msg && msg.fromMe) return true; // o número conectado à UltraMsg é sempre admin
+  return ADMINS.length === 0 || ADMINS.includes(senderNumber(msg));
+}
 function requireAdmin(chatId, msg, fn) {
   if (!isAdmin(msg)) return sendText(chatId, '⛔ Você não tem permissão para este comando.');
   return fn();
