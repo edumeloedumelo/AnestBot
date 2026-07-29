@@ -185,22 +185,22 @@ t('selfHealChat: sem problemas → nenhuma correção', () => {
 // ── CASO 15: PORTÃO — webhook só captura entre xxxx e ❌❌❌❌ ────────────────
 t('gate: conversa fora de bloco NÃO é capturada', () => {
   const d = gateDecision(false, 'chat', 'bom dia pessoal, alguém viu a escala?');
-  assert.deepEqual(d, { store: false, nowOpen: false });
+  assert.equal(d.store, false); assert.equal(d.nowOpen, false);
 });
 t('gate: mídia fora de bloco NÃO é capturada', () => {
   assert.equal(gateDecision(false, 'image', '').store, false);
 });
 t('gate: xxxx abre e é capturado (inclusive colado ao card)', () => {
-  assert.deepEqual(gateDecision(false, 'chat', 'xxxx'), { store: true, nowOpen: true });
-  assert.deepEqual(gateDecision(false, 'chat', 'Xxxx\n\n🩺 Olá!\n🔹 Procedimento: Rino'), { store: true, nowOpen: true });
+  { const g = gateDecision(false, 'chat', 'xxxx'); assert.ok(g.store && g.nowOpen && g.opens); }
+  { const g = gateDecision(false, 'chat', 'Xxxx\n\n🩺 Olá!\n🔹 Procedimento: Rino'); assert.ok(g.store && g.nowOpen && g.opens); }
 });
 t('gate: conteúdo e mídia DENTRO do bloco são capturados', () => {
   assert.equal(gateDecision(true, 'chat', '🔹 Paciente: Ana').store, true);
   assert.equal(gateDecision(true, 'document', 'exames.pdf').store, true);
 });
 t('gate: ❌❌❌❌ fecha o bloco (inclusive colado ao conteúdo)', () => {
-  assert.deepEqual(gateDecision(true, 'chat', '❌❌❌❌'), { store: true, nowOpen: false });
-  assert.deepEqual(gateDecision(true, 'chat', 'última info\n❌❌❌❌'), { store: true, nowOpen: false });
+  { const g = gateDecision(true, 'chat', '❌❌❌❌'); assert.ok(g.store && !g.nowOpen && g.closes); }
+  { const g = gateDecision(true, 'chat', 'última info\n❌❌❌❌'); assert.ok(g.store && !g.nowOpen && g.closes); }
 });
 t('gate: depois de fechar, conversa volta a ser ignorada', () => {
   const c1 = gateDecision(true, 'chat', '❌❌❌❌');
@@ -208,7 +208,158 @@ t('gate: depois de fechar, conversa volta a ser ignorada', () => {
   assert.equal(gateDecision(c1.nowOpen, 'image', '').store, false);
 });
 t('gate: caso completo numa mensagem só abre e fecha', () => {
-  assert.deepEqual(gateDecision(false, 'chat', 'xxxx\n🔹 Procedimento: Lipo\n❌❌❌❌'), { store: true, nowOpen: false });
+  { const g = gateDecision(false, 'chat', 'xxxx\n🔹 Procedimento: Lipo\n❌❌❌❌'); assert.ok(g.store && !g.nowOpen && g.opens && g.closes); }
+});
+
+// ── CASO 16: erro de mídia da API sem índice (produção 29/07) aciona o retry ─
+const { isMediaApiError } = await import('../src/triage.js');
+t('isMediaApiError reconhece "Could not process image" (sem content.N)', () => {
+  assert.ok(isMediaApiError('Claude API 400: {"type":"error","error":{"type":"invalid_request_error","message":"Could not process image"},"request_id":"req_x"}'));
+  assert.ok(isMediaApiError('messages.0.content.3.image.source: invalid base64'));
+  assert.ok(!isMediaApiError('Claude API 429: rate limited'));
+  assert.ok(!isMediaApiError('Timeout: Claude não respondeu em 2 minutos.'));
+});
+t('isMediaApiError: classe geral de erro de mídia, sem falso positivo', () => {
+  assert.ok(isMediaApiError('Claude API 400: {"error":{"type":"invalid_request_error","message":"image exceeds 5 MB maximum"}}'));
+  assert.ok(isMediaApiError('Invalid image data'));
+  assert.ok(isMediaApiError('unsupported image format'));
+  assert.ok(isMediaApiError('messages.0.content.2.document: invalid base64'));
+  assert.ok(!isMediaApiError('Claude API 400: prompt is too long: 205000 tokens > 200000 maximum'));
+  assert.ok(!isMediaApiError('Claude API 529: {"type":"error","error":{"type":"overloaded_error"}}'));
+  assert.ok(!isMediaApiError('Claude API 400: max_tokens: invalid value'));
+});
+
+// ── CASO 17: validação de imagem antes de enviar à API ───────────────────────
+const { jpegDims, pngDims, assertImageWithinLimits } = await import('../src/media.js');
+t('pngDims lê IHDR e bloqueia imagem gigante', () => {
+  const png = new Uint8Array(24);
+  png.set([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+  png[16] = 0; png[17] = 0; png[18] = 0x23; png[19] = 0x28; // width 9000
+  png[20] = 0; png[21] = 0; png[22] = 0x0B; png[23] = 0xB8; // height 3000
+  assert.deepEqual(pngDims(png), { width: 9000, height: 3000 });
+  assert.throws(() => assertImageWithinLimits('image/png', png), /8000px/);
+});
+t('jpegDims lê SOF0 e aceita imagem normal', () => {
+  // JPEG mínimo: SOI + SOF0 (alt 3000, larg 4000)
+  const j = new Uint8Array([0xFF, 0xD8, 0xFF, 0xC0, 0x00, 0x11, 0x08, 0x0B, 0xB8, 0x0F, 0xA0, 0x03]);
+  assert.deepEqual(jpegDims(j), { height: 3000, width: 4000 });
+  assertImageWithinLimits('image/jpeg', j); // não lança
+});
+t('pngDims: IHDR malformado (bit alto) NÃO passa batido (sem overflow de sinal)', () => {
+  const png = new Uint8Array(24);
+  png[16] = 0xFF; png[17] = 0xFF; png[18] = 0xFF; png[19] = 0xFF; // width "0xFFFFFFFF"
+  png[23] = 100;
+  const d = pngDims(png);
+  assert.ok(d.width > 7900, 'width deve ser positivo e enorme: ' + d.width);
+  assert.throws(() => assertImageWithinLimits('image/png', png), /8000px/);
+});
+t('jpegDims: marcador standalone (TEM/RST) não engole o SOF real', () => {
+  // SOI + TEM (FF01, sem length) + 2 bytes de dado + SOF0 12000x100
+  const j = new Uint8Array([0xFF, 0xD8, 0xFF, 0x01, 0x00, 0x38, 0xFF, 0xC0, 0x00, 0x11, 0x08, 0x00, 0x64, 0x2E, 0xE0, 0x03]);
+  assert.deepEqual(jpegDims(j), { height: 100, width: 12000 });
+  assert.throws(() => assertImageWithinLimits('image/jpeg', j), /8000px/);
+});
+const { gifDims, webpDims } = await import('../src/media.js');
+t('gifDims lê LSD little-endian e bloqueia gigante', () => {
+  const g = new Uint8Array([0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x10, 0x27, 0x64, 0x00]); // 10000x100
+  assert.deepEqual(gifDims(g), { width: 10000, height: 100 });
+  assert.throws(() => assertImageWithinLimits('image/gif', g), /8000px/);
+});
+t('webpDims lê VP8X e bloqueia gigante', () => {
+  const w = new Uint8Array(30);
+  w.set([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50, 0x56, 0x50, 0x38, 0x58]); // RIFF....WEBPVP8X
+  w[24] = 0x0F; w[25] = 0x27; w[26] = 0; // width-1 = 9999
+  w[27] = 0x63; w[28] = 0; w[29] = 0;    // height-1 = 99
+  assert.deepEqual(webpDims(w), { width: 10000, height: 100 });
+  assert.throws(() => assertImageWithinLimits('image/webp', w), /8000px/);
+});
+t('imagem acima de 5MB é bloqueada com mensagem clara', () => {
+  const big = new Uint8Array(5 * 1024 * 1024); big[0] = 0xFF; big[1] = 0xD8;
+  assert.throws(() => assertImageWithinLimits('image/jpeg', big), /limite 5 MB/);
+});
+
+// ── CASO 18: mídia órfã adotada (chegou antes do xxxx) ───────────────────────
+const { pushPendingMedia, adoptPendingMedia, recordBotText, isBotText } = await import('../src/store.js');
+t('mídia pendente é adotada quando o caso abre (fluxo separado)', () => {
+  const chatId = 'pend@g.us';
+  resetChat(chatId);
+  pushPendingMedia(chatId, { id: 'pm1', chatId, type: 'document', body: 'ex.pdf', mediaUrl: 'http://x/e.pdf', caption: 'ex.pdf', timestamp: 2000 });
+  appendMessage(chatId, { id: 'op1', chatId, type: 'chat', body: 'xxxx\n🔹 Procedimento: Lipo', timestamp: 2010 });
+  assert.equal(adoptPendingMedia(chatId, 2010), 1);
+  appendMessage(chatId, { id: 'cl1', chatId, type: 'chat', body: '❌❌❌❌', timestamp: 2020 });
+  const cases = splitIntoCases(getMessages(chatId), new Set());
+  assert.equal(cases.length, 1);
+  assert.equal(cases[0].media.length, 1);
+  resetChat(chatId);
+});
+t('mídia pendente ANTIGA (>120s) é descartada, não contamina', () => {
+  const chatId = 'pend2@g.us';
+  resetChat(chatId);
+  pushPendingMedia(chatId, { id: 'pm2', chatId, type: 'image', body: 'velha.jpg', mediaUrl: 'http://x/v.jpg', timestamp: 1000 });
+  assert.equal(adoptPendingMedia(chatId, 5000), 0);
+  resetChat(chatId);
+});
+t('mídia adotada com caso aberto-e-fechado numa mensagem só (parser anexa ao último caso)', () => {
+  const chatId = 'pend3@g.us';
+  resetChat(chatId);
+  appendMessage(chatId, { id: 'g1', chatId, type: 'chat', body: 'xxxx\n🔹 Procedimento: Rino\n❌❌❌❌', timestamp: 3000 });
+  appendMessage(chatId, { id: 'g2', chatId, type: 'document', body: 'ex.pdf', mediaUrl: 'http://x/e.pdf', caption: 'ex.pdf', timestamp: 3000 });
+  const cases = splitIntoCases(getMessages(chatId), new Set());
+  assert.equal(cases.length, 1);
+  assert.equal(cases[0].media.length, 1);
+  resetChat(chatId);
+});
+t('mídia atrasada NÃO contamina caso fechado há tempo', () => {
+  const chatId = 'pend4@g.us';
+  resetChat(chatId);
+  appendMessage(chatId, { id: 'h1', chatId, type: 'chat', body: 'xxxx\nProcedimento: Lipo\n❌❌❌❌', timestamp: 4000 });
+  appendMessage(chatId, { id: 'h2', chatId, type: 'image', body: 'depois.jpg', mediaUrl: 'http://x/d.jpg', timestamp: 4100 }); // 100s depois
+  const cases = splitIntoCases(getMessages(chatId), new Set());
+  assert.equal(cases[0].media.length, 0);
+  resetChat(chatId);
+});
+
+// ── CASO 18b: contaminação PARA FRENTE (reprovação do coordenador) ───────────
+const { handleOrphanMedia } = await import('../src/webhook.js');
+const { recordCaseClosed } = await import('../src/store.js');
+t('mídia logo após ❌❌❌❌ vai para o caso FECHADO, nunca para o próximo (Alice/Bruna)', () => {
+  const chatId = 'fwd@g.us';
+  resetChat(chatId);
+  appendMessage(chatId, { id: 'a1', chatId, type: 'chat', body: 'xxxx\nPaciente: Alice\nProcedimento: Lipo', timestamp: 1000 });
+  appendMessage(chatId, { id: 'a2', chatId, type: 'chat', body: '❌❌❌❌', timestamp: 1030 });
+  recordCaseClosed(chatId, 1030);
+  // exame atrasado da Alice, 20s depois do fechamento
+  const fate = handleOrphanMedia(chatId, { id: 'a3', chatId, type: 'image', body: 'hemograma-alice.jpg', mediaUrl: 'http://x/h.jpg', caption: 'hemograma-alice.jpg', timestamp: 1050 });
+  assert.equal(fate, 'late');
+  // caso da Bruna abre 40s depois — adoção NÃO pode puxar o exame da Alice
+  appendMessage(chatId, { id: 'b1', chatId, type: 'chat', body: 'xxxx\nPaciente: Bruna\nProcedimento: Rino', timestamp: 1090 });
+  assert.equal(adoptPendingMedia(chatId, 1090), 0);
+  appendMessage(chatId, { id: 'b2', chatId, type: 'chat', body: '❌❌❌❌', timestamp: 1100 });
+  const cases = splitIntoCases(getMessages(chatId), new Set());
+  assert.equal(cases.length, 2);
+  const alice = cases.find((c) => extractName(c.texts) === 'Alice');
+  const bruna = cases.find((c) => extractName(c.texts) === 'Bruna');
+  assert.equal(alice.media.length, 1, 'exame deve estar com Alice');
+  assert.equal(bruna.media.length, 0, 'Bruna NÃO pode ter o exame da Alice');
+  resetChat(chatId);
+});
+t('mídia já analisada não é re-adotada (reentrega do webhook)', () => {
+  const chatId = 'redeliv@g.us';
+  resetChat(chatId);
+  appendMessage(chatId, { id: 'x1', chatId, type: 'document', body: 'e.pdf', mediaUrl: 'http://x/e.pdf', timestamp: 500 });
+  pushPendingMedia(chatId, { id: 'x1', chatId, type: 'document', body: 'e.pdf', mediaUrl: 'http://x/e.pdf', timestamp: 500 });
+  assert.equal(adoptPendingMedia(chatId, 510), 0); // id já conhecido — nada adotado
+  resetChat(chatId);
+});
+
+// ── CASO 19: eco do bot reconhecido e descartável ────────────────────────────
+t('recordBotText/isBotText: resposta enviada pelo bot é reconhecida no eco', () => {
+  const chatId = 'eco@g.us';
+  resetChat(chatId);
+  recordBotText(chatId, '✅ Cirurgia "Teste" salva.');
+  assert.ok(isBotText(chatId, '✅ Cirurgia "Teste" salva.'));
+  assert.ok(!isBotText(chatId, '🔹 Paciente: Ana'));
+  resetChat(chatId);
 });
 
 console.log(`\n${fail === 0 ? '🎉' : '⚠️'} ${pass} passaram, ${fail} falharam`);

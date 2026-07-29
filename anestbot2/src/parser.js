@@ -36,6 +36,10 @@ const BOT_MARKERS = [
   '🤖 ANESTBOT', '🔪 CIRURGIAS CADASTRADAS', '📊 LIMITES / VALORES',
   '📊 Status do grupo', '📝 Instruções adicionais', '📝 Nenhuma instrução',
   'Estado do grupo apagado', 'arquivo(s) sem URL', 'arquivo(s) com problema',
+  '✅ Instruções adicionais', '✅ Cirurgia "', '✅ Limite "', '🗑️ "',
+  'Nenhuma cirurgia cadastrada', 'Nenhum limite cadastrado',
+  'rejeitado pela IA', 'reenviar os exames', 'Análise indisponível no momento',
+  '📎 Exame recebido após',
 ];
 function isBotMessage(body) {
   return !!body && BOT_MARKERS.some((s) => body.includes(s));
@@ -133,14 +137,22 @@ export function splitIntoCases(messages, processedIds = new Set()) {
     if (opens) { pushCurrent(); current = newCase(); }
 
     if (m.type !== 'chat') {
-      // Mídia: só entra se há caso aberto.
+      // Mídia: entra se há caso aberto. Mídia ADOTADA (chegou antes do xxxx e o
+      // caso abriu/fechou na mesma mensagem) tem timestamp igual ao do fechamento
+      // — anexa ao último caso recém-fechado (janela de 1s, nunca a casos antigos).
       if (current) addContent(m, m.caption || '', current);
+      else {
+        const last = cases[cases.length - 1];
+        if (last && !last._alreadyAnalyzed && typeof last._closedTs === 'number' && (m.timestamp || 0) <= last._closedTs + 1) {
+          addContent(m, m.caption || '', last);
+        }
+      }
     } else if (inner) {
       if (current) addContent({ ...m, type: 'chat' }, inner, current);
       // fora de bloco → ignorado (regra absoluta)
     }
 
-    if (closes) pushCurrent();
+    if (closes) { if (current) current._closedTs = m.timestamp || 0; pushCurrent(); }
   }
   pushCurrent();
 

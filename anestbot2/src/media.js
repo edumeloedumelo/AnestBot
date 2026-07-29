@@ -10,6 +10,87 @@ import { randomBytes } from 'crypto';
 const execFileAsync = promisify(execFile);
 const PDF_COMPRESS_THRESHOLD = 10 * 1024 * 1024; // 10 MB
 const MAGIC_SCAN_WINDOW = 32;
+// Limites da API do Claude para imagens: 5 MB e 8000 px por lado. Validar ANTES
+// de enviar evita o 400 "Could not process image" que derruba o caso inteiro.
+const MAX_IMAGE_BYTES = 4.8 * 1024 * 1024;
+const MAX_IMAGE_DIM = 7900;
+
+// Dimensões de JPEG: varre os marcadores até um SOF (C0–CF, exceto C4/C8/CC).
+export function jpegDims(bytes) {
+  if (bytes[0] !== 0xFF || bytes[1] !== 0xD8) return null;
+  let i = 2;
+  while (i + 9 < bytes.length) {
+    if (bytes[i] !== 0xFF) { i++; continue; }
+    const marker = bytes[i + 1];
+    if (marker === 0xFF) { i++; continue; }
+    // Marcadores standalone (sem length): TEM, RST0-7, SOI, EOI — só pula os 2 bytes.
+    if (marker === 0x01 || (marker >= 0xD0 && marker <= 0xD9)) { i += 2; continue; }
+    if (marker >= 0xC0 && marker <= 0xCF && marker !== 0xC4 && marker !== 0xC8 && marker !== 0xCC) {
+      return { height: (bytes[i + 5] << 8) | bytes[i + 6], width: (bytes[i + 7] << 8) | bytes[i + 8] };
+    }
+    const len = (bytes[i + 2] << 8) | bytes[i + 3];
+    if (len < 2) return null;
+    i += 2 + len;
+  }
+  return null;
+}
+
+// Dimensões de PNG: IHDR fixo após a assinatura de 8 bytes.
+// Aritmética sem bit-shift: << é int32 com sinal e um IHDR malformado (byte alto
+// setado) viraria número NEGATIVO, passando batido pela checagem de limite.
+export function pngDims(bytes) {
+  if (bytes.length < 24) return null;
+  return {
+    width: bytes[16] * 0x1000000 + bytes[17] * 0x10000 + bytes[18] * 0x100 + bytes[19],
+    height: bytes[20] * 0x1000000 + bytes[21] * 0x10000 + bytes[22] * 0x100 + bytes[23],
+  };
+}
+
+// Dimensões de GIF: Logical Screen Descriptor (little-endian) após "GIF8xa".
+export function gifDims(bytes) {
+  if (bytes.length < 10) return null;
+  return { width: bytes[6] | (bytes[7] << 8), height: bytes[8] | (bytes[9] << 8) };
+}
+
+// Dimensões de WEBP: cobre VP8X (extended), VP8L (lossless) e VP8 (lossy).
+export function webpDims(bytes) {
+  if (bytes.length < 30) return null;
+  const four = String.fromCharCode(bytes[12], bytes[13], bytes[14], bytes[15]);
+  if (four === 'VP8X') {
+    return {
+      width: 1 + (bytes[24] | (bytes[25] << 8) | (bytes[26] << 16)),
+      height: 1 + (bytes[27] | (bytes[28] << 8) | (bytes[29] << 16)),
+    };
+  }
+  if (four === 'VP8L' && bytes[20] === 0x2F) {
+    return {
+      width: 1 + (((bytes[22] & 0x3F) << 8) | bytes[21]),
+      height: 1 + (((bytes[24] & 0x0F) << 10) | (bytes[23] << 2) | ((bytes[22] & 0xC0) >> 6)),
+    };
+  }
+  if (four === 'VP8 ' && bytes[23] === 0x9D && bytes[24] === 0x01 && bytes[25] === 0x2A) {
+    return {
+      width: (bytes[26] | (bytes[27] << 8)) & 0x3FFF,
+      height: (bytes[28] | (bytes[29] << 8)) & 0x3FFF,
+    };
+  }
+  return null;
+}
+
+// Lança erro claro se a imagem excede os limites da API (tamanho/dimensão).
+export function assertImageWithinLimits(kind, bytes) {
+  if (bytes.length > MAX_IMAGE_BYTES) {
+    throw new Error(`imagem muito grande (${(bytes.length / 1048576).toFixed(1)} MB, limite 5 MB) — reenviar em qualidade menor`);
+  }
+  const dims = kind === 'image/jpeg' ? jpegDims(bytes)
+             : kind === 'image/png' ? pngDims(bytes)
+             : kind === 'image/gif' ? gifDims(bytes)
+             : kind === 'image/webp' ? webpDims(bytes)
+             : null;
+  if (dims && (dims.width > MAX_IMAGE_DIM || dims.height > MAX_IMAGE_DIM)) {
+    throw new Error(`imagem com ${dims.width}×${dims.height}px (limite 8000px) — reenviar em resolução menor`);
+  }
+}
 
 // Procura a marca de arquivo (PDF/JPEG/PNG/GIF/WEBP) numa janela inicial.
 function findMagicOffset(bytes) {
@@ -87,6 +168,7 @@ export async function downloadMediaBlock(url) {
     return { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: toBase64(buffer) } };
   }
   if (kind) {
+    assertImageWithinLimits(kind, bytes);
     return { type: 'image', source: { type: 'base64', media_type: kind, data: toBase64(buffer) } };
   }
   throw new Error('formato de arquivo não suportado/ilegível');

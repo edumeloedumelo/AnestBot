@@ -54,6 +54,75 @@ function chat(chatId) {
   return c;
 }
 
+// ── eco do próprio bot ──────────────────────────────────────────────────────
+// Tudo que o bot ENVIA é registrado aqui; quando a mesma mensagem volta pelo
+// webhook (message_create/fromMe) ela é reconhecida e NÃO entra como conteúdo
+// de caso — mesmo que um caso esteja aberto no momento.
+const MAX_BOT_TEXTS = 80;
+const botKey = (t) => (t || '').trim().slice(0, 128);
+
+export function recordBotText(chatId, text) {
+  const k = botKey(text);
+  if (!chatId || !k) return;
+  const c = chat(chatId);
+  if (!Array.isArray(c.botTexts)) c.botTexts = [];
+  c.botTexts.push(k);
+  c.botTexts = c.botTexts.slice(-MAX_BOT_TEXTS);
+  save();
+}
+export function isBotText(chatId, body) {
+  const k = botKey(body);
+  return !!k && (db[chatId]?.botTexts || []).includes(k);
+}
+
+// ── mídia órfã (chegou ANTES do xxxx) ───────────────────────────────────────
+// A UltraMsg pode entregar a mídia antes do texto que abre o caso (webhook
+// assíncrono), ou a equipe anexa os exames antes de colar o card. Em vez de
+// perder o exame, ele fica pendente e é ADOTADO quando um caso abrir logo em
+// seguida (janela de 120s) — nunca mistura com casos antigos já fechados.
+const PENDING_WINDOW_S = 120;
+const MAX_PENDING = 20;
+
+function isKnownId(c, id) {
+  return c.messages.some((m) => m.id === id) || c.processed.includes(id);
+}
+
+export function pushPendingMedia(chatId, msg) {
+  if (!chatId || !msg?.id) return;
+  const c = chat(chatId);
+  if (isKnownId(c, msg.id)) return; // já no histórico/analisada — nunca re-adotar
+  if (!Array.isArray(c.pendingMedia)) c.pendingMedia = [];
+  if (!c.pendingMedia.some((p) => p.id === msg.id)) c.pendingMedia.push(msg);
+  c.pendingMedia = c.pendingMedia.slice(-MAX_PENDING);
+  save();
+}
+
+// Adota as mídias pendentes recentes para o caso que acabou de abrir e descarta
+// as antigas. NUNCA adota: ids já conhecidos (reentrega do webhook) nem mídia
+// chegada logo após um ❌❌❌❌ (pertence ao caso fechado, não ao próximo).
+export function adoptPendingMedia(chatId, openerTs) {
+  const c = chat(chatId);
+  if (!Array.isArray(c.pendingMedia) || c.pendingMedia.length === 0) return 0;
+  const closed = c.lastClosedTs || 0;
+  const fresh = c.pendingMedia.filter((p) =>
+    (p.timestamp || 0) >= openerTs - PENDING_WINDOW_S &&
+    !isKnownId(c, p.id) &&
+    !(closed && (p.timestamp || 0) >= closed && (p.timestamp || 0) - closed <= PENDING_WINDOW_S));
+  c.pendingMedia = [];
+  for (const p of fresh) {
+    // Timestamp ajustado para o instante da abertura: ordena DEPOIS do xxxx
+    // (o _seq de inserção desempata a favor da mídia, appendada agora).
+    appendMessage(chatId, { ...p, timestamp: Math.max(p.timestamp || 0, openerTs) });
+  }
+  save();
+  return fresh.length;
+}
+
+// Timestamp do último fechamento (❌❌❌❌) do grupo.
+export function lastClosedTime(chatId) {
+  return db[chatId]?.lastClosedTs || 0;
+}
+
 // Estado do "portão" de captura: true = há um caso aberto (xxxx sem ❌❌❌❌).
 // Persistente — sobrevive a restarts/redeploys no meio de um caso.
 export function isCaseOpen(chatId) {
@@ -63,6 +132,13 @@ export function setCaseOpen(chatId, open) {
   const c = chat(chatId);
   if (!!c.caseOpen === !!open) return;
   c.caseOpen = !!open;
+  save();
+}
+
+// Registra o instante de um ❌❌❌❌ (mesmo quando abre e fecha na mesma mensagem).
+export function recordCaseClosed(chatId, ts) {
+  const c = chat(chatId);
+  c.lastClosedTs = ts || Math.floor(Date.now() / 1000);
   save();
 }
 

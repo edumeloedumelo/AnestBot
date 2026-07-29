@@ -1,4 +1,6 @@
 // Envio de mensagens de texto pela API UltraMsg (com quebra em pedaços seguros).
+import { recordBotText } from './store.js';
+
 const INSTANCE = process.env.ULTRAMSG_INSTANCE_ID;
 const TOKEN = process.env.ULTRAMSG_TOKEN;
 const BASE = `https://api.ultramsg.com/${INSTANCE}`;
@@ -25,6 +27,7 @@ export function splitMessage(text, max = MAX_LEN) {
 export async function sendText(to, body) {
   if (!body) return;
   for (const chunk of splitMessage(body)) {
+    recordBotText(to, chunk); // p/ reconhecer o eco no webhook e não poluir casos
     try {
       const res = await fetch(`${BASE}/messages/chat`, {
         method: 'POST',

@@ -1,8 +1,11 @@
 // Normaliza o payload do webhook UltraMsg e grava a mensagem no store.
 // Também dispara comandos (/analisar etc.) quando a mensagem é um comando.
-import { appendMessage, isCaseOpen, setCaseOpen } from './store.js';
+import { appendMessage, isCaseOpen, setCaseOpen, isBotText, pushPendingMedia, adoptPendingMedia, recordCaseClosed, lastClosedTime } from './store.js';
 import { isCaseOpener, isSeparator } from './parser.js';
 import { isCommand, handleCommand } from './commands.js';
+import { sendText } from './ultramsg.js';
+
+const LATE_MEDIA_WINDOW_S = 120;
 
 const ALLOWED = (process.env.ALLOWED_CHATS || '')
   .split(',').map((s) => s.trim()).filter(Boolean);
@@ -50,14 +53,30 @@ export function resolveChatId(m) {
 //   • "❌❌❌❌" na última linha FECHA o caso (mesmo colado ao conteúdo)
 //   • texto/mídia só são gravados com caso aberto (ou na própria msg de marcador)
 export function gateDecision(open, type, body) {
-  if (type !== 'chat') return { store: open, nowOpen: open }; // mídia: só dentro do bloco
+  if (type !== 'chat') return { store: open, nowOpen: open, opens: false, closes: false }; // mídia: só dentro do bloco
   const lines = (body || '').trim().split('\n');
   const opens = lines.length > 0 && isCaseOpener(lines[0]);
   const closes = lines.length > 0 && isSeparator(lines[lines.length - 1]);
   return {
     store: opens || closes || open,
     nowOpen: closes ? false : (opens ? true : open),
+    opens,
+    closes,
   };
+}
+
+// Mídia FORA de bloco. Se chegou logo após um ❌❌❌❌ (≤120s), pertence ao caso
+// que acabou de fechar — é anexada a ELE (timestamp do fechamento), nunca ao
+// próximo. Caso contrário fica pendente para adoção quando um caso abrir.
+// Devolve 'late' (anexada ao caso fechado) ou 'pending'.
+export function handleOrphanMedia(chatId, msg) {
+  const closed = lastClosedTime(chatId);
+  if (closed && (msg.timestamp || 0) >= closed && (msg.timestamp || 0) - closed <= LATE_MEDIA_WINDOW_S) {
+    appendMessage(chatId, { ...msg, timestamp: closed });
+    return 'late';
+  }
+  pushPendingMedia(chatId, msg);
+  return 'pending';
 }
 
 export async function handleWebhook(payload) {
@@ -94,13 +113,37 @@ export async function handleWebhook(payload) {
   // O webhook SÓ captura conteúdo entre xxxx e ❌❌❌❌. Conversa fora de um
   // caso aberto NÃO é gravada — nem texto, nem mídia. Comandos (acima) sempre
   // funcionam, em grupo ou no privado.
+  // Eco do próprio bot (resposta enviada via API voltando pelo webhook): nunca
+  // é conteúdo clínico, mesmo com caso aberto.
+  if (m.fromMe && type === 'chat' && isBotText(chatId, body)) {
+    console.error(`[webhook] eco do bot descartado chat=${chatId}`);
+    return;
+  }
+
   const isMedia = type === 'image' || type === 'document' || type === 'video';
-  const { store, nowOpen } = gateDecision(isCaseOpen(chatId), type, body);
-  if (type === 'chat') setCaseOpen(chatId, nowOpen);
+  const wasOpen = isCaseOpen(chatId);
+  const { store, nowOpen, opens, closes } = gateDecision(wasOpen, type, body);
+  if (type === 'chat') {
+    setCaseOpen(chatId, nowOpen);
+    if (closes) recordCaseClosed(chatId, timestamp); // cobre também xxxx…❌❌❌❌ na mesma msg
+  }
 
   const hasContent = store && ((type === 'chat' && body) || isMedia);
 
-  if (!hasContent && ((type === 'chat' && body) || isMedia)) {
+  if (!hasContent && isMedia) {
+    const fate = handleOrphanMedia(chatId, {
+      id: m.id, chatId, type, body, mediaUrl: m.media || '', caption: body,
+      timestamp, fromMe: !!m.fromMe,
+    });
+    if (fate === 'late') {
+      console.error(`[webhook] mídia após ❌❌❌❌ — anexada ao caso FECHADO chat=${chatId}`);
+      await sendText(chatId, `📎 Exame recebido após o ❌❌❌❌ — anexado ao caso ANTERIOR. Rode /analisar para reprocessá-lo já com este exame.`);
+    } else {
+      console.error(`[webhook] mídia fora de bloco — pendente chat=${chatId} type=${type}`);
+    }
+    return;
+  }
+  if (!hasContent && type === 'chat' && body) {
     console.error(`[webhook] fora de bloco xxxx/❌❌❌❌ — ignorado chat=${chatId} type=${type}`);
   }
 
@@ -119,6 +162,12 @@ export async function handleWebhook(payload) {
       console.error(`[webhook] mídia gravada chat=${chatId} type=${type} url=${m.media ? 'sim' : 'AUSENTE'}`);
     } else {
       console.error(`[webhook] texto gravado chat=${chatId} len=${body.length}`);
+    }
+    // Caso ABRIU nesta mensagem (mesmo que também feche nela): adota mídias
+    // pendentes recentes (chegaram antes do xxxx).
+    if (type === 'chat' && opens) {
+      const adopted = adoptPendingMedia(chatId, timestamp);
+      if (adopted) console.error(`[webhook] ${adopted} mídia(s) pendente(s) adotada(s) chat=${chatId}`);
     }
   }
 }
