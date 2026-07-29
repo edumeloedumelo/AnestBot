@@ -123,6 +123,41 @@ async function compressPdf(buffer) {
   }
 }
 
+// Normaliza uma FOTO de exame antes de enviar ao Claude (aprovado pelo loop):
+// corrige orientação EXIF, limita a 2600px (teto efetivo do modelo), melhora
+// contraste com contrast-stretch suave e nitidez leve — operações GLOBAIS que
+// nunca fabricam conteúdo (binarização/morfologia/median são PROIBIDAS).
+// Saída sempre JPEG q92. Falhou por qualquer motivo (sem ImageMagick, timeout,
+// erro)? Devolve null e o chamador usa o buffer ORIGINAL — comportamento atual.
+export async function processImage(buffer) {
+  const id = randomBytes(8).toString('hex');
+  const inPath = `${tmpdir()}/img-in-${id}`;
+  const outPath = `${tmpdir()}/img-out-${id}.jpg`;
+  try {
+    await writeFile(inPath, Buffer.from(buffer));
+    await execFileAsync('convert', [
+      inPath,
+      '-limit', 'memory', '256MiB', '-limit', 'map', '256MiB', '-limit', 'thread', '1',
+      '-auto-orient',
+      '-resize', '2600x2600>',
+      '-contrast-stretch', '0.5%x0.5%',
+      '-unsharp', '0x1',
+      '-quality', '92',
+      `jpg:${outPath}`,
+    ], { timeout: 30_000, killSignal: 'SIGKILL' });
+    const out = await readFile(outPath);
+    if (out.length === 0) throw new Error('saída vazia');
+    console.error(`[media] imagem normalizada: ${buffer.byteLength} → ${out.length} bytes`);
+    return { buffer: out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength), kind: 'image/jpeg' };
+  } catch (e) {
+    console.error('[media] processImage indisponível/falhou, usando original:', e.message);
+    return null;
+  } finally {
+    await unlink(inPath).catch(() => {});
+    await unlink(outPath).catch(() => {});
+  }
+}
+
 function toBase64(buffer) {
   const bytes = new Uint8Array(buffer);
   let bin = '';
@@ -168,6 +203,14 @@ export async function downloadMediaBlock(url) {
     return { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: toBase64(buffer) } };
   }
   if (kind) {
+    // Normalização (orientação/contraste/tamanho) — nunca no branch de PDF.
+    const processed = await processImage(buffer);
+    if (processed) {
+      buffer = processed.buffer;
+      bytes = new Uint8Array(buffer);
+      kind = processed.kind; // saída é JPEG — media_type reflete o conteúdo real
+    }
+    // Guarda final SEMPRE nos bytes pós-processamento (condição do CEO).
     assertImageWithinLimits(kind, bytes);
     return { type: 'image', source: { type: 'base64', media_type: kind, data: toBase64(buffer) } };
   }

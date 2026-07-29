@@ -380,5 +380,29 @@ t('recordBotText/isBotText: resposta enviada pelo bot é reconhecida no eco', ()
   resetChat(chatId);
 });
 
+// ── CASO 20: normalização de imagem (aprovada pelo CEO) ──────────────────────
+const { processImage } = await import('../src/media.js');
+const { buildTriageContext } = await import('../src/triage.js');
+await ta('processImage sem ImageMagick: fallback null, sem lançar, buffer intacto', async () => {
+  const original = new Uint8Array([0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3]);
+  const copy = Uint8Array.from(original);
+  const r = await processImage(original.buffer); // ENOENT real neste ambiente
+  assert.equal(r, null);
+  assert.deepEqual(Array.from(new Uint8Array(original.buffer)), Array.from(copy), 'buffer não pode ser mutado');
+});
+t('buildTriageContext lista ARQUIVOS ENVIADOS (sanitizados) quando há mídia', () => {
+  const ctx = buildTriageContext({
+    patientName: 'Karolliny', surgeryType: 'Abdominoplastia', anamnesis: 'ficha',
+    media: [{ caption: 'ECG\ncom quebra de linha', type: 'image' }, { caption: '', type: 'document' }],
+  });
+  assert.ok(ctx.includes('ARQUIVOS ENVIADOS (2 arquivo(s)'));
+  assert.ok(ctx.includes('1. ECG com quebra de linha'), 'legenda sanitizada sem \\n');
+  assert.ok(ctx.includes('2. arquivo document'));
+});
+t('buildTriageContext sem mídia omite a seção de arquivos', () => {
+  const ctx = buildTriageContext({ patientName: 'X', surgeryType: 'Lipo', anamnesis: 'a', media: [] });
+  assert.ok(!ctx.includes('ARQUIVOS ENVIADOS'));
+});
+
 console.log(`\n${fail === 0 ? '🎉' : '⚠️'} ${pass} passaram, ${fail} falharam`);
 process.exit(fail === 0 ? 0 : 1);
