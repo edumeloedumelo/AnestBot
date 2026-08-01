@@ -12,7 +12,7 @@ const sanitizeLabel = (s) => (s || '').replace(/\s+/g, ' ').trim().slice(0, 80);
 // blocos; failedFiles lista o que falhou no download. Listar arquivo não-anexado
 // como "enviado" faz o modelo responder "ilegível" para uma imagem que ele nunca
 // viu — foi exatamente o desastre de produção de 29/07 à noite.
-export function buildTriageContext({ patientName, surgeryType, anamnesis, attachedFiles = [], failedFiles = [] }) {
+export function buildTriageContext({ patientName, surgeryType, anamnesis, attachedFiles = [], failedFiles = [], oversizedFiles = [], degradedFiles = [] }) {
   let ctx = `## DADOS DA PACIENTE\n`;
   ctx += `Nome: ${patientName || '(não informado)'}\n`;
   if (surgeryType) {
@@ -31,35 +31,133 @@ export function buildTriageContext({ patientName, surgeryType, anamnesis, attach
     ctx += failedFiles.map((f, i) => `${i + 1}. ${f}`).join('\n') + '\n';
     ctx += `Para exames destes arquivos: reporte "⚠️ falha no recebimento — reenviar o arquivo". NUNCA os classifique como ilegíveis (você não os viu) nem como faltando (foram enviados).\n`;
   }
+  if (oversizedFiles.length) {
+    ctx += `\n### ARQUIVOS NÃO INCLUÍDOS POR EXCESSO DE TAMANHO (NÃO anexados — o caso ultrapassou o limite total)\n`;
+    ctx += oversizedFiles.map((f, i) => `${i + 1}. ${f}`).join('\n') + '\n';
+    ctx += `Para exames destes arquivos: reporte "⚠️ não incluído por excesso de tamanho — reenviar este exame SOZINHO ou em qualidade menor". NUNCA os classifique como ilegíveis nem como faltando.\n`;
+  }
+  if (degradedFiles.length) {
+    ctx += `\n### ARQUIVOS COM QUALIDADE REDUZIDA (anexados, mas comprimidos por limite de tamanho)\n`;
+    ctx += degradedFiles.map((f, i) => `${i + 1}. ${f}`).join('\n') + '\n';
+    ctx += `SEGURANÇA CRÍTICA para estes arquivos: a compressão pode apagar vírgulas decimais ou deformar dígitos de forma PLAUSÍVEL. Tenha cautela máxima com valores numéricos; na MENOR dúvida de leitura, declare "⚠️ enviado, porém ilegível — reenviar" — NUNCA arrisque um valor. Aqui, desistir é mais seguro que insistir.\n`;
+  }
 
   ctx += `\nAnalise todos os exames enviados abaixo. Siga rigorosamente o protocolo de triagem pré-anestésica.`;
   return ctx;
 }
 
+// ── ORÇAMENTO DE PAYLOAD (causa do 413 request_too_large de produção) ───────
+// A API limita a REQUISIÇÃO INTEIRA a ~32MB. Um caso com 15 exames somava mais
+// que isso e falhava cru. Orçamento de mídia em bytes de base64 (≈ bytes no
+// fio), com folga para texto/JSON.
+export const MEDIA_BUDGET_BYTES = 24 * 1024 * 1024;
+const blockSize = (b) => b?.source?.data?.length || 0;
+
+// Garante que a soma dos blocos de mídia cabe no orçamento:
+// 1º recomprime os MAIORES agressivamente (rebuild, com teto de tentativas);
+// 2º se ainda exceder, remove os maiores com erro nomeado (vão para
+// oversizeFiles — o laudo instrui "reenviar SOZINHO ou em qualidade menor",
+// categoria distinta de falha de download, nunca inventa nem diz "faltando").
+// Arrays blocks/labels/urls são paralelos e mutados no lugar. Exportada p/ testes.
+const MAX_REBUILDS = 5;
+export async function enforceMediaBudget({ blocks, labels, urls, oversizeFiles, degradedFiles = [], errors }, { budget = MEDIA_BUDGET_BYTES, rebuild } = {}) {
+  let total = blocks.reduce((s, b) => s + blockSize(b), 0);
+  if (total <= budget) return total;
+  console.error(`[triage] payload de mídia ${(total / 1048576).toFixed(1)}MB acima do orçamento — recomprimindo os maiores`);
+
+  const bySizeDesc = blocks.map((_, i) => i).sort((a, b) => blockSize(blocks[b]) - blockSize(blocks[a]));
+  let rebuilds = 0;
+  for (const i of bySizeDesc) {
+    if (total <= budget || rebuilds >= MAX_REBUILDS) break;
+    if (!urls[i] || !rebuild) continue;
+    rebuilds++;
+    try {
+      const nb = await rebuild(urls[i]);
+      if (nb && blockSize(nb) < blockSize(blocks[i])) {
+        total += blockSize(nb) - blockSize(blocks[i]);
+        blocks[i] = nb;
+        degradedFiles.push(labels[i]); // laudo instruído a preferir "ilegível" na dúvida
+      }
+    } catch (e) { console.error('[triage] recompressão falhou:', e.message); }
+  }
+
+  while (total > budget && blocks.length) {
+    let big = 0;
+    for (let i = 1; i < blocks.length; i++) if (blockSize(blocks[i]) > blockSize(blocks[big])) big = i;
+    total -= blockSize(blocks[big]);
+    errors.push(`${labels[big]}: ficou de fora porque a soma dos arquivos do caso passou do limite — reenvie este exame SOZINHO ou em qualidade menor.`);
+    oversizeFiles.push(labels[big]);
+    // Se ele tinha sido recomprimido antes do descarte, sai da lista de
+    // "anexados com qualidade reduzida" — um arquivo NUNCA fica em duas listas
+    // contraditórias (reprovação do CEO: o laudo diria "anexado" para um exame
+    // que o modelo nunca viu — a mesma classe do desastre de 29/07).
+    const di = degradedFiles.indexOf(labels[big]);
+    if (di >= 0) degradedFiles.splice(di, 1);
+    blocks.splice(big, 1); labels.splice(big, 1); urls.splice(big, 1);
+  }
+  return total;
+}
+
+// A anamnese entra FORA do orçamento de mídia — sem teto, um caso esquecido
+// aberto por dias acumularia MB de texto e estouraria os 32MB sozinho.
+export const ANAMNESIS_CAP_BYTES = 500_000;
+export function capAnamnesis(text, errors) {
+  const t = text || '';
+  if (t.length <= ANAMNESIS_CAP_BYTES) return t;
+  errors.push(`Texto do caso muito longo (${Math.round(t.length / 1024)}KB) — truncado. Feche os casos com ❌❌❌❌ para evitar acúmulo de mensagens.`);
+  return t.slice(0, ANAMNESIS_CAP_BYTES);
+}
+
+const DOWNLOAD_POOL = 3; // downloads em paralelo (limitado: memória do convert/gs)
+
 export async function runTriage({ patientName, surgeryType, anamnesis, media }) {
   const system = buildSystemPrompt(getConfig());
 
-  // 1º baixa tudo; o contexto é montado DEPOIS, refletindo o resultado real.
-  const mediaBlocks = [];
-  const okLabels = [];
-  const failedLabels = [];
+  // 1º baixa tudo (pool de 3 — sequencial somava minutos com 15 exames);
+  // o contexto é montado DEPOIS, refletindo o resultado real, NA ORDEM original.
   const errors = [];
-  for (const md of media || []) {
-    const label = sanitizeLabel(md.caption) || md.url || `arquivo ${md.type || 'anexo'}`;
-    if (!md.url) { errors.push(`${label}: sem URL`); failedLabels.push(label); continue; }
-    try {
-      mediaBlocks.push(await downloadMediaBlock(md.url));
-      okLabels.push(label);
-    } catch (e) {
-      errors.push(`${label}: ${e.message}`);
-      failedLabels.push(label);
-      console.error('[triage] mídia falhou:', md.url, e.message);
+  const items = media || [];
+  const results = new Array(items.length);
+  let cursor = 0;
+  async function worker() {
+    for (;;) {
+      const n = cursor++;
+      if (n >= items.length) return;
+      const md = items[n];
+      const label = sanitizeLabel(md.caption) || md.url || `arquivo ${md.type || 'anexo'}`;
+      if (!md.url) { results[n] = { label, err: 'sem URL' }; continue; }
+      try {
+        results[n] = { label, url: md.url, block: await downloadMediaBlock(md.url) };
+      } catch (e) {
+        results[n] = { label, err: e.message };
+        console.error('[triage] mídia falhou:', md.url, e.message);
+      }
     }
   }
+  await Promise.all(Array.from({ length: Math.min(DOWNLOAD_POOL, items.length) }, () => worker()));
+
+  const mediaBlocks = [];
+  const okLabels = [];
+  const okUrls = [];
+  const failedLabels = [];
+  const oversizeLabels = [];
+  const degradedLabels = [];
+  for (const r of results) {
+    if (!r) continue;
+    if (r.err) { errors.push(`${r.label}: ${r.err}`); failedLabels.push(r.label); }
+    else { mediaBlocks.push(r.block); okLabels.push(r.label); okUrls.push(r.url); }
+  }
+
+  // Orçamento ANTES de montar o contexto: listas finais e fiéis ao que vai anexado.
+  await enforceMediaBudget(
+    { blocks: mediaBlocks, labels: okLabels, urls: okUrls, oversizeFiles: oversizeLabels, degradedFiles: degradedLabels, errors },
+    { rebuild: (u) => downloadMediaBlock(u, { aggressive: true }) },
+  );
 
   const ctx = buildTriageContext({
-    patientName, surgeryType, anamnesis,
+    patientName, surgeryType, anamnesis: capAnamnesis(anamnesis, errors),
     attachedFiles: okLabels, failedFiles: failedLabels,
+    oversizedFiles: oversizeLabels, degradedFiles: degradedLabels,
   });
   const blocks = [{ type: 'text', text: ctx }, ...mediaBlocks];
   const labels = ['(anamnese)', ...okLabels];
@@ -84,7 +182,15 @@ export function isMediaApiError(message) {
       || /could not process (the )?(image|document|pdf)/i.test(m)
       || /(invalid|unsupported|corrupt\w*|could not read|cannot process|too large|exceeds?)[^.]{0,60}(image|document|pdf)/i.test(m)
       || /(image|document|pdf)[^.]{0,60}(invalid|unsupported|corrupt\w*|too large|exceeds?|could not)/i.test(m)
-      || /invalid base64/i.test(m);
+      || /invalid base64/i.test(m)
+      // "413" ancorado ao prefixo que anthropic.js gera — solto casaria por azar
+      // dentro de um request_id (req_c413f...), disparando retry em erro alheio.
+      || isSizeApiError(m);
+}
+
+// Erros de TAMANHO agregado do payload (413/request_too_large — produção 01/08).
+export function isSizeApiError(message) {
+  return /request.?too.?large|request exceeds the maximum size|payload too large|\bClaude API 413\b/i.test(message || '');
 }
 
 // Se a API rejeitar por causa de um bloco de MÍDIA, remove só os blocos de mídia
@@ -109,17 +215,41 @@ async function retryDroppingMedia(system, blocks, labels, originalError, errors)
     }
   }
 
-  // Sem índice: remove um bloco de mídia por vez (acha o culpado exato).
-  // Teto de tentativas para não gastar minutos de chamadas sequenciais.
   const MAX_TRIES = 4;
-  let tries = 0;
-  for (let i = blocks.length - 1; i >= 1 && tries < MAX_TRIES; i--, tries++) {
-    try {
-      const t = await analyze(system, blocks.filter((_, k) => k !== i));
-      errors.push(`${labels[i] || 'arquivo'}: rejeitado pela IA e ignorado.`);
-      return t;
-    } catch (e2) {
-      if (!isMediaApiError(e2.message)) throw e2;
+
+  if (isSizeApiError(originalError.message)) {
+    // Excesso AGREGADO de tamanho: remoção CUMULATIVA dos maiores (remover um
+    // só e recomeçar do conjunto original nunca resolveria estouro somado).
+    const working = blocks.slice();
+    const wLabels = labels.slice();
+    for (let t = 0; t < MAX_TRIES && working.length > 1; t++) {
+      let big = 1;
+      for (let i = 2; i < working.length; i++) {
+        if ((working[i]?.source?.data?.length || 0) > (working[big]?.source?.data?.length || 0)) big = i;
+      }
+      errors.push(`${wLabels[big] || 'arquivo'}: removido para o caso caber no limite de tamanho — reenvie-o sozinho.`);
+      working.splice(big, 1); wLabels.splice(big, 1);
+      try {
+        return await analyze(system, working);
+      } catch (e2) {
+        if (!isMediaApiError(e2.message)) throw e2;
+      }
+    }
+  } else {
+    // Sem índice: remove um bloco por vez, começando pelo MAIOR, para achar o
+    // culpado exato. Teto de tentativas para não gastar minutos de chamadas.
+    const candidates = blocks.map((_, k) => k).filter((k) => k >= 1)
+      .sort((a, b) => (blocks[b]?.source?.data?.length || 0) - (blocks[a]?.source?.data?.length || 0));
+    let tries = 0;
+    for (const i of candidates) {
+      if (tries++ >= MAX_TRIES) break;
+      try {
+        const t = await analyze(system, blocks.filter((_, k) => k !== i));
+        errors.push(`${labels[i] || 'arquivo'}: rejeitado pela IA e ignorado.`);
+        return t;
+      } catch (e2) {
+        if (!isMediaApiError(e2.message)) throw e2;
+      }
     }
   }
 

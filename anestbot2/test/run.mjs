@@ -457,6 +457,71 @@ await ta('withWatchdog: erro real da promessa passa direto (não vira "travou")'
   await assert.rejects(() => withWatchdog(Promise.reject(new Error('erro real')), 5000), /erro real/);
 });
 
+// ── CASO 23: ORÇAMENTO DE PAYLOAD — 413 request_too_large (produção 01/08) ───
+const { enforceMediaBudget } = await import('../src/triage.js');
+const fakeBlock = (n) => ({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: 'x'.repeat(n) } });
+t('isMediaApiError reconhece 413 request_too_large', () => {
+  assert.ok(isMediaApiError('Claude API 413: {"error":{"type":"request_too_large","message":"Request exceeds the maximum size"}}'));
+});
+t('"413" dentro de request_id NÃO dispara falso positivo (auditoria B4)', () => {
+  assert.ok(!isMediaApiError('Claude API 403: {"type":"error","error":{"type":"permission_error","message":"denied"},"request_id":"req_c413fAbCdEf"}'));
+  assert.ok(!isMediaApiError('Claude API 500: {"type":"error","error":{"type":"api_error","message":"internal"},"request_id":"req_x413y"}'));
+});
+const { capAnamnesis, ANAMNESIS_CAP_BYTES } = await import('../src/triage.js');
+t('anamnese gigante é truncada com aviso (auditoria B9)', () => {
+  const errs = [];
+  const out = capAnamnesis('a'.repeat(ANAMNESIS_CAP_BYTES + 1000), errs);
+  assert.equal(out.length, ANAMNESIS_CAP_BYTES);
+  assert.ok(errs[0].includes('truncado'));
+  const errs2 = [];
+  assert.equal(capAnamnesis('pequena', errs2), 'pequena');
+  assert.equal(errs2.length, 0);
+});
+t('buildTriageContext: seções de excesso de tamanho e qualidade reduzida', () => {
+  const ctx = buildTriageContext({
+    patientName: 'X', surgeryType: 'Lipo', anamnesis: 'a',
+    attachedFiles: ['ok.jpg'], oversizedFiles: ['grande.pdf'], degradedFiles: ['ok.jpg'],
+  });
+  assert.ok(ctx.includes('EXCESSO DE TAMANHO') && ctx.includes('grande.pdf'));
+  assert.ok(ctx.includes('reenviar este exame SOZINHO'));
+  assert.ok(ctx.includes('QUALIDADE REDUZIDA') && ctx.includes('desistir é mais seguro que insistir'));
+});
+await ta('orçamento: recomprime os MAIORES primeiro e cabe no limite', async () => {
+  const st = { blocks: [fakeBlock(10), fakeBlock(30), fakeBlock(20)], labels: ['a', 'b', 'c'], urls: ['u1', 'u2', 'u3'], oversizeFiles: [], degradedFiles: [], errors: [] };
+  const rebuilt = [];
+  const total = await enforceMediaBudget(st, { budget: 40, rebuild: async (u) => { rebuilt.push(u); return fakeBlock(5); } });
+  assert.ok(total <= 40, 'total deve caber: ' + total);
+  assert.equal(rebuilt[0], 'u2', 'o MAIOR (30) recomprime primeiro');
+  assert.equal(st.blocks.length, 3, 'nenhum arquivo descartado quando a recompressão basta');
+  assert.deepEqual(st.oversizeFiles, []);
+  assert.ok(st.degradedFiles.length >= 1, 'arquivo recomprimido deve ser marcado como degradado');
+});
+await ta('orçamento: se recompressão não basta, descarta o maior com erro nomeado (arrays alinhados)', async () => {
+  const st = { blocks: [fakeBlock(25), fakeBlock(30)], labels: ['peq', 'grande'], urls: ['u1', 'u2'], oversizeFiles: [], degradedFiles: [], errors: [] };
+  const total = await enforceMediaBudget(st, { budget: 26, rebuild: async () => { throw new Error('sem imagemagick'); } });
+  assert.ok(total <= 26);
+  assert.equal(st.blocks.length, 1);
+  assert.equal(st.labels[0], 'peq', 'labels alinhados após descarte');
+  assert.ok(st.oversizeFiles.includes('grande'), 'descartado vai para oversizeFiles (laudo diz excesso de tamanho)');
+  assert.ok(st.errors[0].includes('passou do limite'));
+});
+await ta('orçamento: recomprimido-e-DEPOIS-descartado nunca fica em duas listas (reprovação do CEO)', async () => {
+  // rebuild reduz 30→28, mas ainda acima do budget de 26 → arquivo é descartado
+  const st = { blocks: [fakeBlock(10), fakeBlock(30)], labels: ['peq', 'grande'], urls: ['u1', 'u2'], oversizeFiles: [], degradedFiles: [], errors: [] };
+  const total = await enforceMediaBudget(st, { budget: 26, rebuild: async () => fakeBlock(28) });
+  assert.ok(total <= 26);
+  assert.ok(st.oversizeFiles.includes('grande'));
+  assert.ok(!st.degradedFiles.includes('grande'), 'descartado NÃO pode constar como "anexado com qualidade reduzida"');
+  assert.equal(st.blocks.length, 1);
+  assert.equal(st.labels[0], 'peq');
+});
+await ta('orçamento: caso dentro do limite passa intocado', async () => {
+  const st = { blocks: [fakeBlock(10)], labels: ['a'], urls: ['u1'], oversizeFiles: [], degradedFiles: [], errors: [] };
+  let called = false;
+  await enforceMediaBudget(st, { budget: 100, rebuild: async () => { called = true; } });
+  assert.ok(!called && st.blocks.length === 1 && st.errors.length === 0);
+});
+
 t('aviso 📎 tem throttle: no máximo 1 a cada 120s por grupo', () => {
   const chatId = 'throttle@g.us';
   assert.equal(shouldNotifyLate(chatId, 1000_000), true);

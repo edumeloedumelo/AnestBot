@@ -8,7 +8,10 @@ import { writeFile, readFile, unlink } from 'fs/promises';
 import { randomBytes } from 'crypto';
 
 const execFileAsync = promisify(execFile);
-const PDF_COMPRESS_THRESHOLD = 10 * 1024 * 1024; // 10 MB
+// 4 MB (era 10): casos com MUITOS exames somavam dezenas de MB e estouravam o
+// limite TOTAL de ~32MB por requisição da API (413 request_too_large em produção
+// com 15 exames). /ebook = 150dpi, laudos continuam legíveis.
+const PDF_COMPRESS_THRESHOLD = 4 * 1024 * 1024;
 const MAGIC_SCAN_WINDOW = 32;
 // Limites da API do Claude para imagens: 5 MB e 8000 px por lado. Validar ANTES
 // de enviar evita o 400 "Could not process image" que derruba o caso inteiro.
@@ -132,7 +135,7 @@ async function compressPdf(buffer) {
 // nunca fabricam conteúdo (binarização/morfologia/median são PROIBIDAS).
 // Saída sempre JPEG q92. Falhou por qualquer motivo (sem ImageMagick, timeout,
 // erro)? Devolve null e o chamador usa o buffer ORIGINAL — comportamento atual.
-export async function processImage(buffer) {
+export async function processImage(buffer, { maxDim = 2600, quality = 92 } = {}) {
   const id = randomBytes(8).toString('hex');
   const inPath = `${tmpdir()}/img-in-${id}`;
   const outPath = `${tmpdir()}/img-out-${id}.jpg`;
@@ -142,10 +145,10 @@ export async function processImage(buffer) {
       inPath,
       '-limit', 'memory', '256MiB', '-limit', 'map', '256MiB', '-limit', 'thread', '1',
       '-auto-orient',
-      '-resize', '2600x2600>',
+      '-resize', `${maxDim}x${maxDim}>`,
       '-contrast-stretch', '0.5%x0.5%',
       '-unsharp', '0x1',
-      '-quality', '92',
+      '-quality', String(quality),
       `jpg:${outPath}`,
     ], { timeout: 30_000, killSignal: 'SIGKILL' });
     const out = await readFile(outPath);
@@ -172,7 +175,11 @@ function toBase64(buffer) {
 
 const DOWNLOAD_TIMEOUT_MS = 60_000; // servidor-a-servidor, mas PDFs de laudo podem ter 15-20MB
 
-export async function downloadMediaBlock(url) {
+// `aggressive: true` (usado quando o CASO INTEIRO excede o orçamento de payload
+// da API): força compressão do PDF mesmo pequeno e reduz imagens a 1600px/q80 —
+// ainda legível para laudos; se ficar ilegível, o modelo declara ilegível (falha
+// segura), nunca inventa.
+export async function downloadMediaBlock(url, { aggressive = false } = {}) {
   // Timeout: sem isso, um host de mídia que nunca responde trava o /analisar
   // do grupo PARA SEMPRE (o lock em commands.js só libera quando o await volta).
   const controller = new AbortController();
@@ -214,7 +221,7 @@ export async function downloadMediaBlock(url) {
 
   if (kind === 'pdf') {
     if (findMagicOffset(bytes)?.kind !== 'pdf') throw new Error('rotulado PDF mas conteúdo inválido');
-    if (bytes.length > PDF_COMPRESS_THRESHOLD) {
+    if (aggressive || bytes.length > PDF_COMPRESS_THRESHOLD) {
       try { buffer = await compressPdf(buffer); bytes = new Uint8Array(buffer); }
       catch (e) { console.error('[media] compressão falhou, usando original:', e.message); }
     }
@@ -222,7 +229,7 @@ export async function downloadMediaBlock(url) {
   }
   if (kind) {
     // Normalização (orientação/contraste/tamanho) — nunca no branch de PDF.
-    const processed = await processImage(buffer);
+    const processed = await processImage(buffer, aggressive ? { maxDim: 1600, quality: 80 } : {});
     if (processed) {
       buffer = processed.buffer;
       bytes = new Uint8Array(buffer);
