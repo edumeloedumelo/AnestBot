@@ -10,6 +10,30 @@ import { runSelfCheck, formatSelfCheck } from './selfcheck.js';
 const PREFIX = process.env.TRIGGER_PREFIX || '/';
 const analyzing = new Set(); // lock por grupo
 
+// Prazo do watchdog por caso — ESCALA com o nº de exames, nunca fixo.
+// Cada exame pode custar até ~130s no pior caso legítimo (download 60s +
+// compressão/normalização 60s + margem), e a chamada única ao Claude no fim
+// custa até 120s — um valor fixo baixo dispararia "travou" em casos normais
+// com PDFs grandes (achado real de 2 auditorias independentes). Teto de 10min
+// garante que mesmo um caso realmente travado libera o grupo em tempo finito.
+const WATCHDOG_BASE_MS = 130_000;      // 1 chamada à API (120s) + margem
+const WATCHDOG_PER_FILE_MS = 130_000;  // download (60s) + compressão (60s) + margem
+const WATCHDOG_CAP_MS = 600_000;       // 10 min — teto absoluto
+export function caseWatchdogMs(mediaCount = 0) {
+  return Math.min(WATCHDOG_CAP_MS, WATCHDOG_BASE_MS + WATCHDOG_PER_FILE_MS * mediaCount);
+}
+
+// Watchdog: NENHUMA causa de travamento — conhecida ou futura — pode prender
+// o lock do grupo para sempre. Se um caso não terminar neste prazo, ele falha
+// com erro claro e o /analisar segue para o próximo caso / libera o grupo.
+export function withWatchdog(promise, ms) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`travou (demorou demais). Rode ${PREFIX}analisar de novo`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 const ADMINS = (process.env.ADMIN_NUMBERS || '').split(',').map((s) => s.trim().replace(/\D/g, '')).filter(Boolean);
 
 export function isCommand(body) {
@@ -85,11 +109,11 @@ async function doAnalisar(chatId) {
         console.error(`[analisar] caso ${label}: paciente="${patientName}" cirurgia="${surgeryType}" textos=${kase.texts.length} mídia=${withUrl}`);
         console.error(`[analisar] TEXTOS:\n${kase.texts.join('\n---\n').slice(0, 1500)}`);
 
-        const { fullText, errors } = await runTriage({
+        const { fullText, errors } = await withWatchdog(runTriage({
           patientName, surgeryType,
           anamnesis: kase.texts.join('\n\n'),
           media: kase.media,
-        });
+        }), caseWatchdogMs(withUrl));
 
         if (total > 1) await sendText(chatId, `━━━━━━━━━━━━━━━━━━━━\n📁 CASO ${label}/${total}\n━━━━━━━━━━━━━━━━━━━━`);
         await sendText(chatId, formatReply(fullText));

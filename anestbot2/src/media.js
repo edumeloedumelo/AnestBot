@@ -112,8 +112,11 @@ async function compressPdf(buffer) {
   const outPath = `${tmpdir()}/pdf-out-${id}.pdf`;
   try {
     await writeFile(inPath, Buffer.from(buffer));
+    // Timeout: ghostscript pode travar indefinidamente num PDF malformado —
+    // sem isso, o /analisar prende o lock do grupo até o processo reiniciar.
     await execFileAsync('gs', ['-sDEVICE=pdfwrite', '-dCompatibilityLevel=1.4', '-dPDFSETTINGS=/ebook',
-      '-dNOPAUSE', '-dQUIET', '-dBATCH', `-sOutputFile=${outPath}`, inPath]);
+      '-dNOPAUSE', '-dQUIET', '-dBATCH', `-sOutputFile=${outPath}`, inPath],
+      { timeout: 60_000, killSignal: 'SIGKILL' });
     const compressed = await readFile(outPath);
     console.error(`[media] pdf comprimido: ${buffer.byteLength} → ${compressed.length}`);
     return compressed.buffer.slice(compressed.byteOffset, compressed.byteOffset + compressed.byteLength);
@@ -167,8 +170,22 @@ function toBase64(buffer) {
   return btoa(bin);
 }
 
+const DOWNLOAD_TIMEOUT_MS = 60_000; // servidor-a-servidor, mas PDFs de laudo podem ter 15-20MB
+
 export async function downloadMediaBlock(url) {
-  const res = await fetch(url);
+  // Timeout: sem isso, um host de mídia que nunca responde trava o /analisar
+  // do grupo PARA SEMPRE (o lock em commands.js só libera quando o await volta).
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT_MS);
+  let res;
+  try {
+    res = await fetch(url, { signal: controller.signal });
+  } catch (e) {
+    if (e.name === 'AbortError') throw new Error(`download travou (sem resposta em ${DOWNLOAD_TIMEOUT_MS / 1000}s)`);
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
   const ct = res.headers.get('content-type') || '';
   if (!res.ok) throw new Error(`download falhou (${res.status})`);
   if (ct.includes('text/html')) {

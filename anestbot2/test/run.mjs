@@ -434,6 +434,29 @@ t('PRODUÇÃO: exames enviados DENTRO do caso chegam DEPOIS do ❌❌❌❌ → 
   assert.equal(extractName(cases[0].texts), 'Veronica');
   resetChat(chatId);
 });
+// ── CASO 22: TRAVAMENTO — nenhum await pode prender o lock do grupo p/ sempre ─
+const { withWatchdog, caseWatchdogMs } = await import('../src/commands.js');
+t('caseWatchdogMs: escala com nº de exames e nunca é menor que os timeouts internos', () => {
+  assert.equal(caseWatchdogMs(0), 130_000);
+  assert.equal(caseWatchdogMs(1), 260_000);
+  assert.ok(caseWatchdogMs(1) > 60_000 + 60_000 + 120_000, 'deve cobrir download+compressão+Claude de 1 exame com margem');
+  assert.equal(caseWatchdogMs(3), 130_000 + 130_000 * 3);
+});
+t('caseWatchdogMs: tem teto de 10min mesmo com muitos exames', () => {
+  assert.equal(caseWatchdogMs(50), 600_000);
+});
+await ta('withWatchdog: promessa que nunca resolve é abortada com erro claro', async () => {
+  const neverResolves = new Promise(() => {}); // simula fetch/gs travado
+  await assert.rejects(() => withWatchdog(neverResolves, 30), /travou/);
+});
+await ta('withWatchdog: promessa rápida resolve normalmente (sem overhead)', async () => {
+  const r = await withWatchdog(Promise.resolve('ok'), 5000);
+  assert.equal(r, 'ok');
+});
+await ta('withWatchdog: erro real da promessa passa direto (não vira "travou")', async () => {
+  await assert.rejects(() => withWatchdog(Promise.reject(new Error('erro real')), 5000), /erro real/);
+});
+
 t('aviso 📎 tem throttle: no máximo 1 a cada 120s por grupo', () => {
   const chatId = 'throttle@g.us';
   assert.equal(shouldNotifyLate(chatId, 1000_000), true);
