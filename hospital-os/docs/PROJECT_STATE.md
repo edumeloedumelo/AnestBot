@@ -1,14 +1,16 @@
 # Estado do Projeto — Hospital OS
 
 > Documento vivo. Atualizado a cada entrega relevante.
-> Última atualização: 2026-08-03 · Fase 0 (Descoberta)
+> Última atualização: 2026-08-03 · Fase 0 (Descoberta) — protótipo entregue
 
 ## Situação atual
 
-- **Fase**: 0 — Descoberta. Artefatos produzidos, **aguardando homologação
-  humana** (Etapa 5 da primeira missão).
-- **Código do Hospital OS**: nenhum, por decisão (nenhum módulo crítico sem
-  homologação prévia dos artefatos).
+- **Fase**: 0 — Descoberta. Artefatos documentais entregues e **protótipo
+  navegável construído** (`prototype/`, 8 telas, build verde, telas verificadas
+  visualmente). Aguardando: sessões de usabilidade com usuários reais e
+  homologação humana.
+- **Código do núcleo clínico**: nenhum, por decisão — o protótipo é descartável
+  em lógica (sem backend, permissões ou auditoria) e serve só à validação de UX.
 - **AnestBot** (raiz do repo): intocado, operante, reconhecido como ativo do
   projeto (ADR-002).
 
@@ -27,6 +29,7 @@
 | Registro de riscos (14 riscos + aceitos) | `RISKS.md` |
 | 8 ADRs + 9 decisões pendentes | `DECISIONS.md` |
 | Especificação do protótipo navegável (8 telas) | `PROTOTYPE_SPEC.md` |
+| Protótipo navegável implementado (Next.js, dados sintéticos) | `../prototype/` |
 
 ## Bloqueios ativos
 
@@ -38,8 +41,8 @@
 ## Próximos passos (após homologação)
 
 1. Responder decisões D-01/D-02/D-03/D-06.
-2. Construir protótipo navegável (PROTOTYPE_SPEC.md) e rodar sessões de
-   usabilidade.
+2. Rodar sessões de usabilidade do protótipo (5–8 sessões por persona,
+   critérios em PROTOTYPE_SPEC.md §4) e registrar os relatórios em `docs/`.
 3. Iniciar Fase 1 (Fundação): monorepo, identidade, auditoria, cadastros.
 
 ## Histórico
@@ -47,3 +50,4 @@
 | Data | Evento |
 |---|---|
 | 2026-08-03 | Fase 0 executada: análise crítica do prompt mestre + 12 documentos de fundação criados. |
+| 2026-08-03 | Protótipo navegável construído (`prototype/`): 8 telas, Next.js + Tailwind, dados sintéticos, build e verificação visual concluídos. |
