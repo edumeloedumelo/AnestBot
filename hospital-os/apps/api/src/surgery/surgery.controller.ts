@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, UseGuards } from "@nestjs/common";
 import { Type } from "class-transformer";
 import {
   ArrayMinSize,
@@ -158,6 +158,11 @@ export class SurgeryController {
   @Roles("admin", "reception", "surgeon", "physician")
   create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateRequestDto) {
     return this.surgery.createRequest({ tenantId: user.tenantId, createdBy: user.userId, ...dto });
+  }
+
+  @Get("map")
+  map(@CurrentUser() user: AuthenticatedUser, @Query("date") date: string) {
+    return this.surgery.mapForDay(user.tenantId, date);
   }
 
   @Get(":id")

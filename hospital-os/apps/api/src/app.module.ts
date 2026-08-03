@@ -3,6 +3,7 @@ import { AnalyticsModule } from "./analytics/analytics.module";
 import { AnesthesiaModule } from "./anesthesia/anesthesia.module";
 import { AuditModule } from "./audit/audit.module";
 import { DbModule } from "./db/db.module";
+import { EventsModule } from "./events/events.module";
 import { IdentityModule } from "./identity/identity.module";
 import { MasterDataModule } from "./master-data/master-data.module";
 import { OrganizationModule } from "./organization/organization.module";
@@ -13,6 +14,7 @@ import { SurgeryModule } from "./surgery/surgery.module";
   imports: [
     DbModule,
     AuditModule,
+    EventsModule,
     IdentityModule,
     OrganizationModule,
     PatientsModule,

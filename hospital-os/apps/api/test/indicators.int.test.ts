@@ -8,6 +8,7 @@ import { Client } from "pg";
 import { bootstrapTestDatabase } from "./helpers";
 import { AnesthesiaService } from "../src/anesthesia/anesthesia.service";
 import { AuditService } from "../src/audit/audit.service";
+import { EventsService } from "../src/events/events.service";
 import { DbService } from "../src/db/db.service";
 import { IndicatorsService } from "../src/analytics/indicators.service";
 import { OrganizationService } from "../src/organization/organization.service";
@@ -33,7 +34,7 @@ beforeAll(async () => {
   const moduleRef = await Test.createTestingModule({
     providers: [
       DbService, AuditService, PatientsService, ProceduresService, OrganizationService,
-      SurgeryService, ChecklistService, AnesthesiaService, IndicatorsService,
+      EventsService, SurgeryService, ChecklistService, AnesthesiaService, IndicatorsService,
     ],
   }).compile();
   db = moduleRef.get(DbService);

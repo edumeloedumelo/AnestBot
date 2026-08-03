@@ -101,12 +101,33 @@ cirúrgico (Fase 2) estão prontas: paciente + procedimento vigente + convênio.
 - **Qualidade**: 60 testes (8 suítes) contra PostgreSQL 16 real; lint,
   typecheck e build verdes; migrations 0007–0009.
 
+### Fase 2 — entregas adicionais desta rodada
+
+- **Tempo real** (migration 0010): outbox `domain_event` escrito na mesma
+  transação da escrita de negócio; publisher com entrega exactly-once
+  (`FOR UPDATE SKIP LOCKED`) e broadcaster testável; gateway WebSocket em
+  `/events` autenticado por JWT com isolamento por tenant na borda; payloads
+  mínimos (IDs e status, nunca dado clínico) — testado.
+- **Endpoint do mapa do dia** (`GET /surgery-cases/map?date=`) e descoberta
+  pública de tenant por slug para a tela de login.
+- **Seed de demonstração** (`npm run seed -w apps/api`): tenant `demo`
+  completo criado pelos serviços reais (o seed foi inclusive bloqueado pelo
+  conflito de equipe e precisou alocar anestesiologistas como um hospital de
+  verdade). Dados 100% sintéticos.
+- **`apps/web` real (primeiras telas)**: login (tenant por slug, senha, MFA
+  quando ativo), mapa cirúrgico ao vivo (dados da API + reload por evento
+  WebSocket, indicador "Ao vivo") e pacientes (busca + criação com fluxo de
+  duplicidade/justificativa contra a API). Verificado ponta a ponta em
+  navegador real (login pela UI → mapa com os casos do seed → busca de
+  paciente), com capturas registradas.
+
 ### Fase 2 — restante para o critério de saída
 
-1. `apps/web` real evoluindo o protótipo (as 8 telas contra a API).
-2. Tempo real do mapa (gateway WebSocket + eventos de domínio).
-3. Serviço `apps/ai` (FastAPI) com a triagem de exames herdada do AnestBot.
-4. Seeds sintéticos completos + piloto em instituição real (gate D-02).
+1. `apps/web`: demais telas contra a API (agendamento guiado, jornada,
+   checklist, avaliação pré-anestésica, ficha, RPA, relatórios).
+2. Serviço `apps/ai` (FastAPI) com a triagem de exames herdada do AnestBot.
+3. Hardening pré-piloto do THREAT_MODEL (rate limiting, revogação de sessão).
+4. Piloto em instituição real (gate D-02) + homologação humana.
 
 ## O que foi entregue nesta fase
 
@@ -150,3 +171,4 @@ cirúrgico (Fase 2) estão prontas: paciente + procedimento vigente + convênio.
 | 2026-08-03 | F1-E4 entregue: procedimentos com vigência (supersede + constraint de não-sobreposição) e convênios auditados; suíte em 38 testes verdes. |
 | 2026-08-03 | Fase 1 fechada para desenvolvimento: THREAT_MODEL.md da fundação escrito (pendências de hardening bloqueiam piloto, não desenvolvimento). |
 | 2026-08-03 | Fase 2 backend entregue: domínio cirúrgico (conflito de sala por constraint, itens críticos bloqueantes, jornada), checklist de cirurgia segura, anestesia (avaliação versionada, ficha append-only com anulação, RPA com critérios de alta) e indicadores com dicionário; 60 testes verdes. |
+| 2026-08-03 | Tempo real (outbox + WebSocket), seed demo e apps/web (login, mapa ao vivo, pacientes) entregues; verificação E2E em navegador real; 63 testes verdes. |

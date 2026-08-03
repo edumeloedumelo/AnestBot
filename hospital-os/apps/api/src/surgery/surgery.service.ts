@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { PoolClient } from "pg";
 import { AuditService } from "../audit/audit.service";
 import { DbService } from "../db/db.service";
+import { EventsService } from "../events/events.service";
 
 export type CaseStatus =
   | "requested"
@@ -36,7 +37,8 @@ const PG_EXCLUSION_VIOLATION = "23P01";
 export class SurgeryService {
   constructor(
     private readonly db: DbService,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    private readonly events: EventsService
   ) {}
 
   /**
@@ -174,6 +176,38 @@ export class SurgeryService {
         entityId: input.caseId,
         data: { roomId: input.roomId, start: input.start, end: input.end },
       });
+      // Payload mínimo: identificadores e horários, nunca dado clínico.
+      await this.events.emit(client, {
+        tenantId: input.tenantId,
+        topic: "surgery.case_scheduled",
+        payload: { caseId: input.caseId, roomId: input.roomId, start: input.start, end: input.end },
+      });
+    });
+  }
+
+  /** Mapa do dia: casos com sala/horário no intervalo do dia informado. */
+  async mapForDay(tenantId: string, date: string) {
+    return this.db.withTenant(tenantId, async (client) => {
+      const result = await client.query(
+        `SELECT sc.id, sc.status, sc.laterality, sc.expected_duration_min,
+                sc.opme_status, sc.blood_reserve, sc.icu_reserve, sc.consent_registered,
+                lower(sc.scheduled_range) AS start_at, upper(sc.scheduled_range) AS end_at,
+                sc.room_id, room.name AS room_name,
+                p.full_name AS patient_name, p.mrn AS patient_mrn,
+                (SELECT pc.description FROM case_procedure cp
+                   JOIN procedure_code pc ON pc.id = cp.procedure_code_id
+                 WHERE cp.case_id = sc.id AND cp.is_primary LIMIT 1) AS procedure_name,
+                (SELECT m.name FROM case_team_member m WHERE m.case_id = sc.id AND m.role = 'surgeon' LIMIT 1) AS surgeon,
+                (SELECT m.name FROM case_team_member m WHERE m.case_id = sc.id AND m.role = 'anesthesiologist' LIMIT 1) AS anesthesiologist
+         FROM surgery_case sc
+         JOIN org_unit room ON room.id = sc.room_id
+         JOIN patient p ON p.id = sc.patient_id
+         WHERE sc.status <> 'cancelled'
+           AND sc.scheduled_range && tstzrange($1::date, ($1::date + 1), '[)')
+         ORDER BY room.name ASC, lower(sc.scheduled_range) ASC`,
+        [date]
+      );
+      return result.rows;
     });
   }
 
@@ -353,6 +387,11 @@ export class SurgeryService {
       entityId: surgeryCase.id,
       data: { from, to },
       justification,
+    });
+    await this.events.emit(client, {
+      tenantId,
+      topic: "surgery.case_status_changed",
+      payload: { caseId: surgeryCase.id, from, to },
     });
   }
 

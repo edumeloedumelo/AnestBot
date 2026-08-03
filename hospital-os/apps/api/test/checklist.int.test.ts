@@ -8,6 +8,7 @@ import { BadRequestException } from "@nestjs/common";
 import { Client } from "pg";
 import { bootstrapTestDatabase } from "./helpers";
 import { AuditService } from "../src/audit/audit.service";
+import { EventsService } from "../src/events/events.service";
 import { DbService } from "../src/db/db.service";
 import { OrganizationService } from "../src/organization/organization.service";
 import { PatientsService } from "../src/patients/patients.service";
@@ -32,7 +33,7 @@ beforeAll(async () => {
   ).rows[0].id;
 
   const moduleRef = await Test.createTestingModule({
-    providers: [DbService, AuditService, PatientsService, ProceduresService, OrganizationService, SurgeryService, ChecklistService],
+    providers: [DbService, AuditService, PatientsService, ProceduresService, OrganizationService, EventsService, SurgeryService, ChecklistService],
   }).compile();
   db = moduleRef.get(DbService);
   surgery = moduleRef.get(SurgeryService);
