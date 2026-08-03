@@ -35,13 +35,21 @@
   busca por nome/prontuário/CPF e mesclagem auditada sem perda de dados
   (origem inativa apontando para o sobrevivente).
 
+- **Cadastros mestres (F1-E4) — entregue**: procedimentos TUSS/CBHPM/SIGTAP/
+  LOCAL com vigência (importação com semântica de supersede preservando
+  histórico; sobreposição de vigências impossível por constraint de exclusão
+  no banco; busca vigente-na-data; histórico por código) e convênios com
+  registro ANS, unicidade por tenant e desativação auditada.
+
 ## Fase 1 — itens restantes (próximos incrementos)
 
 - F1-E2: bloqueio por inatividade, delegação temporária, revisão periódica de
   acessos, refresh tokens/sessões revogáveis.
-- F1-E4: importação de tabelas TUSS/CBHPM com vigência; convênios; equipes.
 - F1-E6: design system clínico (`packages/ui`), extraindo padrões do protótipo.
 - F1-E1: ambientes staging/homolog e IaC (depende de D-03 → contrato piloto).
+
+Com F1-E4 e F1-E5 entregues, as dependências de dados do agendamento
+cirúrgico (Fase 2) estão prontas: paciente + procedimento vigente + convênio.
 
 ## O que foi entregue nesta fase
 
@@ -82,3 +90,4 @@
 | 2026-08-03 | Fase 0 homologada pelo responsável humano; ADR-009 (RLS) e ADR-010 (hospedagem BR) registrados. |
 | 2026-08-03 | Fase 1 iniciada: monorepo, auditoria imutável com hash encadeado, identidade (senha+MFA+RBAC), organizações, RLS com papel de aplicação sem bypass; 11 testes de integração verdes; CI configurado. |
 | 2026-08-03 | F1-E5 entregue: cadastro de paciente com deduplicação (documento + nome/nascimento), prontuário sequencial, validação de CPF, mesclagem auditada; suíte em 32 testes verdes. |
+| 2026-08-03 | F1-E4 entregue: procedimentos com vigência (supersede + constraint de não-sobreposição) e convênios auditados; suíte em 38 testes verdes. |
