@@ -2,11 +2,14 @@
 
 Sistema hospitalar inteligente, modular e orientado por múltiplos agentes.
 
-**Status: Fase 0 — Descoberta (aguardando homologação humana dos artefatos iniciais).**
+**Status: Fase 1 — Fundação (em andamento). Fase 0 homologada em 2026-08-03.**
 
-Nenhuma linha de código do núcleo clínico foi escrita ainda. Isso é intencional:
-conforme os princípios do projeto, nenhum módulo crítico avança sem aprovação
-humana dos artefatos de descoberta.
+A fundação técnica está em construção: monorepo (`apps/api` NestJS +
+`packages/database`), trilha de auditoria imutável com hash encadeado,
+identidade (senha + MFA TOTP + RBAC contextual), estrutura organizacional e
+isolamento de tenant por RLS — tudo coberto por testes de integração contra
+PostgreSQL real e CI (`.github/workflows/hospital-os-ci.yml` na raiz do repo).
+O núcleo clínico (Fase 2) só inicia após o critério de saída da Fase 1.
 
 ## O que existe neste repositório
 

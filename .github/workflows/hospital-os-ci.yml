@@ -1,0 +1,57 @@
+name: hospital-os-ci
+
+on:
+  push:
+    branches: ["main", "claude/**"]
+    paths: ["hospital-os/**", ".github/workflows/hospital-os-ci.yml"]
+  pull_request:
+    paths: ["hospital-os/**", ".github/workflows/hospital-os-ci.yml"]
+
+jobs:
+  foundation:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: hospital-os
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: localhost
+      PGPORT: "5432"
+      PGUSER: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: hospital-os/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm test
+
+  prototype:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: hospital-os/prototype
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: hospital-os/prototype/package-lock.json
+      - run: npm ci
+      - run: npm run build

@@ -46,16 +46,28 @@ MVP. Decisão: modelo próprio alinhado semanticamente a recursos FHIR
 (Patient, Encounter, Procedure), com camada de exposição FHIR no gateway.
 Consequência: interoperabilidade barata depois, produtividade agora.
 
+### ADR-009 · Multi-tenancy: banco único com Row-Level Security (resolve D-01)
+Homologado em 2026-08-03 junto com a Fase 0. Decisão: banco único, coluna
+`tenant_id` em toda tabela de domínio, políticas RLS com
+`current_setting('app.tenant_id')` definida por transação pela aplicação;
+instância dedicada apenas quando contrato de grande porte exigir.
+Consequência: migrations únicas, RLS testada em CI desde a Fase 1.
+
+### ADR-010 · Hospedagem em hyperscaler com região Brasil (resolve D-03)
+Homologado em 2026-08-03. Diretriz: qualquer hyperscaler com região São Paulo,
+dados em repouso no Brasil. O provedor específico será fixado no contrato do
+piloto (depende de D-02); a infraestrutura como código permanece agnóstica.
+
+### Registro de homologação — Fase 0
+Em 2026-08-03 o responsável humano aprovou os artefatos de Fase 0 e o
+protótipo navegável ("Tudo aprovado"), autorizando o início da Fase 1.
+
 ## Decisões pendentes (exigem resposta humana)
 
-### Bloqueadoras para iniciar a Fase 1
-- **D-01 · Multi-tenancy**: banco único com RLS (recomendado, ARCHITECTURE.md
-  §3) ou instância por cliente? Afeta migrations, custo e contrato.
+### Bloqueiam o piloto (não bloqueiam o código da Fundação)
 - **D-02 · Instituição-piloto**: qual centro cirúrgico/hospital parceiro para o
   MVP? Sem piloto real definido, requisitos de convênio, escala e fluxo ficam
-  hipotéticos. *(É a decisão mais importante do projeto.)*
-- **D-03 · Hospedagem**: provedor cloud e região (Brasil) — afeta LGPD,
-  contrato e custo. Recomendação: qualquer hyperscaler com região São Paulo.
+  hipotéticos. *(Continua sendo a decisão mais importante do projeto.)*
 - **D-06 · Capacidade real de execução**: quem homologa (humanos), qual ritmo,
   qual orçamento de infraestrutura/licenças? Define calibragem de prazos do
   roadmap.

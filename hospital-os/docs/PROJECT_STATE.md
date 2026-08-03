@@ -1,18 +1,41 @@
 # Estado do Projeto — Hospital OS
 
 > Documento vivo. Atualizado a cada entrega relevante.
-> Última atualização: 2026-08-03 · Fase 0 (Descoberta) — protótipo entregue
+> Última atualização: 2026-08-03 · Fase 1 (Fundação) — primeiro incremento entregue
 
 ## Situação atual
 
-- **Fase**: 0 — Descoberta. Artefatos documentais entregues e **protótipo
-  navegável construído** (`prototype/`, 8 telas, build verde, telas verificadas
-  visualmente). Aguardando: sessões de usabilidade com usuários reais e
-  homologação humana.
-- **Código do núcleo clínico**: nenhum, por decisão — o protótipo é descartável
-  em lógica (sem backend, permissões ou auditoria) e serve só à validação de UX.
-- **AnestBot** (raiz do repo): intocado, operante, reconhecido como ativo do
-  projeto (ADR-002).
+- **Fase**: 1 — Fundação, iniciada após homologação humana da Fase 0
+  (registrada em DECISIONS.md). Primeiro incremento entregue e testado:
+  - Monorepo (`package.json` workspaces): `apps/api` (NestJS) +
+    `packages/database` (migrations SQL + runner com checksum).
+  - **Trilha de auditoria imutável** (F1-E3): append-only por trigger e por
+    privilégio, hash encadeado por tenant, `verifyChain()` detecta adulteração.
+  - **Identidade** (F1-E2, parcial): login com senha (bcrypt) + MFA TOTP,
+    JWT 15 min, RBAC por papel com vigência, acesso emergencial com
+    justificativa obrigatória auditada. Eventos de login (sucesso/falha)
+    auditados.
+  - **Multi-tenancy RLS** (ADR-009): políticas `FORCE ROW LEVEL SECURITY` em
+    todas as tabelas de domínio; papel de aplicação sem bypass
+    (`0004_app_role.sql`) — a aplicação nunca conecta como superusuário.
+  - **Organizações** (F1-E4, parcial): hierarquia organização/unidade/setor/
+    sala/leito com criação auditada e restrita a admin.
+  - **Qualidade**: 11 testes de integração contra PostgreSQL 16 real
+    (migrations, imutabilidade, tamper-detection, RLS, auth/MFA, RBAC),
+    lint + typecheck + build verdes, CI GitHub Actions com serviço Postgres.
+- **Protótipo** (`prototype/`): entregue na Fase 0; aguarda sessões de
+  usabilidade com usuários reais (opcional antes da Fase 2, recomendado).
+- **AnestBot** (raiz do repo): intocado, operante (ADR-002).
+
+## Fase 1 — itens restantes (próximos incrementos)
+
+- F1-E2: bloqueio por inatividade, delegação temporária, revisão periódica de
+  acessos, refresh tokens/sessões revogáveis.
+- F1-E4: importação de tabelas TUSS/CBHPM com vigência; convênios; equipes.
+- F1-E5: cadastro de paciente com deduplicação (busca fonética + mesclagem
+  auditada).
+- F1-E6: design system clínico (`packages/ui`), extraindo padrões do protótipo.
+- F1-E1: ambientes staging/homolog e IaC (depende de D-03 → contrato piloto).
 
 ## O que foi entregue nesta fase
 
@@ -33,17 +56,16 @@
 
 ## Bloqueios ativos
 
-1. **Homologação humana da Fase 0** — gate obrigatório.
-2. **D-02: instituição-piloto** — decisão mais importante do projeto.
-3. D-01 (tenancy), D-03 (hospedagem), D-06 (capacidade real) — bloqueiam
-   Fase 1.
+1. **D-02: instituição-piloto** — bloqueia o piloto da Fase 2, não o código.
+2. **D-06: capacidade real de execução** — calibragem de prazos e homologadores.
 
-## Próximos passos (após homologação)
+## Próximos passos
 
-1. Responder decisões D-01/D-02/D-03/D-06.
-2. Rodar sessões de usabilidade do protótipo (5–8 sessões por persona,
-   critérios em PROTOTYPE_SPEC.md §4) e registrar os relatórios em `docs/`.
-3. Iniciar Fase 1 (Fundação): monorepo, identidade, auditoria, cadastros.
+1. Continuar Fase 1: cadastro de paciente com deduplicação (F1-E5) e
+   importação TUSS/CBHPM (F1-E4) — próximos incrementos de maior valor.
+2. Rodar sessões de usabilidade do protótipo (PROTOTYPE_SPEC.md §4) em
+   paralelo, alimentando o design system (F1-E6).
+3. Buscar resposta para D-02 (instituição-piloto).
 
 ## Histórico
 
@@ -51,3 +73,5 @@
 |---|---|
 | 2026-08-03 | Fase 0 executada: análise crítica do prompt mestre + 12 documentos de fundação criados. |
 | 2026-08-03 | Protótipo navegável construído (`prototype/`): 8 telas, Next.js + Tailwind, dados sintéticos, build e verificação visual concluídos. |
+| 2026-08-03 | Fase 0 homologada pelo responsável humano; ADR-009 (RLS) e ADR-010 (hospedagem BR) registrados. |
+| 2026-08-03 | Fase 1 iniciada: monorepo, auditoria imutável com hash encadeado, identidade (senha+MFA+RBAC), organizações, RLS com papel de aplicação sem bypass; 11 testes de integração verdes; CI configurado. |
