@@ -27,13 +27,19 @@
   usabilidade com usuários reais (opcional antes da Fase 2, recomendado).
 - **AnestBot** (raiz do repo): intocado, operante (ADR-002).
 
+- **Pacientes (F1-E5) — entregue**: cadastro com prontuário sequencial por
+  tenant, validação de CPF por dígito verificador, deduplicação no fluxo
+  (mesmo documento; nome semelhante + mesma data de nascimento, com
+  normalização pt-BR e similaridade tolerante a partículas/abreviações/erros
+  de digitação), criação bloqueada em duplicidade sem justificativa auditada,
+  busca por nome/prontuário/CPF e mesclagem auditada sem perda de dados
+  (origem inativa apontando para o sobrevivente).
+
 ## Fase 1 — itens restantes (próximos incrementos)
 
 - F1-E2: bloqueio por inatividade, delegação temporária, revisão periódica de
   acessos, refresh tokens/sessões revogáveis.
 - F1-E4: importação de tabelas TUSS/CBHPM com vigência; convênios; equipes.
-- F1-E5: cadastro de paciente com deduplicação (busca fonética + mesclagem
-  auditada).
 - F1-E6: design system clínico (`packages/ui`), extraindo padrões do protótipo.
 - F1-E1: ambientes staging/homolog e IaC (depende de D-03 → contrato piloto).
 
@@ -75,3 +81,4 @@
 | 2026-08-03 | Protótipo navegável construído (`prototype/`): 8 telas, Next.js + Tailwind, dados sintéticos, build e verificação visual concluídos. |
 | 2026-08-03 | Fase 0 homologada pelo responsável humano; ADR-009 (RLS) e ADR-010 (hospedagem BR) registrados. |
 | 2026-08-03 | Fase 1 iniciada: monorepo, auditoria imutável com hash encadeado, identidade (senha+MFA+RBAC), organizações, RLS com papel de aplicação sem bypass; 11 testes de integração verdes; CI configurado. |
+| 2026-08-03 | F1-E5 entregue: cadastro de paciente com deduplicação (documento + nome/nascimento), prontuário sequencial, validação de CPF, mesclagem auditada; suíte em 32 testes verdes. |

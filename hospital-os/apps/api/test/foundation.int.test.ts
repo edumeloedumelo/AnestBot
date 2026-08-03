@@ -16,6 +16,7 @@ import { JwtModule } from "@nestjs/jwt";
 import { authenticator } from "otplib";
 import { Client } from "pg";
 import { migrate } from "../../../packages/database/src/migrate";
+import { bootstrapTestDatabase } from "./helpers";
 import { AuditService } from "../src/audit/audit.service";
 import { DbService } from "../src/db/db.service";
 import { AuthService } from "../src/identity/auth.service";
@@ -33,32 +34,12 @@ let admin: Client; // conexão fora do Nest para preparar/tamper
 let tenantA: string;
 let tenantB: string;
 
-const ADMIN_USER = process.env.PGUSER ?? "postgres";
-const APP_USER = "hospital_os_app_test";
-
 beforeAll(async () => {
-  const bootstrap = new Client({ database: "postgres", user: ADMIN_USER });
-  await bootstrap.connect();
-  await bootstrap.query(`DROP DATABASE IF EXISTS ${TEST_DB}`);
-  await bootstrap.query(`CREATE DATABASE ${TEST_DB}`);
-  await bootstrap.query(`DROP ROLE IF EXISTS ${APP_USER}`);
-  await bootstrap.end();
-
-  process.env.JWT_SECRET = "test-secret-do-not-use-in-production";
-
-  admin = new Client({ database: TEST_DB, user: ADMIN_USER });
-  await admin.connect();
-  const first = await migrate(admin);
-  expect(first.length).toBeGreaterThanOrEqual(4);
+  const bootstrapped = await bootstrapTestDatabase(TEST_DB);
+  admin = bootstrapped.admin;
+  expect(bootstrapped.applied.length).toBeGreaterThanOrEqual(5);
   const second = await migrate(admin);
   expect(second).toEqual([]); // idempotente
-
-  // A aplicação conecta como membro do papel de app — sem bypass de RLS
-  // (superusuário ignoraria as políticas; ver 0004_app_role.sql).
-  await admin.query(`CREATE ROLE ${APP_USER} LOGIN PASSWORD 'test-only' IN ROLE hospital_os_app`);
-  process.env.PGDATABASE = TEST_DB;
-  process.env.PGUSER = APP_USER;
-  process.env.PGPASSWORD = "test-only";
 
   const tenants = await admin.query(
     `INSERT INTO tenant (name, slug) VALUES
