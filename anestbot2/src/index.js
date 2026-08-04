@@ -23,7 +23,7 @@ const app = express();
 app.use(express.json({ limit: '60mb' }));
 app.use(express.urlencoded({ extended: true, limit: '60mb' }));
 
-app.get('/', (_req, res) => res.send('ANESTBOT 2.0 online ✅'));
+app.get('/', (_req, res) => res.send('ANESTBOT online ✅'));
 app.get('/health', (_req, res) => res.json({ ok: true }));
 app.post('/webhook', (req, res) => {
   res.sendStatus(200); // responde já; processa em background
@@ -33,7 +33,7 @@ app.use((err, _req, res, _next) => { console.error('[http] parse error:', err.me
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
-  console.log(`🤖 ANESTBOT 2.0 ouvindo na porta ${port}`);
+  console.log(`🤖 ANESTBOT ouvindo na porta ${port}`);
   checkPersistence();
   if (!process.env.ULTRAMSG_INSTANCE_ID || !process.env.ULTRAMSG_TOKEN) console.warn('⚠️  ULTRAMSG_INSTANCE_ID/TOKEN não configurados.');
   if (!process.env.ANTHROPIC_API_KEY) console.warn('⚠️  ANTHROPIC_API_KEY não configurada.');

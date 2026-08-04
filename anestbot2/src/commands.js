@@ -14,11 +14,13 @@ const analyzing = new Set(); // lock por grupo
 // Cada exame pode custar até ~130s no pior caso legítimo (download 60s +
 // compressão/normalização 60s + margem), e a chamada única ao Claude no fim
 // custa até 120s — um valor fixo baixo dispararia "travou" em casos normais
-// com PDFs grandes (achado real de 2 auditorias independentes). Teto de 10min
-// garante que mesmo um caso realmente travado libera o grupo em tempo finito.
+// com PDFs grandes (achado real de 2 auditorias independentes). O teto (15min)
+// cobre o pior caso legítimo de um caso GRANDE (15 exames em pool de 3 ≈ 5
+// rodadas de 120s + recompressões do orçamento + Claude) e ainda garante que
+// um caso realmente travado libera o grupo em tempo finito.
 const WATCHDOG_BASE_MS = 130_000;      // 1 chamada à API (120s) + margem
 const WATCHDOG_PER_FILE_MS = 130_000;  // download (60s) + compressão (60s) + margem
-const WATCHDOG_CAP_MS = 600_000;       // 10 min — teto absoluto
+const WATCHDOG_CAP_MS = 900_000;       // 15 min — teto absoluto
 export function caseWatchdogMs(mediaCount = 0) {
   return Math.min(WATCHDOG_CAP_MS, WATCHDOG_BASE_MS + WATCHDOG_PER_FILE_MS * mediaCount);
 }
@@ -206,7 +208,7 @@ function delLimit(chatId, args) {
 }
 
 function helpText() {
-  return `🤖 ANESTBOT 2.0 — AVALIAÇÃO PRÉ-ANESTÉSICA
+  return `🤖 ANESTBOT — AVALIAÇÃO PRÉ-ANESTÉSICA
 
 *COMO ENVIAR UM CASO:*
 1️⃣ *xxxx* (abre o caso)

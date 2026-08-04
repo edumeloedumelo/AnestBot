@@ -1,9 +1,9 @@
 {
-  "name": "anestbot2",
+  "name": "anestbot",
   "version": "2.0.0",
   "private": true,
   "type": "module",
-  "description": "ANESTBOT 2.0 — triagem pré-anestésica no WhatsApp (UltraMsg + Claude), arquitetura webhook-first",
+  "description": "ANESTBOT — triagem pré-anestésica no WhatsApp (UltraMsg + Claude), arquitetura webhook-first",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",

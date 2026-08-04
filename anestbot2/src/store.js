@@ -15,6 +15,7 @@ const STORE_PATH = path.join(STATE_DIR, 'anestbot2-store.json');
 
 // Limites para o armazenamento não crescer infinito.
 const MAX_MESSAGES_PER_CHAT = 800;   // mensagens recentes guardadas por grupo
+const MAX_MESSAGES_HARD_CAP = 3000;  // teto duro com caso ABERTO (nunca cortar caso em andamento)
 const MAX_PROCESSED_IDS = 4000;      // ids de mensagens já analisadas por grupo
 const MAX_RECENT_CASES = 30;         // casos recentes p/ retry cirúrgico (/resetar)
 
@@ -156,8 +157,12 @@ export function appendMessage(chatId, msg) {
   } else {
     // O store atribui o _seq (fonte única) — ignora qualquer _seq do chamador.
     c.messages.push({ ...msg, _seq: seqCounter++ });
-    if (c.messages.length > MAX_MESSAGES_PER_CHAT) {
-      c.messages = c.messages.slice(-MAX_MESSAGES_PER_CHAT);
+    // Com caso ABERTO não aplicamos o cap normal: cortaria silenciosamente o
+    // início do próprio caso em andamento (inclusive o card da anamnese).
+    // Fica só o teto duro de segurança contra crescimento infinito.
+    const cap = c.caseOpen ? MAX_MESSAGES_HARD_CAP : MAX_MESSAGES_PER_CHAT;
+    if (c.messages.length > cap) {
+      c.messages = c.messages.slice(-cap);
     }
   }
   save();

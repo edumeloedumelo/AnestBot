@@ -38,7 +38,9 @@ const BOT_MARKERS = [
   'Estado do grupo apagado', 'arquivo(s) sem URL', 'arquivo(s) com problema',
   '✅ Instruções adicionais', '✅ Cirurgia "', '✅ Limite "', '🗑️ "',
   'Nenhuma cirurgia cadastrada', 'Nenhum limite cadastrado',
-  'rejeitado pela IA', 'reenviar os exames', 'Análise indisponível no momento',
+  // "reenviar os exames" sozinho seria genérico demais (uma orientação clínica
+  // humana pode conter a frase) — usamos a frase COMPLETA e exclusiva do bot.
+  'rejeitado pela IA', 'reenviar os exames em melhor qualidade', 'Análise indisponível no momento',
   '📎 Exame recebido após',
 ];
 function isBotMessage(body) {
@@ -53,7 +55,10 @@ function isLaudo(body) {
 // ── extração de nome e cirurgia ─────────────────────────────────────────────
 export function extractName(texts) {
   const j = texts.join('\n');
-  const m = j.match(/Paciente[:\s]+([^\n,]+)/i)
+  const m = j.match(/Paciente(?:\s*\(a\))?\s*[:\-]\s*([^\n,]+)/i)
+        || j.match(/Paciente[:\s]+([^\n,]+)/i)
+        || j.match(/\bPc?te\.?\s*[:\-]\s*([^\n,]+)/i)     // Pcte: / Pte:
+        || j.match(/\bPac\.?\s*[:\-]\s*([^\n,]+)/i)        // Pac:
         || j.match(/Nome\s+completo[:\s]+([^\n,]+)/i)
         || j.match(/Nome[:\s]+([^\n,]+)/i);
   return m ? m[1].trim() : '';
@@ -61,7 +66,7 @@ export function extractName(texts) {
 
 export function extractSurgery(texts) {
   const j = texts.join('\n');
-  const stop = /(?=\n\s*(?:🔷|🔹|🔶|Data\b|Telefone\b|Observ|Paciente\b|\d️?⃣|[-_—━─]{3,})|\n\n|$)/;
+  const stop = /(?=\n\s*(?:🔷|🔹|🔶|Data\b|Telefone\b|Observ|Paciente\b|Cirurgi[ãa]o\b|Anestesista\b|Conv[êe]nio\b|Hospital\b|Peso\b|Altura\b|Idade\b|ASA\b|\d️?⃣|[-_—━─]{3,})|\n\n|$)/;
   const field = (label) => new RegExp(`${label}\\s*[:\\-：]\\s*([\\s\\S]{3,180}?)${stop.source}`, 'i');
   const m = j.match(field('Procedimento'))
         || j.match(field('Cirurgia\\s+programada'))

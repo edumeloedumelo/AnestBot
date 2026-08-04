@@ -27,7 +27,9 @@ export function splitMessage(text, max = MAX_LEN) {
 const SEND_TIMEOUT_MS = 20_000;
 
 export async function sendText(to, body) {
-  if (!body) return;
+  // Nunca silencioso: um laudo vazio (ex.: format.js removeu tudo ou a API
+  // devolveu '') deixaria o grupo sem resposta e sem pista nos logs.
+  if (!body) { console.error(`[ultramsg] corpo VAZIO — nada enviado para ${to}`); return; }
   for (const chunk of splitMessage(body)) {
     recordBotText(to, chunk); // p/ reconhecer o eco no webhook e não poluir casos
     // Timeout: sem isso, a API da UltraMsg travando prende para sempre o

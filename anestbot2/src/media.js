@@ -182,24 +182,35 @@ const DOWNLOAD_TIMEOUT_MS = 60_000; // servidor-a-servidor, mas PDFs de laudo po
 export async function downloadMediaBlock(url, { aggressive = false } = {}) {
   // Timeout: sem isso, um host de mídia que nunca responde trava o /analisar
   // do grupo PARA SEMPRE (o lock em commands.js só libera quando o await volta).
+  // O timer cobre a requisição INTEIRA, inclusive a leitura do corpo: um
+  // servidor que responde headers rápido mas goteja o body devagar travaria o
+  // arrayBuffer() para sempre se o timeout fosse cancelado após o fetch().
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT_MS);
-  let res;
+  let buffer;
   try {
-    res = await fetch(url, { signal: controller.signal });
-  } catch (e) {
-    if (e.name === 'AbortError') throw new Error(`download travou (sem resposta em ${DOWNLOAD_TIMEOUT_MS / 1000}s)`);
-    throw e;
+    let res;
+    try {
+      res = await fetch(url, { signal: controller.signal });
+    } catch (e) {
+      if (e.name === 'AbortError') throw new Error(`download travou (sem resposta em ${DOWNLOAD_TIMEOUT_MS / 1000}s)`);
+      throw e;
+    }
+    const ct = res.headers.get('content-type') || '';
+    if (!res.ok) { res.body?.cancel()?.catch(() => {}); throw new Error(`download falhou (${res.status})`); }
+    if (ct.includes('text/html')) {
+      res.body?.cancel()?.catch(() => {});
+      throw new Error('arquivo veio como página HTML (link externo protegido) — envie o arquivo direto pelo WhatsApp.');
+    }
+    try {
+      buffer = await res.arrayBuffer();
+    } catch (e) {
+      if (e.name === 'AbortError' || controller.signal.aborted) throw new Error(`download travou (corpo não chegou em ${DOWNLOAD_TIMEOUT_MS / 1000}s)`);
+      throw e;
+    }
   } finally {
     clearTimeout(timer);
   }
-  const ct = res.headers.get('content-type') || '';
-  if (!res.ok) throw new Error(`download falhou (${res.status})`);
-  if (ct.includes('text/html')) {
-    throw new Error('arquivo veio como página HTML (link externo protegido) — envie o arquivo direto pelo WhatsApp.');
-  }
-
-  let buffer = await res.arrayBuffer();
   let bytes = new Uint8Array(buffer);
   if (bytes.length === 0) throw new Error('arquivo vazio');
 

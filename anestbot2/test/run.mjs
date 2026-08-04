@@ -442,8 +442,10 @@ t('caseWatchdogMs: escala com nº de exames e nunca é menor que os timeouts int
   assert.ok(caseWatchdogMs(1) > 60_000 + 60_000 + 120_000, 'deve cobrir download+compressão+Claude de 1 exame com margem');
   assert.equal(caseWatchdogMs(3), 130_000 + 130_000 * 3);
 });
-t('caseWatchdogMs: tem teto de 10min mesmo com muitos exames', () => {
-  assert.equal(caseWatchdogMs(50), 600_000);
+t('caseWatchdogMs: tem teto de 15min mesmo com muitos exames', () => {
+  assert.equal(caseWatchdogMs(50), 900_000);
+  assert.ok(caseWatchdogMs(15) >= Math.ceil(15 / 3) * 120_000 + 120_000,
+    'teto deve cobrir o pior caso legítimo de 15 exames em pool de 3 + Claude');
 });
 await ta('withWatchdog: promessa que nunca resolve é abortada com erro claro', async () => {
   const neverResolves = new Promise(() => {}); // simula fetch/gs travado
@@ -527,6 +529,57 @@ t('aviso 📎 tem throttle: no máximo 1 a cada 120s por grupo', () => {
   assert.equal(shouldNotifyLate(chatId, 1000_000), true);
   assert.equal(shouldNotifyLate(chatId, 1000_000 + 30_000), false);
   assert.equal(shouldNotifyLate(chatId, 1000_000 + 121_000), true);
+});
+
+
+// ── CASO 23: revisão em loop de 04/08 — regressões dos achados dos auditores ──
+const _w = await import('../src/webhook.js');
+t('getBody: NUNCA usa o texto de mensagem citada (reply não injeta card antigo)', () => {
+  const card = 'xxxx\nPaciente: Alice\n' + 'linha\n'.repeat(50) + '❌❌❌❌';
+  assert.equal(_w.getBody({ body: 'ok', quotedMsgBody: card }), 'ok');
+  assert.equal(_w.getBody({ body: 'ok', contextInfo: { quotedMessage: { conversation: card } } }), 'ok');
+  assert.equal(_w.getBody({ body: 'ok', message: { extendedTextMessage: { contextInfo: { quotedMessage: { conversation: card } } } } }), 'ok');
+});
+
+const _t3 = await import('../src/triage.js');
+t('dedupeLabels: legendas repetidas viram únicas (indexOf nunca tira o aviso do arquivo errado)', () => {
+  assert.deepEqual(_t3.dedupeLabels(['Hemograma', 'Hemograma', 'ECG', 'Hemograma']),
+    ['Hemograma', 'Hemograma (2)', 'ECG', 'Hemograma (3)']);
+});
+
+t('extractName: abreviações Pcte/Pac/Paciente(a) de cards reais', () => {
+  assert.equal(extractName(['Pcte: Maria José']), 'Maria José');
+  assert.equal(extractName(['Pac: Joana Silva']), 'Joana Silva');
+  assert.equal(extractName(['Paciente(a): Carla Souza']), 'Carla Souza');
+});
+
+t('extractSurgery: para no rótulo seguinte (Anestesista/Convênio/Hospital…)', () => {
+  assert.equal(extractSurgery(['Cirurgia: Rinoplastia\nAnestesista: Dr. Fulano']), 'Rinoplastia');
+  assert.equal(extractSurgery(['Procedimento: Mamoplastia\nConvênio: Particular']), 'Mamoplastia');
+});
+
+t('BOT_MARKERS: "reenviar os exames" em texto clínico humano NÃO é descartado como eco', () => {
+  const msgs = [
+    { id: 'bm1', type: 'chat', body: 'xxxx\nPaciente: Bia\nProcedimento: Lipo', timestamp: 100 },
+    { id: 'bm2', type: 'chat', body: 'Paciente orientada a reenviar os exames atualizados', timestamp: 101 },
+    { id: 'bm3', type: 'chat', body: '❌❌❌❌', timestamp: 102 },
+  ];
+  const cases = splitIntoCases(msgs, new Set());
+  assert.equal(cases.length, 1);
+  assert.ok(cases[0].texts.some((x) => x.includes('reenviar os exames atualizados')),
+    'orientação clínica humana deve permanecer no caso');
+});
+
+const _s3 = await import('../src/store.js');
+t('store: caso ABERTO nunca perde o início por cap de mensagens', () => {
+  const cid = 'cap-open@g.us';
+  _s3.resetChat(cid);
+  _s3.setCaseOpen(cid, true);
+  _s3.appendMessage(cid, { id: 'first', type: 'chat', body: 'xxxx\nPaciente: Zoe', timestamp: 1 });
+  for (let i = 0; i < 850; i++) _s3.appendMessage(cid, { id: 'm' + i, type: 'chat', body: 'linha ' + i, timestamp: 2 + i });
+  const msgs = _s3.getMessages(cid);
+  assert.ok(msgs.some((m) => m.id === 'first'), 'card inicial deve sobreviver com caso aberto');
+  _s3.resetChat(cid);
 });
 
 console.log(`\n${fail === 0 ? '🎉' : '⚠️'} ${pass} passaram, ${fail} falharam`);

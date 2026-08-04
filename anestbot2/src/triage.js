@@ -7,6 +7,19 @@ import { downloadMediaBlock } from './media.js';
 // Sanitiza legendas para a lista de arquivos (dados, nunca instruções).
 const sanitizeLabel = (s) => (s || '').replace(/\s+/g, ' ').trim().slice(0, 80);
 
+// Labels ÚNICOS por caso: dois anexos legendados "Hemograma" seriam
+// indistinguíveis nas listas do contexto E quebrariam a remoção por valor em
+// enforceMediaBudget (o indexOf em degradedFiles poderia tirar o aviso do
+// arquivo ERRADO — deixando o descartado listado como "anexado"). Exportada p/ testes.
+export function dedupeLabels(list) {
+  const seen = new Map();
+  return list.map((l) => {
+    const n = (seen.get(l) || 0) + 1;
+    seen.set(l, n);
+    return n > 1 ? `${l} (${n})` : l;
+  });
+}
+
 // Monta o contexto textual da triagem (pura — exportada para os testes).
 // REGRA VITAL: attachedFiles lista SÓ o que foi baixado E anexado de verdade aos
 // blocos; failedFiles lista o que falhou no download. Listar arquivo não-anexado
@@ -142,10 +155,13 @@ export async function runTriage({ patientName, surgeryType, anamnesis, media }) 
   const failedLabels = [];
   const oversizeLabels = [];
   const degradedLabels = [];
-  for (const r of results) {
+  const uniq = dedupeLabels(results.map((r) => r?.label || ''));
+  for (let i = 0; i < results.length; i++) {
+    const r = results[i];
     if (!r) continue;
-    if (r.err) { errors.push(`${r.label}: ${r.err}`); failedLabels.push(r.label); }
-    else { mediaBlocks.push(r.block); okLabels.push(r.label); okUrls.push(r.url); }
+    const label = uniq[i];
+    if (r.err) { errors.push(`${label}: ${r.err}`); failedLabels.push(label); }
+    else { mediaBlocks.push(r.block); okLabels.push(label); okUrls.push(r.url); }
   }
 
   // Orçamento ANTES de montar o contexto: listas finais e fiéis ao que vai anexado.

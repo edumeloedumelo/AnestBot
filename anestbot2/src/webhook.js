@@ -16,15 +16,17 @@ function isAllowed(chatId) {
 
 // Extrai o texto de forma robusta. Mensagens encaminhadas / de tipos diversos /
 // de APIs estilo Baileys trazem o texto em campos variados (às vezes aninhados).
+// NUNCA usar campos de mensagem CITADA (quotedMsgBody, contextInfo.quotedMessage):
+// são o texto da mensagem RESPONDIDA, não desta — responder "ok" citando um card
+// antigo faria o card do paciente antigo (mais longo) vencer e ser gravado no
+// caso aberto de OUTRO paciente.
 export function getBody(m) {
   const cands = [
-    m.body, m.text, m.caption, m.content, m.quotedMsgBody, m.conversation,
+    m.body, m.text, m.caption, m.content, m.conversation,
     m.extendedTextMessage?.text, m.msg,
     typeof m.message === 'string' ? m.message : undefined,
     m.message?.conversation,
     m.message?.extendedTextMessage?.text,
-    m.message?.extendedTextMessage?.contextInfo?.quotedMessage?.conversation,
-    m.contextInfo?.quotedMessage?.conversation,
     typeof m.data === 'string' ? m.data : undefined,
     m.data?.body, m.data?.message,
   ];
@@ -120,6 +122,15 @@ export async function handleWebhook(payload) {
 
   const timestamp = Number(m.timestamp || m.time || Math.floor(Date.now() / 1000));
 
+  // Eco do próprio bot (resposta enviada via API voltando pelo webhook): nunca
+  // é conteúdo clínico E nunca é comando — checado ANTES do dispatch de comando,
+  // para que uma resposta do bot que por acaso comece com "/" jamais seja
+  // reexecutada como comando (loop).
+  if (m.fromMe && type === 'chat' && isBotText(chatId, body)) {
+    console.error(`[webhook] eco do bot descartado chat=${chatId}`);
+    return;
+  }
+
   // Comando (/analisar etc.): dispara, mas NÃO grava no store (mantém o histórico limpo).
   // Funciona em grupo e no privado, inclusive vindo do próprio número conectado.
   if (type === 'chat' && isCommand(body)) {
@@ -132,12 +143,6 @@ export async function handleWebhook(payload) {
   // O webhook SÓ captura conteúdo entre xxxx e ❌❌❌❌. Conversa fora de um
   // caso aberto NÃO é gravada — nem texto, nem mídia. Comandos (acima) sempre
   // funcionam, em grupo ou no privado.
-  // Eco do próprio bot (resposta enviada via API voltando pelo webhook): nunca
-  // é conteúdo clínico, mesmo com caso aberto.
-  if (m.fromMe && type === 'chat' && isBotText(chatId, body)) {
-    console.error(`[webhook] eco do bot descartado chat=${chatId}`);
-    return;
-  }
 
   const isMedia = type === 'image' || type === 'document' || type === 'video';
   const wasOpen = isCaseOpen(chatId);
