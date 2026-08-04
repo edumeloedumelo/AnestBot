@@ -14,7 +14,8 @@
 - [x] **Marco 2 — núcleo SaaS (API, tenants, RBAC, inbox)** ✅ (30 testes de integração verdes em Postgres real)
 - [x] **Marco 3 — prontuário anestésico** ✅ (39 testes de integração verdes)
 - [x] **Marco 4 — faturamento** ✅ (50 testes de integração verdes)
-- [ ] **Marco 5 — conhecimento e comercial** ← EM ANDAMENTO (parcial)
+- [~] **Marco 5 — conhecimento e comercial** — biblioteca clínica ENTREGUE
+  (56 testes verdes); itens comerciais restantes documentados abaixo
 - [ ] Marco 2 — núcleo SaaS (monorepo, PostgreSQL, auth, tenants, RBAC)
 - [ ] Marco 3 — prontuário anestésico
 - [ ] Marco 4 — faturamento
@@ -130,14 +131,50 @@
   e porte sem preço, transições inválidas 409, glosa sem motivo 400, trilha
   completa enviado→glosado→enviado→pago, imutabilidade por trigger, RBAC.
 
-## Próximo passo imediato
+## Marco 5 — biblioteca clínica entregue
 
-Marco 5 — conhecimento e comercial (parcial, conforme contexto):
-1. Migration 006: topics/topic_versions (biblioteca clínica versionada).
-2. Rotas: protocolos Markdown versionados com busca; distinção
-   institucional × referência; aviso de apoio à decisão.
-3. Planos/trial já modelados em teams (plan/trial_ends_at) — limites de plano
-   no backend ficam para sessão futura com decisão de gateway.
+- Migration 006: topics (slug único/equipe, institucional × referência externa)
+  + topic_versions (autor, aprovador médico com CRM, draft/approved/retired,
+  tsvector 'portuguese' + índice GIN). Versão aprovada é IMUTÁVEL por trigger
+  (correção = versão nova; anterior vira retired, nunca é apagada).
+- `src/routes/topics.ts`: criação (referência externa EXIGE fonte), novas
+  versões, aprovação (exige CRM — 403 sem), busca full-text em português só de
+  versões aprovadas, aviso "apoio à decisão" em TODA resposta da biblioteca.
+- RBAC: `library:read` (todos), `library:write` (owner/admin/anest),
+  `library:approve` (owner/anest com CRM).
+- Testes (6 novos, 56 total): rascunho invisível na busca, fonte obrigatória,
+  aprovação com CRM, v2 não substitui v1 até aprovar, retired preservada,
+  imutabilidade por trigger, RBAC, slug duplicado.
+
+## Suítes (estado final desta sessão)
+
+- Bot: `cd anestbot2 && npm test` → **107/107 ✅**
+- Plataforma: `cd apps/api && npm test` → **56/56 ✅** (Postgres 16 real efêmero)
+- Typecheck: `cd apps/api && npm run typecheck` → ✅ · `npm audit` (ambos) → 0 vulns
+
+## Trabalho restante (Marco 5 comercial + itens transversais)
+
+1. **Assistente IA da biblioteca com citações** (recuperação sobre topics
+   aprovados; resposta sem fonte marcada como insuficiente) — seção 16.
+2. **Limites de plano no backend** (starter/pro/business por rota) + adaptador
+   de billing — gateway PENDENTE DE DECISÃO HUMANA (Stripe × Asaas/iugu).
+3. **Onboarding guiado + tenant demo** (seed já existe: `npm run seed`).
+4. **Landing page** separada do app; métricas de ativação sem dados clínicos.
+5. **apps/web (PWA)** — todo o frontend mobile-first (paleta da seção 18).
+6. **PDF verificável do registro** (fonte de verdade já estruturada + hash).
+7. **packages/clinical-rules** — regras determinísticas versionadas (seção 6);
+   hoje as regras clínicas vivem no prompt versionado (PROMPT_REV) + config.
+8. **S3 privado para case_files** (URLs temporárias) — bot hoje não persiste
+   mídia após análise; decisão de storage é humana (custo).
+9. Rotação automatizada de segredos, backups testados, runbooks (seção 19).
+
+## Decisões pendentes de humano (não bloqueiam revisão desta branch)
+
+- Configurar em produção (Railway): `WEBHOOK_TOKEN`, `ADMIN_NUMBERS`,
+  `DIAG_TOKEN` e, quando a plataforma subir, `PLATFORM_EVENTS_URL/SECRET`.
+- Acrescentar `?token=` na URL do webhook no painel UltraMsg.
+- Limpar retenção de logs antigos do Railway (contêm PHI — R-03/R-08).
+- Gateway de billing; provedor S3; hospedagem da plataforma.
 
 ## Decisões pendentes de humano (não bloqueiam os marcos atuais)
 

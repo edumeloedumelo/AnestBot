@@ -19,31 +19,36 @@ export type Permission =
   | 'record:sign'          // assinar (exige CRM) e adendar
   | 'billing:read'         // produção, entradas, relatórios
   | 'billing:write'        // importar terminologia, convênios, entradas, eventos
+  | 'library:read'         // biblioteca clínica (protocolos aprovados)
+  | 'library:write'        // criar/editar rascunhos de protocolo
+  | 'library:approve'      // aprovar versão (aprovador médico, exige CRM)
   | 'audit:read';
 
 const MATRIX: Record<Role, ReadonlySet<Permission>> = {
   owner: new Set<Permission>([
     'team:manage', 'invite:create', 'pairing:manage', 'patient:read', 'patient:write',
     'case:read', 'case:read_clinical', 'case:manage_pending', 'case:review', 'case:override',
-    'record:read', 'record:write', 'record:sign', 'billing:read', 'billing:write', 'audit:read',
+    'record:read', 'record:write', 'record:sign', 'billing:read', 'billing:write',
+    'library:read', 'library:write', 'library:approve', 'audit:read',
   ]),
   admin: new Set<Permission>([
     'team:manage', 'invite:create', 'pairing:manage', 'patient:read', 'patient:write',
     'case:read', 'case:read_clinical', 'case:manage_pending', 'record:read',
-    'billing:read', 'billing:write', 'audit:read',
+    'billing:read', 'billing:write', 'library:read', 'library:write', 'audit:read',
   ]),
   anesthesiologist: new Set<Permission>([
     'patient:read', 'patient:write', 'case:read', 'case:read_clinical',
     'case:manage_pending', 'case:review', 'case:override',
     'record:read', 'record:write', 'record:sign', 'billing:read',
+    'library:read', 'library:write', 'library:approve',
   ]),
   // Secretaria FAZ o faturamento (operacional, não clínico) — mas não vê prontuário.
   secretary: new Set<Permission>([
     'patient:read', 'patient:write', 'case:read', 'case:manage_pending',
-    'billing:read', 'billing:write',
+    'billing:read', 'billing:write', 'library:read',
   ]),
   viewer: new Set<Permission>([
-    'patient:read', 'case:read', 'case:read_clinical', 'record:read',
+    'patient:read', 'case:read', 'case:read_clinical', 'record:read', 'library:read',
   ]),
 };
 
