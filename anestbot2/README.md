@@ -72,16 +72,24 @@ Repo: `edumeloedumelo/AnestBot` — o bot vive na subpasta **`anestbot2/`**.
 - Novo projeto → Deploy from GitHub → selecione o repositório.
 - **Settings → Root Directory:** `anestbot2`
 - **Volumes:** adicione um volume no mount path **`/data`** (persistência).
-- **Variables:**
+- **Variables:** (molde completo em [`.env.example`](.env.example))
   - `ULTRAMSG_INSTANCE_ID` = seu instance id
   - `ULTRAMSG_TOKEN` = seu token
   - `ANTHROPIC_API_KEY` = sua chave da Anthropic
   - `STATE_DIR` = `/data`
   - `PORT` = `3000` (necessário para o domínio público do Railway)
-  - **`ADMIN_NUMBERS`** = números admin separados por vírgula. ⚠️ **Configure em
-    produção**: se ficar vazio, QUALQUER membro do grupo pode rodar comandos de
-    admin (`/resetartudo`, `/setprompt`, `/addcirurgia` etc.). O número
-    conectado à UltraMsg é sempre admin (`fromMe`).
+  - **`WEBHOOK_TOKEN`** = segredo forte (ex.: `openssl rand -hex 32`). Com ele
+    configurado, o webhook exige `?token=` na URL e **bloqueia com 401**
+    qualquer requisição sem o token (payload forjado não entra). Ajuste a URL
+    no painel UltraMsg para `https://SEU-APP.up.railway.app/webhook?token=SEU_TOKEN`.
+    Sem a env o bot aceita como antes (modo compatibilidade, com aviso no boot).
+  - **`ADMIN_NUMBERS`** = números admin separados por vírgula (com ou sem DDI
+    55). **Fail-closed:** se ficar vazio, SÓ o número conectado à UltraMsg
+    (`fromMe`) é admin — nenhum outro membro executa `/resetartudo`,
+    `/setprompt`, `/addcirurgia` etc.
+  - (opcional) `DIAG_TOKEN` = habilita `GET /diag?token=...` com contadores
+    agregados (sem dados clínicos). Sem a env, `/diag` responde 404.
+  - (opcional) `WEBHOOK_BODY_LIMIT` (padrão `5mb`)
   - (opcional) `ALLOWED_CHATS` = ids de grupos permitidos (vazio = todos)
   - (opcional) `ANTHROPIC_MODEL` (padrão `claude-sonnet-4-6`)
 - O `railway.json` já define builder Dockerfile, healthcheck `/health` e
@@ -99,7 +107,13 @@ Ao enviar uma ficha, deve aparecer `[webhook] texto gravado ... len=NNNN` com o
 tamanho completo do card. No `/analisar`, `[analisar] ... cirurgia="..."`.
 
 Monitoramento recomendado: UptimeRobot em `https://SEU-APP.up.railway.app/health`
-a cada 5 minutos.
+a cada 5 minutos. Endpoints: `/health` (liveness pura), `/ready` (readiness:
+volume gravável + envs essenciais; 503 se faltar algo), `/diag?token=...`
+(diagnóstico agregado sem dados clínicos, requer `DIAG_TOKEN`).
+
+**Logs sem dados clínicos:** o bot não registra anamnese, nome de paciente,
+parecer nem URLs de exames nos logs — apenas metadados (contagens/tamanhos).
+Testes de regressão garantem isso (`npm test`).
 
 ## Comandos
 

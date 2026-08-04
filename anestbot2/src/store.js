@@ -279,3 +279,18 @@ export function lastMessageTime(chatId) {
   const msgs = db[chatId]?.messages ?? [];
   return msgs.reduce((mx, m) => Math.max(mx, m.timestamp || 0), 0);
 }
+
+// Diagnóstico SEM PHI (para o /diag protegido): SOMENTE contadores agregados.
+// Proibido devolver conteúdo, nomes, ids de chat ou qualquer corpo de mensagem.
+export function diagSnapshot() {
+  const chats = Object.values(db);
+  const sum = (f) => chats.reduce((s, c) => s + (Array.isArray(c?.[f]) ? c[f].length : 0), 0);
+  return {
+    chats: chats.length,
+    messages: sum('messages'),
+    processed_ids: sum('processed'),
+    recent_cases: sum('recentCases'),
+    pending_media: sum('pendingMedia'),
+    open_cases: chats.filter((c) => c?.caseOpen).length,
+  };
+}

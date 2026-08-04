@@ -56,11 +56,17 @@ export function numbersMatch(a, b) {
   if (Math.min(a.length, b.length) < 8) return false;
   return a.endsWith(b) || b.endsWith(a);
 }
-function isAdmin(msg) {
+// FAIL-CLOSED (D-002): sem ADMIN_NUMBERS configurado, SÓ o número conectado à
+// UltraMsg (fromMe) é admin. Antes, lista vazia dava admin a QUALQUER membro do
+// grupo — incluindo /resetartudo e /setprompt (injeção no prompt clínico).
+export function computeIsAdmin(msg, admins) {
   if (msg && msg.fromMe) return true; // o número conectado à UltraMsg é sempre admin
-  if (ADMINS.length === 0) return true;
+  if (!msg) return false;
   const sender = senderNumber(msg);
-  return ADMINS.some((n) => numbersMatch(n, sender));
+  return admins.some((n) => numbersMatch(n, sender));
+}
+function isAdmin(msg) {
+  return computeIsAdmin(msg, ADMINS);
 }
 function requireAdmin(chatId, msg, fn) {
   if (!isAdmin(msg)) return sendText(chatId, '⛔ Você não tem permissão para este comando.');
@@ -121,8 +127,9 @@ async function doAnalisar(chatId) {
       try {
         const patientName = extractName(kase.texts) || `Caso ${label}`;
         const surgeryType = extractSurgery(kase.texts);
-        console.error(`[analisar] caso ${label}: paciente="${patientName}" cirurgia="${surgeryType}" textos=${kase.texts.length} mídia=${withUrl}`);
-        console.error(`[analisar] TEXTOS:\n${kase.texts.join('\n---\n').slice(0, 1500)}`);
+        // Logs SEM PHI (D-004): nunca logar nome, anamnese ou parecer — apenas
+        // metadados (flags e contagens) suficientes para depurar a extração.
+        console.error(`[analisar] caso ${label}: nome_detectado=${extractName(kase.texts) ? 'sim' : 'nao'} cirurgia_detectada=${surgeryType ? 'sim' : 'nao'} textos=${kase.texts.length} chars=${kase.texts.join('').length} mídia=${withUrl}`);
 
         const { fullText, errors } = await withWatchdog(runTriage({
           patientName, surgeryType,

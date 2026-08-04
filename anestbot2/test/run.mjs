@@ -594,5 +594,113 @@ t('numbersMatch: casa com/sem DDI e nunca por sufixo curto', () => {
   assert.ok(!_c4.numbersMatch('', '5583999999999'), 'vazio nunca casa');
 });
 
+// ── CASO 25 (Marco 0): autenticação do webhook — fail-closed com token ───────
+const _sec = await import('../src/security.js');
+t('webhook: sem WEBHOOK_TOKEN configurado, aceita (modo compatibilidade)', () => {
+  assert.equal(_sec.webhookAuthDecision({}, ''), null);
+  assert.equal(_sec.webhookAuthDecision({ token: 'qualquer' }, ''), null);
+});
+t('webhook: com token configurado, requisição SEM token é recusada', () => {
+  assert.equal(_sec.webhookAuthDecision({}, 'segredo'), 'token ausente');
+  assert.equal(_sec.webhookAuthDecision(undefined, 'segredo'), 'token ausente');
+  assert.equal(_sec.webhookAuthDecision({ token: '' }, 'segredo'), 'token ausente');
+});
+t('webhook: token errado é recusado; certo é aceito', () => {
+  assert.equal(_sec.webhookAuthDecision({ token: 'errado' }, 'segredo'), 'token inválido');
+  assert.equal(_sec.webhookAuthDecision({ token: 'segredo' }, 'segredo'), null);
+});
+t('webhook: token de tipo inesperado (array/objeto do parser) nunca passa', () => {
+  assert.equal(_sec.webhookAuthDecision({ token: ['segredo'] }, 'segredo'), 'token ausente');
+  assert.equal(_sec.webhookAuthDecision({ token: { a: 1 } }, 'segredo'), 'token ausente');
+});
+t('safeEqual: iguais sim, diferentes não, tamanhos distintos não', () => {
+  assert.ok(_sec.safeEqual('abc', 'abc'));
+  assert.ok(!_sec.safeEqual('abc', 'abd'));
+  assert.ok(!_sec.safeEqual('abc', 'abcd'));
+  assert.ok(!_sec.safeEqual('', 'x'));
+});
+
+// ── CASO 26 (Marco 0): admin FAIL-CLOSED ─────────────────────────────────────
+t('admin: lista VAZIA nega qualquer membro do grupo (fail-closed)', () => {
+  assert.ok(!_c4.computeIsAdmin({ from: '5583999999999@c.us' }, []));
+  assert.ok(!_c4.computeIsAdmin({ author: '5583999999999@c.us' }, []));
+  assert.ok(!_c4.computeIsAdmin(null, []));
+});
+t('admin: fromMe (número conectado) é sempre admin, mesmo com lista vazia', () => {
+  assert.ok(_c4.computeIsAdmin({ fromMe: true }, []));
+  assert.ok(_c4.computeIsAdmin({ fromMe: true, from: 'x@c.us' }, ['5511888888888']));
+});
+t('admin: número cadastrado casa (com/sem DDI); não cadastrado é negado', () => {
+  assert.ok(_c4.computeIsAdmin({ author: '5583999999999@c.us' }, ['83999999999']));
+  assert.ok(_c4.computeIsAdmin({ author: '83999999999@c.us' }, ['5583999999999']));
+  assert.ok(!_c4.computeIsAdmin({ author: '5511777777777@c.us' }, ['5583999999999']));
+});
+
+// ── CASO 27 (Marco 0): readiness e diagnóstico protegido ─────────────────────
+t('readiness: envs presentes + STATE_DIR gravável ⇒ ready', () => {
+  const r = _sec.readinessCheck({ STATE_DIR: process.env.STATE_DIR, ULTRAMSG_INSTANCE_ID: 'i', ULTRAMSG_TOKEN: 't', ANTHROPIC_API_KEY: 'k' });
+  assert.equal(r.ready, true);
+  assert.equal(r.checks.state_dir_writable, true);
+});
+t('readiness: sem ANTHROPIC_API_KEY ⇒ NOT ready (503)', () => {
+  const r = _sec.readinessCheck({ STATE_DIR: process.env.STATE_DIR, ULTRAMSG_INSTANCE_ID: 'i', ULTRAMSG_TOKEN: 't' });
+  assert.equal(r.ready, false);
+});
+t('diag: fail-closed — sem DIAG_TOKEN configurado, nega SEMPRE', () => {
+  assert.ok(!_sec.diagAuthorized({ token: 'qualquer' }, ''));
+  assert.ok(!_sec.diagAuthorized({}, ''));
+});
+t('diag: token errado nega; certo autoriza', () => {
+  assert.ok(!_sec.diagAuthorized({ token: 'x' }, 'segredo'));
+  assert.ok(_sec.diagAuthorized({ token: 'segredo' }, 'segredo'));
+});
+t('diagSnapshot: só contadores agregados — NUNCA conteúdo, nomes ou ids de chat', () => {
+  const cid = 'diag-phi@g.us';
+  _s3.resetChat(cid);
+  _s3.appendMessage(cid, { id: 'dp1', type: 'chat', body: 'xxxx\nPaciente: Sigilosa Da Silva\nProcedimento: Lipo', timestamp: 1 });
+  const snap = _s3.diagSnapshot();
+  const json = JSON.stringify(snap);
+  assert.ok(snap.chats >= 1 && snap.messages >= 1, 'contadores presentes');
+  assert.ok(!json.includes('Sigilosa'), 'nome de paciente não pode vazar');
+  assert.ok(!json.includes('diag-phi'), 'id de chat não pode vazar');
+  assert.ok(!json.includes('Lipo'), 'conteúdo clínico não pode vazar');
+  for (const v of Object.values(snap)) assert.equal(typeof v, 'number');
+  _s3.resetChat(cid);
+});
+
+// ── CASO 28 (Marco 0): logs sem PHI ──────────────────────────────────────────
+// Guarda funcional: formatReply não pode logar o TEXTO do preâmbulo removido.
+t('format: log do preâmbulo removido não contém o texto clínico', () => {
+  const preamble = 'Segue avaliação da paciente Fulana Sigilosa com Hb 9,8';
+  const card = '🧾 *AVALIAÇÃO PRÉ-ANESTÉSICA*\n━━━━━━━\nconteúdo';
+  const logged = [];
+  const orig = console.error;
+  console.error = (...a) => logged.push(a.map(String).join(' '));
+  try { formatReply(`${preamble}\n${card}`); } finally { console.error = orig; }
+  const all = logged.join('\n');
+  assert.ok(!all.includes('Fulana'), 'nome no log = vazamento de PHI');
+  assert.ok(!all.includes('Hb 9,8'), 'valor clínico no log = vazamento de PHI');
+});
+// Guarda estática: padrões proibidos de log não podem voltar ao código.
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+const _src = (f) => readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'src', f), 'utf-8');
+t('fonte: commands.js não loga anamnese nem nome de paciente', () => {
+  const s = _src('commands.js');
+  assert.ok(!/console\.[a-z]+\([^)]*TEXTOS/.test(s), 'log de TEXTOS (anamnese) é proibido');
+  assert.ok(!/console\.[a-z]+\(`[^`]*\$\{patientName\}/.test(s), 'log interpolando patientName é proibido');
+  assert.ok(!/console\.[a-z]+\(`[^`]*\$\{surgeryType\}/.test(s), 'log interpolando surgeryType é proibido');
+});
+t('fonte: triage.js não loga URL completa de mídia', () => {
+  const s = _src('triage.js');
+  // md.url cru em log é proibido; hostOf(md.url) (só o host) é permitido.
+  assert.ok(!/console\.[a-z]+\([^)]*(?<!hostOf\()md\.url/.test(s), 'log de md.url cru é proibido (URL dá acesso ao exame)');
+});
+t('fonte: format.js não loga o conteúdo do preâmbulo', () => {
+  const s = _src('format.js');
+  assert.ok(!/console\.[a-z]+\([^)]*pre\.slice/.test(s), 'log de pre.slice(...) é proibido');
+});
+
 console.log(`\n${fail === 0 ? '🎉' : '⚠️'} ${pass} passaram, ${fail} falharam`);
 process.exit(fail === 0 ? 0 : 1);

@@ -11,7 +11,8 @@ export function formatReply(fullText) {
     const last = matches[matches.length - 1];
     if (last.index > 0) {
       const pre = text.slice(0, last.index).trim();
-      if (pre) console.error('[format] preâmbulo removido:', pre.slice(0, 200));
+      // Sem PHI no log (D-004): o preâmbulo pode conter dados clínicos do laudo.
+      if (pre) console.error(`[format] preâmbulo removido (${pre.length} chars)`);
       text = text.slice(last.index);
     }
   }

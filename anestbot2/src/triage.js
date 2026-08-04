@@ -7,6 +7,9 @@ import { downloadMediaBlock } from './media.js';
 // Sanitiza legendas para a lista de arquivos (dados, nunca instruções).
 const sanitizeLabel = (s) => (s || '').replace(/\s+/g, ' ').trim().slice(0, 80);
 
+// Host de uma URL para logs (a URL completa de mídia dá acesso ao exame — PHI).
+const hostOf = (u) => { try { return new URL(u).host; } catch { return '(url inválida)'; } };
+
 // Labels ÚNICOS por caso: dois anexos legendados "Hemograma" seriam
 // indistinguíveis nas listas do contexto E quebrariam a remoção por valor em
 // enforceMediaBudget (o indexOf em degradedFiles poderia tirar o aviso do
@@ -143,7 +146,8 @@ export async function runTriage({ patientName, surgeryType, anamnesis, media }) 
         results[n] = { label, url: md.url, block: await downloadMediaBlock(md.url) };
       } catch (e) {
         results[n] = { label, err: e.message };
-        console.error('[triage] mídia falhou:', md.url, e.message);
+        // Só o host no log (D-004): a URL completa dá acesso temporário ao exame.
+        console.error('[triage] mídia falhou:', hostOf(md.url), e.message);
       }
     }
   }
