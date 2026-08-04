@@ -25,7 +25,8 @@ export function isSeparator(line) {
 //     PRÉ-ANESTÉSICA*", com asteriscos e caixa alta — a ficha não tem asteriscos)
 const BOT_MARKERS = [
   '*AVALIAÇÃO PRÉ-ANESTÉSICA*',                     // cabeçalho do laudo (negrito)
-  '*STATUS FINAL:*',                                // status do laudo (negrito)
+  '*STATUS FINAL:*', '📌 *STATUS:*',                // status do laudo (negrito)
+  '🔧 *VERIFICAÇÃO AUTOMÁTICA*', 'checagem(ns) OK', // relatório do /resetar
   'Apoio à decisão. Não substitui avaliação médica', // rodapé do laudo
   '🔍 Verificando casos', '🔍 Buscando mensagens',
   'caso(s) novo(s). Iniciando', '⏳ Analisando caso', '✅ Análise concluída',
@@ -35,6 +36,12 @@ const BOT_MARKERS = [
   '🤖 ANESTBOT', '🔪 CIRURGIAS CADASTRADAS', '📊 LIMITES / VALORES',
   '📊 Status do grupo', '📝 Instruções adicionais', '📝 Nenhuma instrução',
   'Estado do grupo apagado', 'arquivo(s) sem URL', 'arquivo(s) com problema',
+  '✅ Instruções adicionais', '✅ Cirurgia "', '✅ Limite "', '🗑️ "',
+  'Nenhuma cirurgia cadastrada', 'Nenhum limite cadastrado',
+  // "reenviar os exames" sozinho seria genérico demais (uma orientação clínica
+  // humana pode conter a frase) — usamos a frase COMPLETA e exclusiva do bot.
+  'rejeitado pela IA', 'reenviar os exames em melhor qualidade', 'Análise indisponível no momento',
+  '📎 Exame recebido após',
 ];
 function isBotMessage(body) {
   return !!body && BOT_MARKERS.some((s) => body.includes(s));
@@ -48,7 +55,10 @@ function isLaudo(body) {
 // ── extração de nome e cirurgia ─────────────────────────────────────────────
 export function extractName(texts) {
   const j = texts.join('\n');
-  const m = j.match(/Paciente[:\s]+([^\n,]+)/i)
+  const m = j.match(/Paciente(?:\s*\(a\))?\s*[:\-]\s*([^\n,]+)/i)
+        || j.match(/Paciente[:\s]+([^\n,]+)/i)
+        || j.match(/\bPc?te\.?\s*[:\-]\s*([^\n,]+)/i)     // Pcte: / Pte:
+        || j.match(/\bPac\.?\s*[:\-]\s*([^\n,]+)/i)        // Pac:
         || j.match(/Nome\s+completo[:\s]+([^\n,]+)/i)
         || j.match(/Nome[:\s]+([^\n,]+)/i);
   return m ? m[1].trim() : '';
@@ -56,7 +66,7 @@ export function extractName(texts) {
 
 export function extractSurgery(texts) {
   const j = texts.join('\n');
-  const stop = /(?=\n\s*(?:🔷|🔹|🔶|Data\b|Telefone\b|Observ|Paciente\b|\d️?⃣|[-_—━─]{3,})|\n\n|$)/;
+  const stop = /(?=\n\s*(?:🔷|🔹|🔶|Data\b|Telefone\b|Observ|Paciente\b|Cirurgi[ãa]o\b|Anestesista\b|Conv[êe]nio\b|Hospital\b|Peso\b|Altura\b|Idade\b|ASA\b|\d️?⃣|[-_—━─]{3,})|\n\n|$)/;
   const field = (label) => new RegExp(`${label}\\s*[:\\-：]\\s*([\\s\\S]{3,180}?)${stop.source}`, 'i');
   const m = j.match(field('Procedimento'))
         || j.match(field('Cirurgia\\s+programada'))
@@ -132,14 +142,22 @@ export function splitIntoCases(messages, processedIds = new Set()) {
     if (opens) { pushCurrent(); current = newCase(); }
 
     if (m.type !== 'chat') {
-      // Mídia: só entra se há caso aberto.
+      // Mídia: entra se há caso aberto. Mídia ADOTADA (chegou antes do xxxx e o
+      // caso abriu/fechou na mesma mensagem) tem timestamp igual ao do fechamento
+      // — anexa ao último caso recém-fechado (janela de 1s, nunca a casos antigos).
       if (current) addContent(m, m.caption || '', current);
+      else {
+        const last = cases[cases.length - 1];
+        if (last && !last._alreadyAnalyzed && typeof last._closedTs === 'number' && (m.timestamp || 0) <= last._closedTs + 1) {
+          addContent(m, m.caption || '', last);
+        }
+      }
     } else if (inner) {
       if (current) addContent({ ...m, type: 'chat' }, inner, current);
       // fora de bloco → ignorado (regra absoluta)
     }
 
-    if (closes) pushCurrent();
+    if (closes) { if (current) current._closedTs = m.timestamp || 0; pushCurrent(); }
   }
   pushCurrent();
 

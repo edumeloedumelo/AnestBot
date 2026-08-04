@@ -15,11 +15,11 @@ xxxx                          ← abre o caso
 
 | Pasta | Conteúdo |
 |---|---|
-| **[`anestbot2/`](anestbot2/)** | ✅ **ANESTBOT (versão atual, em produção)** — arquitetura webhook-first. Comece por aqui. ⚠️ A versão em produção vive no branch **`claude/whatsapp-medical-bot-d2ewp5`** — a cópia neste `main` está desatualizada. |
+| **[`anestbot2/`](anestbot2/)** | ✅ **ANESTBOT (versão atual, em produção)** — arquitetura webhook-first. Comece por aqui. |
 | `bot/` | Versão 1.0 (legado, desativada) — mantida só como histórico. |
 | demais pastas | Protótipos antigos sem relação com o bot (app Base44, etc.). |
 
-Toda a documentação de arquitetura, deploy (Railway + UltraMsg) e comandos está no **[README do `anestbot2/`](https://github.com/edumeloedumelo/AnestBot/blob/claude/whatsapp-medical-bot-d2ewp5/anestbot2/README.md)** (branch de produção).
+Toda a documentação de arquitetura, deploy (Railway + UltraMsg) e comandos está no **[README do `anestbot2/`](anestbot2/README.md)**.
 
 ## Destaques da arquitetura atual
 

@@ -15,6 +15,7 @@ const STORE_PATH = path.join(STATE_DIR, 'anestbot2-store.json');
 
 // Limites para o armazenamento não crescer infinito.
 const MAX_MESSAGES_PER_CHAT = 800;   // mensagens recentes guardadas por grupo
+const MAX_MESSAGES_HARD_CAP = 3000;  // teto duro com caso ABERTO (nunca cortar caso em andamento)
 const MAX_PROCESSED_IDS = 4000;      // ids de mensagens já analisadas por grupo
 const MAX_RECENT_CASES = 30;         // casos recentes p/ retry cirúrgico (/resetar)
 
@@ -54,6 +55,94 @@ function chat(chatId) {
   return c;
 }
 
+// ── eco do próprio bot ──────────────────────────────────────────────────────
+// Tudo que o bot ENVIA é registrado aqui; quando a mesma mensagem volta pelo
+// webhook (message_create/fromMe) ela é reconhecida e NÃO entra como conteúdo
+// de caso — mesmo que um caso esteja aberto no momento.
+const MAX_BOT_TEXTS = 80;
+const botKey = (t) => (t || '').trim().slice(0, 128);
+
+export function recordBotText(chatId, text) {
+  const k = botKey(text);
+  if (!chatId || !k) return;
+  const c = chat(chatId);
+  if (!Array.isArray(c.botTexts)) c.botTexts = [];
+  c.botTexts.push(k);
+  c.botTexts = c.botTexts.slice(-MAX_BOT_TEXTS);
+  save();
+}
+export function isBotText(chatId, body) {
+  const k = botKey(body);
+  return !!k && (db[chatId]?.botTexts || []).includes(k);
+}
+
+// ── mídia órfã (chegou ANTES do xxxx) ───────────────────────────────────────
+// A UltraMsg pode entregar a mídia antes do texto que abre o caso (webhook
+// assíncrono), ou a equipe anexa os exames antes de colar o card. Em vez de
+// perder o exame, ele fica pendente e é ADOTADO quando um caso abrir logo em
+// seguida (janela de 120s) — nunca mistura com casos antigos já fechados.
+const PENDING_WINDOW_S = 120;
+const MAX_PENDING = 20;
+
+function isKnownId(c, id) {
+  return c.messages.some((m) => m.id === id) || c.processed.includes(id);
+}
+
+export function pushPendingMedia(chatId, msg) {
+  if (!chatId || !msg?.id) return;
+  const c = chat(chatId);
+  if (isKnownId(c, msg.id)) return; // já no histórico/analisada — nunca re-adotar
+  if (!Array.isArray(c.pendingMedia)) c.pendingMedia = [];
+  if (!c.pendingMedia.some((p) => p.id === msg.id)) c.pendingMedia.push(msg);
+  c.pendingMedia = c.pendingMedia.slice(-MAX_PENDING);
+  save();
+}
+
+// Adota as mídias pendentes recentes para o caso que acabou de abrir e descarta
+// as antigas. NUNCA adota: ids já conhecidos (reentrega do webhook) nem mídia
+// chegada logo após um ❌❌❌❌ (pertence ao caso fechado, não ao próximo).
+export function adoptPendingMedia(chatId, openerTs) {
+  const c = chat(chatId);
+  if (!Array.isArray(c.pendingMedia) || c.pendingMedia.length === 0) return 0;
+  const closed = c.lastClosedTs || 0;
+  const fresh = c.pendingMedia.filter((p) =>
+    (p.timestamp || 0) >= openerTs - PENDING_WINDOW_S &&
+    !isKnownId(c, p.id) &&
+    !(closed && (p.timestamp || 0) >= closed && (p.timestamp || 0) - closed <= PENDING_WINDOW_S));
+  c.pendingMedia = [];
+  for (const p of fresh) {
+    // Timestamp ajustado para o instante da abertura: ordena DEPOIS do xxxx
+    // (o _seq de inserção desempata a favor da mídia, appendada agora).
+    appendMessage(chatId, { ...p, timestamp: Math.max(p.timestamp || 0, openerTs) });
+  }
+  save();
+  return fresh.length;
+}
+
+// Timestamp do último fechamento (❌❌❌❌) do grupo.
+export function lastClosedTime(chatId) {
+  return db[chatId]?.lastClosedTs || 0;
+}
+
+// Estado do "portão" de captura: true = há um caso aberto (xxxx sem ❌❌❌❌).
+// Persistente — sobrevive a restarts/redeploys no meio de um caso.
+export function isCaseOpen(chatId) {
+  return !!db[chatId]?.caseOpen;
+}
+export function setCaseOpen(chatId, open) {
+  const c = chat(chatId);
+  if (!!c.caseOpen === !!open) return;
+  c.caseOpen = !!open;
+  save();
+}
+
+// Registra o instante de um ❌❌❌❌ (mesmo quando abre e fecha na mesma mensagem).
+export function recordCaseClosed(chatId, ts) {
+  const c = chat(chatId);
+  c.lastClosedTs = ts || Math.floor(Date.now() / 1000);
+  save();
+}
+
 // Grava uma mensagem normalizada. Deduplica por id (o webhook pode reenviar).
 // Atualiza a mensagem se ela já existe (ex.: mídia que chega depois do texto).
 export function appendMessage(chatId, msg) {
@@ -68,8 +157,12 @@ export function appendMessage(chatId, msg) {
   } else {
     // O store atribui o _seq (fonte única) — ignora qualquer _seq do chamador.
     c.messages.push({ ...msg, _seq: seqCounter++ });
-    if (c.messages.length > MAX_MESSAGES_PER_CHAT) {
-      c.messages = c.messages.slice(-MAX_MESSAGES_PER_CHAT);
+    // Com caso ABERTO não aplicamos o cap normal: cortaria silenciosamente o
+    // início do próprio caso em andamento (inclusive o card da anamnese).
+    // Fica só o teto duro de segurança contra crescimento infinito.
+    const cap = c.caseOpen ? MAX_MESSAGES_HARD_CAP : MAX_MESSAGES_PER_CHAT;
+    if (c.messages.length > cap) {
+      c.messages = c.messages.slice(-cap);
     }
   }
   save();
@@ -124,6 +217,55 @@ export function retryRecentCases(chatId, n = 1) {
   c.recentCases = c.recentCases.slice(0, c.recentCases.length - targets.length);
   save();
   return { retried: targets.length, patientNames: targets.map((t) => t.patientName).filter(Boolean) };
+}
+
+// Verificação/correção automática do estado do grupo (chamada pelo /resetar).
+// Corrige apenas problemas SEGUROS de corrigir; devolve a lista do que foi feito.
+export function selfHealChat(chatId) {
+  const fixes = [];
+  const c = db[chatId];
+  if (!c) return fixes;
+
+  // Estruturas ausentes/corrompidas → recria.
+  for (const k of ['messages', 'processed', 'recentCases']) {
+    if (!Array.isArray(c[k])) { c[k] = []; fixes.push(`Estrutura "${k}" corrompida — recriada`); }
+  }
+
+  // Mensagens sem id não podem ser deduplicadas → remove.
+  const before = c.messages.length;
+  c.messages = c.messages.filter((m) => m && m.id);
+  if (c.messages.length < before) fixes.push(`${before - c.messages.length} mensagem(ns) sem id removida(s)`);
+
+  // Ids duplicados → mantém a mais completa (a de maior corpo/mídia).
+  const byId = new Map();
+  for (const m of c.messages) {
+    const prev = byId.get(m.id);
+    if (!prev) { byId.set(m.id, m); continue; }
+    const score = (x) => (x.body || '').length + (x.mediaUrl ? 1000 : 0);
+    byId.set(m.id, score(m) >= score(prev) ? { ...prev, ...m, _seq: prev._seq } : prev);
+  }
+  if (byId.size < c.messages.length) {
+    fixes.push(`${c.messages.length - byId.size} mensagem(ns) duplicada(s) mescladas`);
+    c.messages = [...byId.values()];
+  }
+
+  // Timestamps inválidos (NaN/negativos) quebram a ordenação → herda o timestamp
+  // da mensagem anterior (em ordem de chegada/_seq), preservando a posição.
+  let badTs = 0;
+  let lastGood = 0;
+  for (const m of [...c.messages].sort((a, b) => (a._seq ?? 0) - (b._seq ?? 0))) {
+    if (typeof m.timestamp !== 'number' || !isFinite(m.timestamp) || m.timestamp < 0) { m.timestamp = lastGood; badTs++; }
+    else lastGood = m.timestamp;
+  }
+  if (badTs) fixes.push(`${badTs} timestamp(s) inválido(s) corrigido(s)`);
+
+  // Ids de processed inválidos → remove.
+  const pBefore = c.processed.length;
+  c.processed = c.processed.filter((id) => typeof id === 'string' && id);
+  if (c.processed.length < pBefore) fixes.push(`${pBefore - c.processed.length} id(s) inválido(s) removido(s) do dedup`);
+
+  if (fixes.length) save();
+  return fixes;
 }
 
 // /resetartudo — apaga TODO o estado do grupo (histórico + dedup).

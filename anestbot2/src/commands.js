@@ -5,9 +5,36 @@ import { splitIntoCases, extractName, extractSurgery } from './parser.js';
 import { runTriage } from './triage.js';
 import { formatReply } from './format.js';
 import { sendText } from './ultramsg.js';
+import { runSelfCheck, formatSelfCheck } from './selfcheck.js';
 
 const PREFIX = process.env.TRIGGER_PREFIX || '/';
 const analyzing = new Set(); // lock por grupo
+
+// Prazo do watchdog por caso — ESCALA com o nº de exames, nunca fixo.
+// Cada exame pode custar até ~130s no pior caso legítimo (download 60s +
+// compressão/normalização 60s + margem), e a chamada única ao Claude no fim
+// custa até 120s — um valor fixo baixo dispararia "travou" em casos normais
+// com PDFs grandes (achado real de 2 auditorias independentes). O teto (15min)
+// cobre o pior caso legítimo de um caso GRANDE (15 exames em pool de 3 ≈ 5
+// rodadas de 120s + recompressões do orçamento + Claude) e ainda garante que
+// um caso realmente travado libera o grupo em tempo finito.
+const WATCHDOG_BASE_MS = 130_000;      // 1 chamada à API (120s) + margem
+const WATCHDOG_PER_FILE_MS = 130_000;  // download (60s) + compressão (60s) + margem
+const WATCHDOG_CAP_MS = 900_000;       // 15 min — teto absoluto
+export function caseWatchdogMs(mediaCount = 0) {
+  return Math.min(WATCHDOG_CAP_MS, WATCHDOG_BASE_MS + WATCHDOG_PER_FILE_MS * mediaCount);
+}
+
+// Watchdog: NENHUMA causa de travamento — conhecida ou futura — pode prender
+// o lock do grupo para sempre. Se um caso não terminar neste prazo, ele falha
+// com erro claro e o /analisar segue para o próximo caso / libera o grupo.
+export function withWatchdog(promise, ms) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`travou (demorou demais). Rode ${PREFIX}analisar de novo`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
 
 const ADMINS = (process.env.ADMIN_NUMBERS || '').split(',').map((s) => s.trim().replace(/\D/g, '')).filter(Boolean);
 
@@ -20,7 +47,10 @@ function parse(body) {
   return { cmd: (sp === -1 ? t : t.slice(0, sp)).toLowerCase(), args: sp === -1 ? '' : t.slice(sp + 1).trim() };
 }
 function senderNumber(msg) { return (msg.author || msg.from || '').replace(/@.*/, '').replace(/\D/g, ''); }
-function isAdmin(msg) { return ADMINS.length === 0 || ADMINS.includes(senderNumber(msg)); }
+function isAdmin(msg) {
+  if (msg && msg.fromMe) return true; // o número conectado à UltraMsg é sempre admin
+  return ADMINS.length === 0 || ADMINS.includes(senderNumber(msg));
+}
 function requireAdmin(chatId, msg, fn) {
   if (!isAdmin(msg)) return sendText(chatId, '⛔ Você não tem permissão para este comando.');
   return fn();
@@ -81,11 +111,11 @@ async function doAnalisar(chatId) {
         console.error(`[analisar] caso ${label}: paciente="${patientName}" cirurgia="${surgeryType}" textos=${kase.texts.length} mídia=${withUrl}`);
         console.error(`[analisar] TEXTOS:\n${kase.texts.join('\n---\n').slice(0, 1500)}`);
 
-        const { fullText, errors } = await runTriage({
+        const { fullText, errors } = await withWatchdog(runTriage({
           patientName, surgeryType,
           anamnesis: kase.texts.join('\n\n'),
           media: kase.media,
-        });
+        }), caseWatchdogMs(withUrl));
 
         if (total > 1) await sendText(chatId, `━━━━━━━━━━━━━━━━━━━━\n📁 CASO ${label}/${total}\n━━━━━━━━━━━━━━━━━━━━`);
         await sendText(chatId, formatReply(fullText));
@@ -110,12 +140,29 @@ async function doStatus(chatId) {
   return sendText(chatId, `📊 Status do grupo:\n• Última mensagem recebida: ${d}\n\nUse ${PREFIX}analisar para rodar a triagem.`);
 }
 
+// /resetar [N] — 3 passos automáticos:
+//   1. Reabre APENAS o(s) último(s) caso(s) — os antigos NUNCA são reanalisados.
+//   2. Dispara a verificação automática de erros (store/config/volume/API) e
+//      corrige o que for corrigível, comunicando cada correção.
+//   3. Reanalisa o caso reaberto sozinho — sem precisar mandar /analisar de novo.
 async function doRetry(chatId, args) {
+  if (analyzing.has(chatId)) return sendText(chatId, '⏳ Já há uma análise em andamento neste grupo. Aguarde.');
   const n = Math.max(1, Math.min(30, parseInt(args, 10) || 1));
   const { retried, patientNames } = retryRecentCases(chatId, n);
-  if (retried === 0) return sendText(chatId, '⚠️ Nenhum caso recente para corrigir.');
-  const names = patientNames.length ? `\n${patientNames.map((x) => `• ${x}`).join('\n')}` : '';
-  return sendText(chatId, `🔄 ${retried} caso(s) reaberto(s) para correção:${names}\n\nRode ${PREFIX}analisar para reprocessá-los. Casos antigos não serão tocados.`);
+
+  if (retried > 0) {
+    const names = patientNames.length ? `\n${patientNames.map((x) => `• ${x}`).join('\n')}` : '';
+    await sendText(chatId, `🔄 ${retried} último(s) caso(s) reaberto(s):${names}\n\n_Casos antigos permanecem intactos._`);
+  } else {
+    await sendText(chatId, '⚠️ Nenhum caso recente para reabrir. Rodando só a verificação automática...');
+  }
+
+  // Gatilho: verificação automática de erros + correção + comunicação.
+  const report = await runSelfCheck(chatId);
+  await sendText(chatId, formatSelfCheck(report));
+
+  // Reanalisa automaticamente o caso reaberto.
+  if (retried > 0) return doAnalisar(chatId);
 }
 
 function listSurgeries(chatId) {
@@ -161,7 +208,7 @@ function delLimit(chatId, args) {
 }
 
 function helpText() {
-  return `🤖 ANESTBOT 2.0 — AVALIAÇÃO PRÉ-ANESTÉSICA
+  return `🤖 ANESTBOT — AVALIAÇÃO PRÉ-ANESTÉSICA
 
 *COMO ENVIAR UM CASO:*
 1️⃣ *xxxx* (abre o caso)
@@ -177,7 +224,7 @@ ${PREFIX}status — última atividade do grupo
 ${PREFIX}cirurgias — lista cirurgias/exames exigidos
 ${PREFIX}limites — valores de referência
 ${PREFIX}prompt — instruções extras ativas
-${PREFIX}resetar [N] — reprocessa o(s) último(s) N caso(s)
+${PREFIX}resetar [N] — reabre SÓ o(s) último(s) caso(s) + verificação automática de erros + reanálise
 ${PREFIX}ajuda — esta mensagem
 
 ADMIN: ${PREFIX}addcirurgia · ${PREFIX}delcirurgia · ${PREFIX}addlimite · ${PREFIX}dellimite · ${PREFIX}setprompt · ${PREFIX}limparprompt · ${PREFIX}resetartudo

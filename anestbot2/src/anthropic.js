@@ -29,3 +29,25 @@ export async function analyze(system, contentBlocks) {
   const result = await res.json();
   return result.content?.[0]?.text || '';
 }
+
+// Ping mínimo (1 token) para a verificação automática confirmar que a API responde.
+export async function ping() {
+  if (!API_KEY) throw new Error('ANTHROPIC_API_KEY não configurada');
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15_000);
+  let res;
+  try {
+    res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      signal: controller.signal,
+      headers: { 'Content-Type': 'application/json', 'x-api-key': API_KEY, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: MODEL, max_tokens: 1, messages: [{ role: 'user', content: 'ok' }] }),
+    });
+  } catch (e) {
+    if (e.name === 'AbortError') throw new Error('timeout (15s)');
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+}
