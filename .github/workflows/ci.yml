@@ -39,18 +39,33 @@ jobs:
   platform:
     name: apps/api (plataforma)
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: anest
+          POSTGRES_PASSWORD: anest
+          POSTGRES_DB: anestbot_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U anest"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL_TEST: postgres://anest:anest@localhost:5432/anestbot_test
+    defaults:
+      run: { working-directory: apps/api }
     steps:
       - uses: actions/checkout@v4
-      - name: Detecta plataforma
-        id: has
-        run: echo "api=$([ -f apps/api/package.json ] && echo yes || echo no)" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@v4
-        if: steps.has.outputs.api == 'yes'
-        with: { node-version: 20 }
-      - name: Instala, typecheck e testa
-        if: steps.has.outputs.api == 'yes'
-        working-directory: apps/api
-        run: |
-          npm ci
-          npm run typecheck
-          npm test
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
+      - name: Instalação reprodutível
+        run: npm ci
+      - name: Typecheck (TypeScript estrito)
+        run: npm run typecheck
+      - name: Testes de integração (Postgres real)
+        run: npm test
+      - name: Auditoria de dependências
+        run: npm audit --audit-level=high

@@ -1,0 +1,32 @@
+{
+  "name": "@anestbot/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "ANESTBOT Platform — API multi-tenant (TypeScript estrito + PostgreSQL)",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "migrate": "tsx src/migrate.ts",
+    "seed": "tsx scripts/seed.ts",
+    "test": "bash scripts/testdb.sh",
+    "test:only": "tsx --test test/*.test.ts"
+  },
+  "dependencies": {
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
+    "dotenv": "^16.4.5",
+    "express": "^5.2.1",
+    "pg": "^8.16.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.0",
+    "@types/pg": "^8.15.0",
+    "tsx": "^4.19.0",
+    "typescript": "~5.9.3"
+  }
+}

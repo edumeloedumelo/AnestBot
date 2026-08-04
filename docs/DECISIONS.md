@@ -118,3 +118,48 @@ por um runner mínimo auditável.
 **Motivo:** tecnologias maduras, superfícies pequenas, mesmas primitivas já em
 produção no repo. NestJS/ORMs podem entrar depois por ADR se a complexidade
 justificar.
+
+## D-010 · 04/08/2026 · Versões da plataforma: Express 5, TypeScript ~5.9, Ajv 8, pg 8
+
+**Decisão:** Express **5.2** (rejeições em handlers async propagam ao error
+handler central — elimina classe inteira de "request pendurado"); TypeScript
+**~5.9.3** (linha madura; TS 7/tsgo recém saiu do RC — cedo demais para
+produção clínica); `pg` 8 e Ajv 8 (padrões de fato). O bot permanece em
+Express 4 (produção intocada).
+
+## D-011 · 04/08/2026 · Autenticação da API: Bearer tokens opacos, sem cookies (por ora)
+
+**Decisão:** sessões são tokens opacos (32 bytes aleatórios) com **apenas o
+sha256 armazenado**, expiração de 14 dias e revogação (logout/logout-all).
+Transporte por `Authorization: Bearer` — sem cookies, não há superfície de
+CSRF. Senhas com scrypt (N=16384, r=8, p=1, salt 16B, verify constant-time).
+MFA TOTP (RFC 6238) implementado em node:crypto, sem dependência.
+Quando o PWA precisar de cookie httpOnly, entra por ADR com CSRF token.
+
+## D-012 · 04/08/2026 · Testes de integração com PostgreSQL REAL efêmero
+
+**Decisão:** `apps/api/scripts/testdb.sh` sobe um cluster PostgreSQL 16 real
+descartável (initdb + pg_ctl em socket unix; como root usa o usuário dedicado
+`pguser`) e roda a suíte com `node:test`. No CI, um service container
+postgres:16 via `DATABASE_URL_TEST`. Sem emuladores (pg-mem descartado): os
+triggers de imutabilidade e o comportamento real de constraints SÃO o que os
+testes provam. (Supera o risco R-12, que previa fallback para pg-mem.)
+
+## D-013 · 04/08/2026 · Evento de chat não pareado responde 409 (dead-letter + replay)
+
+**Decisão:** o inbox rejeita com **409** evento de `chat_ref` sem pareamento.
+No emissor, 4xx ≠ 408/429 é erro permanente ⇒ dead-letter imediata. O fluxo
+operacional é: parear o grupo no app → `/fila reenviar` no bot → eventos
+reprocessam (mesmos `event_id`, dedup no receptor).
+
+**Alternativa rejeitada:** aceitar e guardar "órfão" sem tenant — criaria
+depósito de dados clínicos sem dono/escopo (risco LGPD) e mascararia erro de
+configuração.
+
+## D-014 · 04/08/2026 · Imutabilidade por TRIGGER no banco
+
+**Decisão:** `audit_logs`, `medical_reviews`, `overrides` e `case_analyses`
+têm trigger `forbid_mutation` que bloqueia UPDATE/DELETE no próprio Postgres.
+Reanálise = nova linha com `seq` incrementado; correção de revisão = nova
+revisão. Consequência aceita: DELETE de caso com análise falha (bloqueado) —
+apagamento LGPD será rotina dedicada com autorização (marco posterior).

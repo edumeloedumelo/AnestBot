@@ -1,0 +1,44 @@
+// Matriz EXPLÍCITA de permissões por papel (seção 11 do prompt-mestre).
+// A secretaria acessa apenas o operacional: lista/status/pendências/contatos —
+// NUNCA anamnese, parecer ou análises (campos clínicos).
+export type Role = 'owner' | 'admin' | 'anesthesiologist' | 'secretary' | 'viewer';
+
+export type Permission =
+  | 'team:manage'          // renomear equipe, papéis, remover membros
+  | 'invite:create'
+  | 'pairing:manage'       // vincular grupo WhatsApp ao tenant
+  | 'patient:read'
+  | 'patient:write'
+  | 'case:read'            // metadados operacionais do caso
+  | 'case:read_clinical'   // anamnese, parecer, análises
+  | 'case:manage_pending'  // criar/resolver pendências
+  | 'case:review'          // revisão médica (exige CRM no perfil)
+  | 'case:override'        // decisão por cima do parecer (exige CRM + motivo)
+  | 'audit:read';
+
+const MATRIX: Record<Role, ReadonlySet<Permission>> = {
+  owner: new Set<Permission>([
+    'team:manage', 'invite:create', 'pairing:manage', 'patient:read', 'patient:write',
+    'case:read', 'case:read_clinical', 'case:manage_pending', 'case:review', 'case:override', 'audit:read',
+  ]),
+  admin: new Set<Permission>([
+    'team:manage', 'invite:create', 'pairing:manage', 'patient:read', 'patient:write',
+    'case:read', 'case:read_clinical', 'case:manage_pending', 'audit:read',
+  ]),
+  anesthesiologist: new Set<Permission>([
+    'patient:read', 'patient:write', 'case:read', 'case:read_clinical',
+    'case:manage_pending', 'case:review', 'case:override',
+  ]),
+  secretary: new Set<Permission>([
+    'patient:read', 'patient:write', 'case:read', 'case:manage_pending',
+  ]),
+  viewer: new Set<Permission>([
+    'patient:read', 'case:read', 'case:read_clinical',
+  ]),
+};
+
+export function can(role: Role, permission: Permission): boolean {
+  return MATRIX[role]?.has(permission) ?? false; // papel desconhecido ⇒ NEGA
+}
+
+export const ALL_ROLES: readonly Role[] = ['owner', 'admin', 'anesthesiologist', 'secretary', 'viewer'];

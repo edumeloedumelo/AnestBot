@@ -11,7 +11,8 @@
 - [x] Documentação operacional criada (CLAUDE.md, PROMPT-MESTRE, docs/*)
 - [x] **Marco 0 — baseline e proteção** ✅ (93 testes verdes; smoke test dos endpoints OK)
 - [x] **Marco 1 — integração confiável (outbox/HMAC/idempotência)** ✅ (107 testes verdes)
-- [ ] **Marco 2 — núcleo SaaS (API, tenants, RBAC, inbox)** ← EM ANDAMENTO
+- [x] **Marco 2 — núcleo SaaS (API, tenants, RBAC, inbox)** ✅ (30 testes de integração verdes em Postgres real)
+- [ ] **Marco 3 — prontuário anestésico** ← PRÓXIMO
 - [ ] Marco 2 — núcleo SaaS (monorepo, PostgreSQL, auth, tenants, RBAC)
 - [ ] Marco 3 — prontuário anestésico
 - [ ] Marco 4 — faturamento
@@ -57,18 +58,44 @@
   restart no meio → fila sobrevive), dead-letter/replay, timeout de rede,
   snapshot sem PHI. Suíte: **107/107 ✅**.
 
+## Marco 2 — entregue
+
+- `packages/database/migrations/001..003`: teams, users (com CRM/MFA),
+  memberships, sessions (hash), invites (uso único), whatsapp_links, patients,
+  patient_alerts, cases (máquina de estados + unique por correlação),
+  case_analyses (imutáveis, versionadas por seq), case_pending_items,
+  medical_reviews, overrides, consents, inbox_receipts, outbox_events,
+  audit_logs — imutabilidade por TRIGGER (D-014).
+- `apps/api` (TypeScript estrito, Express 5, pg, Ajv): auth completo
+  (registro→equipe owner, login com mensagem única + rate limit, sessões
+  opacas revogáveis, logout-all, MFA TOTP), RBAC com matriz explícita
+  (`src/rbac.ts`), convites com expiração/uso único, pareamento chat⇄tenant,
+  inbox `/internal/events` (raw body + HMAC 2 segredos + janela 300s + dedup +
+  processamento transacional + 409 sem pareamento), pacientes (dedup assistida,
+  alertas, trilha de acesso), casos (lista/detalhe com REDAÇÃO clínica p/
+  secretaria, pendências, revisão médica com CRM obrigatório, override com
+  motivo), dashboard agregado, auditoria append-only, /health /ready, headers
+  seguros, CORS allowlist, erro central sem vazamento.
+- `scripts/testdb.sh` (Postgres 16 REAL efêmero), `scripts/seed.ts` (sintético,
+  recusa banco não-vazio — validado), `.env.example`.
+- CI: job da plataforma com service container postgres:16 + typecheck + audit.
+- Testes (30, todos em Postgres real): cenários 1–7 do prompt-mestre cobertos —
+  tenant A→B (404), secretaria vs. campo clínico (redação comprovada), webhook
+  sem/errada/expirada assinatura (401), rotação de segredo, replay/duplicata
+  (1 caso só), payload 1MB (413), não pareado (409), imutabilidade por trigger,
+  máquina de estados não regride, CRM obrigatório, homônimos não fundidos,
+  auditoria sem conteúdo clínico, logs sem PHI.
+
 ## Próximo passo imediato
 
-Marco 2 — núcleo SaaS (`apps/api` + `packages/database`):
-1. Migrations PostgreSQL: teams, users, memberships, sessions, invites,
-   whatsapp_links, patients, cases, case_files, case_analyses,
-   case_pending_items, medical_reviews, overrides, audit_logs (append-only),
-   inbox_receipts, outbox_events, consents.
-2. API TypeScript estrito: auth (registro/login/sessões revogáveis), RBAC,
-   inbox `/internal/events` (HMAC + timestamp + dedup), casos/pacientes,
-   auditoria, dashboard mínimo.
-3. Testes: isolamento de tenant, RBAC, webhook sem assinatura/expirado/replay,
-   evento duplicado, secretaria vs. campo restrito.
+Marco 3 — prontuário anestésico (`apps/api` + migrations):
+1. Migration 004: anesthesia_records (pré/intra/pós), anesthesia_events,
+   vitals, record_addenda, signatures (hash sha256 do snapshot canônico),
+   record_templates versionados.
+2. Endpoints: criar registro a partir de caso, rascunho (draft), eventos/vitais,
+   assinatura (congela snapshot + hash; registro assinado imutável), adendos.
+3. Testes: registro assinado não pode ser alterado (cenário 14), adendo
+   rastreável, hash verificável.
 
 ## Decisões pendentes de humano (não bloqueiam os marcos atuais)
 

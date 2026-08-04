@@ -21,7 +21,7 @@ Atualizado: 04/08/2026 (Marco 0/1). Severidade: 🔴 alta · 🟠 média · 🟡
 |---|---|---|---|
 | R-10 | Outbox em arquivo no volume: perda do volume = perda de eventos não entregues | 🟠 | Aceito por ora (mesma garantia do store de produção). Replay manual documentado; a plataforma persiste tudo que recebeu (inbox) — janela de exposição é só a fila pendente. |
 | R-11 | Segredo HMAC compartilhado bot↔plataforma sem rotação automática | 🟠 | Suporte a 2 segredos ativos (primário + anterior) no receptor para rotação sem downtime; rotação é procedimento do runbook. |
-| R-12 | Ambiente desta sessão não tem Docker/Postgres real | 🟠 | Testes de integração do Marco 2 rodam com `pg-mem` (Postgres em memória) quando `DATABASE_URL` não existe; CI/dev com Postgres real usam a MESMA suíte via env. Registrado em BASELINE/STATUS — validar contra Postgres real antes de qualquer uso sério. |
+| R-12 | ~~Ambiente sem Postgres real para testes~~ | ✅ | **Resolvido**: o ambiente tem PostgreSQL 16; `scripts/testdb.sh` sobe cluster real efêmero (initdb+pg_ctl) e o CI usa service container. Nenhum emulador em uso (D-012). |
 | R-13 | Sessões/tokens da API: comprometimento de `SESSION_SECRET` | 🟠 | Sessões opacas com hash em banco (revogáveis); segredo só assina cookies/CSRF. Rotação via env. |
 | R-14 | LGPD: dados de saúde em desenvolvimento | 🔴 | Regra absoluta: seeds/testes/fixtures SÓ com dados sintéticos (nomes fictícios explícitos). Teste de CI procura padrões proibidos nos seeds. |
 
