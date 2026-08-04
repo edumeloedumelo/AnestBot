@@ -582,5 +582,17 @@ t('store: caso ABERTO nunca perde o início por cap de mensagens', () => {
   _s3.resetChat(cid);
 });
 
+
+// ── CASO 24: admin por número — tolerância de formato (incidente 04/08) ──────
+const _c4 = await import('../src/commands.js');
+t('numbersMatch: casa com/sem DDI e nunca por sufixo curto', () => {
+  assert.ok(_c4.numbersMatch('5583999999999', '5583999999999'), 'igual exato');
+  assert.ok(_c4.numbersMatch('5583999999999', '83999999999'), 'sem DDI casa');
+  assert.ok(_c4.numbersMatch('83999999999', '5583999999999'), 'simétrico');
+  assert.ok(!_c4.numbersMatch('5583999999999', '5511888888888'), 'número diferente nunca casa');
+  assert.ok(!_c4.numbersMatch('9999', '5583999999999'), 'sufixo curto (<8) nunca casa');
+  assert.ok(!_c4.numbersMatch('', '5583999999999'), 'vazio nunca casa');
+});
+
 console.log(`\n${fail === 0 ? '🎉' : '⚠️'} ${pass} passaram, ${fail} falharam`);
 process.exit(fail === 0 ? 0 : 1);

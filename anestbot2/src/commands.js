@@ -47,9 +47,20 @@ function parse(body) {
   return { cmd: (sp === -1 ? t : t.slice(0, sp)).toLowerCase(), args: sp === -1 ? '' : t.slice(sp + 1).trim() };
 }
 function senderNumber(msg) { return (msg.author || msg.from || '').replace(/@.*/, '').replace(/\D/g, ''); }
+// Comparação tolerante a formato: "5583999999999" cadastrado sem o DDI
+// ("83999999999") ou vice-versa ainda casa (sufixo, mínimo 8 dígitos para
+// nunca casar por coincidência de final curto).
+export function numbersMatch(a, b) {
+  if (!a || !b) return false;
+  if (a === b) return true;
+  if (Math.min(a.length, b.length) < 8) return false;
+  return a.endsWith(b) || b.endsWith(a);
+}
 function isAdmin(msg) {
   if (msg && msg.fromMe) return true; // o número conectado à UltraMsg é sempre admin
-  return ADMINS.length === 0 || ADMINS.includes(senderNumber(msg));
+  if (ADMINS.length === 0) return true;
+  const sender = senderNumber(msg);
+  return ADMINS.some((n) => numbersMatch(n, sender));
 }
 function requireAdmin(chatId, msg, fn) {
   if (!isAdmin(msg)) return sendText(chatId, '⛔ Você não tem permissão para este comando.');
