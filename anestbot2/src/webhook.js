@@ -4,6 +4,7 @@ import { appendMessage, isCaseOpen, setCaseOpen, isBotText, pushPendingMedia, ad
 import { isCaseOpener, isSeparator } from './parser.js';
 import { isCommand, handleCommand } from './commands.js';
 import { sendText } from './ultramsg.js';
+import { enqueueEvent } from './events.js';
 
 const LATE_MEDIA_WINDOW_S = 120;
 
@@ -151,7 +152,11 @@ export async function handleWebhook(payload) {
     setCaseOpen(chatId, nowOpen);
     // Só quando FECHA um caso real (aberto antes ou aberto nesta mensagem) —
     // um ❌❌❌❌ redundante não vira marco de fechamento (prescrição do coordenador).
-    if (closes && (wasOpen || opens)) recordCaseClosed(chatId, timestamp);
+    if (closes && (wasOpen || opens)) {
+      recordCaseClosed(chatId, timestamp);
+      // Marco 1: um caso real fechou ⇒ evento para a plataforma (no-op sem env).
+      enqueueEvent('case.received.v1', chatId, { closed_at: new Date(timestamp * 1000).toISOString() }, { correlationId: `${chatId}:${timestamp}` });
+    }
   }
 
   const hasContent = store && ((type === 'chat' && body) || isMedia);

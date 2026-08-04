@@ -702,5 +702,177 @@ t('fonte: format.js não loga o conteúdo do preâmbulo', () => {
   assert.ok(!/console\.[a-z]+\([^)]*pre\.slice/.test(s), 'log de pre.slice(...) é proibido');
 });
 
+// ── CASO 29 (Marco 1): envelope, assinatura HMAC e política de retry ─────────
+const _ev = await import('../src/events.js');
+const _crypto = await import('crypto');
+const CFG_ON = { url: 'https://plataforma.test/internal/events', secret: 'segredo-hmac', enabled: true, maxAttempts: 60, sendTimeoutMs: 5000 };
+
+t('envelope: shape do contrato (uuid, tipo versionado, UTC, source, correlação)', () => {
+  const ev = _ev.makeEnvelope('case.received.v1', 'g1@g.us', { closed_at: 'x' }, { correlationId: 'g1@g.us:123' });
+  assert.match(ev.event_id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+  assert.equal(ev.event_type, 'case.received.v1');
+  assert.equal(ev.schema_version, 1);
+  assert.ok(!Number.isNaN(Date.parse(ev.occurred_at)), 'occurred_at ISO parseável');
+  assert.ok(ev.occurred_at.endsWith('Z'), 'occurred_at em UTC');
+  assert.equal(ev.source, 'anestbot2');
+  assert.equal(ev.correlation_id, 'g1@g.us:123');
+  assert.equal(ev.chat_ref, 'g1@g.us');
+  assert.deepEqual(ev.payload, { closed_at: 'x' });
+});
+t('assinatura: HMAC-SHA256(secret, ts.body) confere e headers têm v1=', () => {
+  const ev = _ev.makeEnvelope('case.received.v1', 'g1@g.us', {});
+  const body = JSON.stringify(ev);
+  const h = _ev.buildHeaders(ev, body, 'segredo-hmac', 1754300000000);
+  assert.equal(h['X-Anestbot-Timestamp'], '1754300000');
+  const expected = _crypto.createHmac('sha256', 'segredo-hmac').update(`1754300000.${body}`).digest('hex');
+  assert.equal(h['X-Anestbot-Signature'], `v1=${expected}`);
+  assert.equal(h['X-Anestbot-Event-Id'], ev.event_id);
+});
+t('veredicto de entrega: 2xx entrega · 408/429/5xx retry · 4xx dead', () => {
+  assert.equal(_ev.deliveryVerdict(200), 'delivered');
+  assert.equal(_ev.deliveryVerdict(204), 'delivered');
+  assert.equal(_ev.deliveryVerdict(408), 'retry');
+  assert.equal(_ev.deliveryVerdict(429), 'retry');
+  assert.equal(_ev.deliveryVerdict(500), 'retry');
+  assert.equal(_ev.deliveryVerdict(503), 'retry');
+  assert.equal(_ev.deliveryVerdict(400), 'dead');
+  assert.equal(_ev.deliveryVerdict(401), 'dead');
+  assert.equal(_ev.deliveryVerdict(413), 'dead');
+});
+t('backoff: exponencial com teto de 10min e jitter limitado a +30%', () => {
+  const noJitter = () => 0;
+  assert.equal(_ev.backoffMs(1, noJitter), 5000);
+  assert.equal(_ev.backoffMs(2, noJitter), 10000);
+  assert.equal(_ev.backoffMs(3, noJitter), 20000);
+  assert.equal(_ev.backoffMs(20, noJitter), 600000, 'teto 10min');
+  const withJitter = _ev.backoffMs(1, () => 0.9999);
+  assert.ok(withJitter > 5000 && withJitter <= 6500, `jitter dentro de +30% (veio ${withJitter})`);
+});
+
+// ── CASO 30 (Marco 1): outbox desligado é no-op absoluto ─────────────────────
+await (async () => {
+  _ev._resetForTests();
+  const offCfg = { url: '', secret: '', enabled: false, maxAttempts: 60, sendTimeoutMs: 5000 };
+  t('outbox desligado: enqueue vira no-op (null) e nada é processado', () => {
+    assert.equal(_ev.enqueueEvent('case.received.v1', 'g@g.us', {}, { cfg: offCfg }), null);
+    assert.equal(_ev.outboxSnapshot().queued, 0);
+  });
+  const r = await _ev.processOutboxOnce({ cfg: offCfg, fetchImpl: () => { throw new Error('não deveria chamar'); } });
+  t('outbox desligado: processOutboxOnce é idle sem tocar a rede', () => assert.equal(r, 'idle'));
+})();
+
+// ── CASO 31 (Marco 1): ACEITE — API fora do ar NÃO perde nem duplica eventos ─
+await (async () => {
+  _ev._resetForTests();
+  const delivered = [];
+  let apiUp = false;
+  const fetchMock = async (_url, opts) => {
+    if (!apiUp) throw new Error('ECONNREFUSED (plataforma fora do ar)');
+    delivered.push(JSON.parse(opts.body).event_id);
+    return { status: 200 };
+  };
+  const id1 = _ev.enqueueEvent('case.received.v1', 'g@g.us', { n: 1 }, { cfg: CFG_ON });
+  const id2 = _ev.enqueueEvent('case.analysis_started.v1', 'g@g.us', { n: 2 }, { cfg: CFG_ON });
+  const id3 = _ev.enqueueEvent('case.analysis_completed.v1', 'g@g.us', { n: 3 }, { cfg: CFG_ON });
+
+  // Plataforma FORA: várias rodadas de retry — nada entregue, nada perdido.
+  let now = 1_000_000;
+  for (let i = 0; i < 5; i++) {
+    const r = await _ev.processOutboxOnce({ cfg: CFG_ON, fetchImpl: fetchMock, now, rand: () => 0 });
+    assert.ok(r === 'retry' || r === 'waiting', `com API fora só há retry/waiting (veio ${r})`);
+    now += 700_000; // além de qualquer backoff (teto 10min)
+  }
+  t('API fora 30min: eventos permanecem na fila (0 perdidos, 0 entregues)', () => {
+    assert.equal(_ev.outboxSnapshot().queued, 3);
+    assert.equal(delivered.length, 0);
+  });
+
+  // Simula RESTART do processo no meio da indisponibilidade (durabilidade).
+  _ev._reloadForTests();
+  t('restart durante a indisponibilidade: fila sobrevive no disco', () => {
+    assert.equal(_ev.outboxSnapshot().queued, 3);
+  });
+
+  // Plataforma VOLTA: entrega em ordem, cada evento exatamente uma vez.
+  apiUp = true;
+  for (let i = 0; i < 10 && _ev.outboxSnapshot().queued > 0; i++) {
+    await _ev.processOutboxOnce({ cfg: CFG_ON, fetchImpl: fetchMock, now, rand: () => 0 });
+    now += 1000;
+  }
+  t('API religada: entrega em ORDEM e exatamente UMA vez por evento', () => {
+    assert.deepEqual(delivered, [id1, id2, id3]);
+    assert.equal(_ev.outboxSnapshot().queued, 0);
+    assert.equal(_ev.outboxSnapshot().dead_letter, 0);
+  });
+  _ev._resetForTests();
+})();
+
+// ── CASO 32 (Marco 1): dead-letter e replay manual seguro ────────────────────
+await (async () => {
+  _ev._resetForTests();
+  const cfg2 = { ...CFG_ON, maxAttempts: 2 };
+  const idA = _ev.enqueueEvent('case.analysis_failed.v1', 'g@g.us', { n: 'a' }, { cfg: cfg2 });
+  let now = 2_000_000;
+  await _ev.processOutboxOnce({ cfg: cfg2, fetchImpl: async () => ({ status: 500 }), now, rand: () => 0 });
+  now += 700_000;
+  await _ev.processOutboxOnce({ cfg: cfg2, fetchImpl: async () => ({ status: 500 }), now, rand: () => 0 });
+  t('retry esgotado (maxAttempts): evento vai à dead-letter, nunca é descartado', () => {
+    assert.equal(_ev.outboxSnapshot().queued, 0);
+    assert.equal(_ev.outboxSnapshot().dead_letter, 1);
+  });
+
+  const idB = _ev.enqueueEvent('case.received.v1', 'g@g.us', { n: 'b' }, { cfg: cfg2 });
+  await _ev.processOutboxOnce({ cfg: cfg2, fetchImpl: async () => ({ status: 400 }), now, rand: () => 0 });
+  t('erro permanente (400): dead-letter IMEDIATA (reenviar não conserta contrato)', () => {
+    assert.equal(_ev.outboxSnapshot().dead_letter, 2);
+  });
+
+  const requeued = _ev.requeueDeadLetter();
+  const redelivered = [];
+  await _ev.processOutboxOnce({ cfg: cfg2, fetchImpl: async (_u, o) => { redelivered.push(JSON.parse(o.body).event_id); return { status: 200 }; }, now, rand: () => 0 });
+  await _ev.processOutboxOnce({ cfg: cfg2, fetchImpl: async (_u, o) => { redelivered.push(JSON.parse(o.body).event_id); return { status: 200 }; }, now, rand: () => 0 });
+  t('replay manual: dead-letter volta à fila com os MESMOS event_id (idempotência no receptor)', () => {
+    assert.equal(requeued, 2);
+    assert.deepEqual(redelivered.sort(), [idA, idB].sort());
+    assert.equal(_ev.outboxSnapshot().queued, 0);
+    assert.equal(_ev.outboxSnapshot().dead_letter, 0);
+  });
+
+  _ev._resetForTests();
+})();
+
+// ── CASO 32b (Marco 1): rede pendurada vira retry via timeout — nunca trava ──
+await ta('timeout de entrega: fetch que nunca responde vira retry (pump não trava)', async () => {
+  _ev._resetForTests();
+  const cfgFast = { ...CFG_ON, sendTimeoutMs: 1000 };
+  _ev.enqueueEvent('case.received.v1', 'g@g.us', {}, { cfg: cfgFast });
+  // fetch respeita o AbortController: só "responde" quando o timeout abortar.
+  const hangingFetch = (_u, opts) => new Promise((_resolve, reject) => {
+    opts.signal.addEventListener('abort', () => { const e = new Error('aborted'); e.name = 'AbortError'; reject(e); });
+  });
+  const started = Date.now();
+  const r = await _ev.processOutboxOnce({ cfg: cfgFast, fetchImpl: hangingFetch, now: Date.now(), rand: () => 0 });
+  assert.equal(r, 'retry', 'rede pendurada deve virar retry');
+  assert.ok(Date.now() - started < 5000, 'timeout deve disparar em ~1s, não pendurar');
+  assert.equal(_ev.outboxSnapshot().queued, 1, 'evento continua na fila para nova tentativa');
+  _ev._resetForTests();
+});
+
+// ── CASO 33 (Marco 1): snapshot do outbox sem PHI ────────────────────────────
+await (async () => {
+  _ev._resetForTests();
+  _ev.enqueueEvent('case.analysis_completed.v1', 'grupo-secreto@g.us', {
+    patient_name: 'Paciente Sigilosa', report_text: 'Hb 9,8 — não liberar',
+  }, { cfg: CFG_ON });
+  t('outboxSnapshot: nunca expõe payload, nome ou chat (só contadores/tipo)', () => {
+    const json = JSON.stringify(_ev.outboxSnapshot());
+    assert.ok(!json.includes('Sigilosa'));
+    assert.ok(!json.includes('grupo-secreto'));
+    assert.ok(!json.includes('Hb 9,8'));
+    assert.ok(json.includes('case.analysis_completed.v1'), 'tipo do próximo evento é permitido');
+  });
+  _ev._resetForTests();
+})();
+
 console.log(`\n${fail === 0 ? '🎉' : '⚠️'} ${pass} passaram, ${fail} falharam`);
 process.exit(fail === 0 ? 0 : 1);

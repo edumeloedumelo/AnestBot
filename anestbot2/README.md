@@ -115,11 +115,23 @@ volume gravável + envs essenciais; 503 se faltar algo), `/diag?token=...`
 parecer nem URLs de exames nos logs — apenas metadados (contagens/tamanhos).
 Testes de regressão garantem isso (`npm test`).
 
+## Integração com a plataforma (outbox de eventos)
+
+Com `PLATFORM_EVENTS_URL` + `PLATFORM_EVENTS_SECRET` configurados, o bot publica
+eventos assinados (HMAC-SHA256 + timestamp + `event_id` idempotente) para a
+plataforma: `case.received.v1`, `case.analysis_started.v1`,
+`case.analysis_completed.v1`, `case.analysis_failed.v1`. A fila é **durável**
+(gravada no volume antes de enviar), entrega em ordem com retry
+exponencial+jitter e dead-letter após `OUTBOX_MAX_ATTEMPTS` — plataforma fora
+do ar **não perde eventos**. Sem as envs, tudo fica desligado (no-op).
+Contrato completo em [`packages/contracts/`](../packages/contracts/).
+Estado da fila: comando `/fila` (admin) ou `GET /diag?token=...`.
+
 ## Comandos
 
 `/analisar` · `/status` · `/cirurgias` · `/limites` · `/prompt` · `/resetar [N]` ·
 `/ajuda` — e (admin) `/addcirurgia` · `/delcirurgia` · `/addlimite` · `/dellimite` ·
-`/setprompt` · `/limparprompt` · `/resetartudo`.
+`/setprompt` · `/limparprompt` · `/resetartudo` · `/fila [reenviar]`.
 
 ### /resetar — o que ele faz
 

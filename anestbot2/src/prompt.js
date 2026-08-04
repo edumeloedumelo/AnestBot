@@ -1,4 +1,9 @@
 // Constrói o system prompt de avaliação pré-operatória a partir da config editável.
+
+// Revisão do prompt clínico — INCREMENTAR a cada mudança de conteúdo deste
+// arquivo. Vai no evento case.analysis_completed.v1 (rastreabilidade do parecer).
+export const PROMPT_REV = '2026-08-04.1';
+
 export function buildSystemPrompt(config) {
   const surgeries = config.surgeries || [];
   const examLimits = config.examLimits || [];

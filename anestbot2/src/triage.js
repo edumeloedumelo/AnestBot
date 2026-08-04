@@ -188,7 +188,12 @@ export async function runTriage({ patientName, surgeryType, anamnesis, media }) 
   } catch (e) {
     fullText = await retryDroppingMedia(system, blocks, labels, e, errors);
   }
-  return { fullText, errors };
+  // files: retrato fiel do que a IA efetivamente viu (evento case.analysis_completed.v1
+  // registra documentos vistos/ausentes/descartados/degradados — seção 6 do prompt-mestre).
+  return {
+    fullText, errors,
+    files: { attached: okLabels, failed: failedLabels, oversized: oversizeLabels, degraded: degradedLabels },
+  };
 }
 
 // Erros da API causados por um bloco de MÍDIA (com ou sem índice content.N).

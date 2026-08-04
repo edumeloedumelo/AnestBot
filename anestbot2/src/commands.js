@@ -6,6 +6,8 @@ import { runTriage } from './triage.js';
 import { formatReply } from './format.js';
 import { sendText } from './ultramsg.js';
 import { runSelfCheck, formatSelfCheck } from './selfcheck.js';
+import { enqueueEvent, outboxSnapshot, requeueDeadLetter } from './events.js';
+import { PROMPT_REV } from './prompt.js';
 
 const PREFIX = process.env.TRIGGER_PREFIX || '/';
 const analyzing = new Set(); // lock por grupo
@@ -83,6 +85,7 @@ export async function handleCommand(chatId, body, msg) {
     // o último caso e reanalisa. Os destrutivos/de config continuam admin.
     case 'resetar': case 'reset': return doRetry(chatId, args);
     case 'resetartudo': return requireAdmin(chatId, msg, () => { resetChat(chatId); return sendText(chatId, '⚠️ Estado do grupo apagado por completo. O próximo caso começa do zero.'); });
+    case 'fila': return requireAdmin(chatId, msg, () => doFila(chatId, args));
     case 'cirurgias': return listSurgeries(chatId);
     case 'limites': return listLimits(chatId);
     case 'prompt': return showPrompt(chatId);
@@ -124,14 +127,20 @@ async function doAnalisar(chatId) {
         await sendText(chatId, `⚠️ ${missing} arquivo(s) sem URL — não entraram na análise:\n${list}\n\nReenvie estes arquivos e rode ${PREFIX}analisar de novo.`);
       }
 
+      // Correlaciona todos os eventos deste caso (estável entre /analisar e /resetar).
+      const correlationId = `${chatId}:${kase.msgIds[0] || label}`;
       try {
         const patientName = extractName(kase.texts) || `Caso ${label}`;
         const surgeryType = extractSurgery(kase.texts);
         // Logs SEM PHI (D-004): nunca logar nome, anamnese ou parecer — apenas
         // metadados (flags e contagens) suficientes para depurar a extração.
         console.error(`[analisar] caso ${label}: nome_detectado=${extractName(kase.texts) ? 'sim' : 'nao'} cirurgia_detectada=${surgeryType ? 'sim' : 'nao'} textos=${kase.texts.length} chars=${kase.texts.join('').length} mídia=${withUrl}`);
+        enqueueEvent('case.analysis_started.v1', chatId, {
+          case_index: label, total_cases: total, texts: kase.texts.length,
+          media_with_url: withUrl, media_missing: missing,
+        }, { correlationId });
 
-        const { fullText, errors } = await withWatchdog(runTriage({
+        const { fullText, errors, files } = await withWatchdog(runTriage({
           patientName, surgeryType,
           anamnesis: kase.texts.join('\n\n'),
           media: kase.media,
@@ -143,9 +152,29 @@ async function doAnalisar(chatId) {
 
         markProcessed(chatId, kase.msgIds);
         recordCase(chatId, { msgIds: kase.msgIds, patientName });
+        // Rastreabilidade do parecer (seção 6/7 do prompt-mestre): o payload
+        // registra o que a IA viu, o que faltou, modelo e revisão do prompt.
+        // Dados clínicos SÓ no payload assinado — nunca em logs.
+        enqueueEvent('case.analysis_completed.v1', chatId, {
+          case_index: label,
+          patient_name: patientName,
+          surgery: surgeryType || '',
+          anamnesis: kase.texts.join('\n\n'),
+          report_text: fullText,
+          files: files || { attached: [], failed: [], oversized: [], degraded: [] },
+          errors,
+          msg_ids: kase.msgIds,
+          missing_media: kase.missingMedia,
+          analysis: {
+            model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6',
+            prompt_rev: PROMPT_REV,
+            extra_prompt_set: !!getConfig().extraPrompt,
+          },
+        }, { correlationId });
       } catch (e) {
         console.error(`[analisar] erro no caso ${label}:`, e);
         await sendText(chatId, `❌ Erro no caso ${label}: ${e.message}`);
+        enqueueEvent('case.analysis_failed.v1', chatId, { case_index: label, error: e.message }, { correlationId });
       }
     }
     if (total > 1) await sendText(chatId, `✅ Análise concluída — ${total} caso(s).`);
@@ -183,6 +212,18 @@ async function doRetry(chatId, args) {
 
   // Reanalisa automaticamente o caso reaberto.
   if (retried > 0) return doAnalisar(chatId);
+}
+
+// /fila — estado do outbox de eventos (Marco 1); /fila reenviar devolve a
+// dead-letter à fila (replay manual seguro: mesmos event_id, receptor deduplica).
+async function doFila(chatId, args) {
+  if (args.trim().toLowerCase() === 'reenviar') {
+    const n = requeueDeadLetter();
+    return sendText(chatId, n ? `🔁 ${n} evento(s) da dead-letter devolvido(s) à fila.` : 'Dead-letter vazia — nada a reenviar.');
+  }
+  const s = outboxSnapshot();
+  if (!s.enabled) return sendText(chatId, '📮 Integração com a plataforma DESLIGADA (sem PLATFORM_EVENTS_URL/SECRET).');
+  return sendText(chatId, `📮 Fila de eventos:\n• Aguardando envio: ${s.queued}\n• Dead-letter: ${s.dead_letter}\n• Tentativas do próximo: ${s.head_attempts}\n\nUse /fila reenviar para reprocessar a dead-letter.`);
 }
 
 function listSurgeries(chatId) {
@@ -247,7 +288,7 @@ ${PREFIX}prompt — instruções extras ativas
 ${PREFIX}resetar [N] — reabre SÓ o(s) último(s) caso(s) + verificação automática de erros + reanálise
 ${PREFIX}ajuda — esta mensagem
 
-ADMIN: ${PREFIX}addcirurgia · ${PREFIX}delcirurgia · ${PREFIX}addlimite · ${PREFIX}dellimite · ${PREFIX}setprompt · ${PREFIX}limparprompt · ${PREFIX}resetartudo
+ADMIN: ${PREFIX}addcirurgia · ${PREFIX}delcirurgia · ${PREFIX}addlimite · ${PREFIX}dellimite · ${PREFIX}setprompt · ${PREFIX}limparprompt · ${PREFIX}resetartudo · ${PREFIX}fila
 
 ⚠️ Ferramenta de apoio. Não substitui avaliação médica presencial.`;
 }

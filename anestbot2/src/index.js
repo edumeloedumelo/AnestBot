@@ -6,6 +6,7 @@ import { handleWebhook } from './webhook.js';
 import { webhookAuthDecision, readinessCheck, diagAuthorized } from './security.js';
 import { diagSnapshot } from './store.js';
 import { getConfig } from './config.js';
+import { startOutboxPump, outboxSnapshot } from './events.js';
 
 // Handlers globais: uma exceção não capturada NUNCA derruba o processo.
 process.on('uncaughtException', (e) => console.error('[uncaughtException]', e?.stack || e));
@@ -46,6 +47,7 @@ app.get('/diag', (req, res) => {
     uptime_s: Math.round(process.uptime()),
     node: process.version,
     store: diagSnapshot(),
+    outbox: outboxSnapshot(),
     config: { surgeries: cfg.surgeries.length, exam_limits: cfg.examLimits.length, extra_prompt_set: !!cfg.extraPrompt },
     env: readinessCheck().checks,
   });
@@ -68,4 +70,6 @@ app.listen(port, () => {
   if (!process.env.ANTHROPIC_API_KEY) console.warn('⚠️  ANTHROPIC_API_KEY não configurada.');
   if (!process.env.WEBHOOK_TOKEN) console.warn('🚨 WEBHOOK_TOKEN não configurado — o /webhook está SEM autenticação (modo compatibilidade). Configure a env e aponte o UltraMsg para /webhook?token=SEU_TOKEN.');
   if (!(process.env.ADMIN_NUMBERS || '').trim()) console.warn('⚠️  ADMIN_NUMBERS vazio — comandos de admin restritos ao número conectado (fromMe). Configure para liberar outros números.');
+  // Marco 1: retoma a entrega de eventos pendentes no outbox (no-op sem env).
+  startOutboxPump();
 });

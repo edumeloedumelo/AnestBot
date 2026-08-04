@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://anestbot.dev/contracts/event-envelope.schema.json",
+  "title": "AnestbotEventEnvelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["event_id", "event_type", "schema_version", "occurred_at", "source", "correlation_id", "chat_ref", "payload"],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "UUID v4 — chave de idempotência, estável entre retentativas"
+    },
+    "event_type": {
+      "type": "string",
+      "pattern": "^[a-z_]+(\\.[a-z_]+)*\\.v[0-9]+$",
+      "description": "Tipo versionado, ex.: case.received.v1"
+    },
+    "schema_version": { "type": "integer", "const": 1 },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Instante do FATO em UTC (ISO-8601), não do envio"
+    },
+    "source": { "type": "string", "enum": ["anestbot2", "platform"] },
+    "correlation_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "description": "Agrupa eventos do mesmo caso/fluxo"
+    },
+    "chat_ref": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "description": "Id do grupo WhatsApp; o receptor resolve o tenant via pareamento"
+    },
+    "payload": { "type": "object" }
+  }
+}
