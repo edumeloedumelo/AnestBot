@@ -15,10 +15,10 @@ xxxx                          ← abre o caso
 
 | Pasta | Conteúdo |
 |---|---|
-| **[`anestbot2/`](anestbot2/)** | ✅ **ANESTBOT (versão atual, em produção)** — arquitetura webhook-first. Comece por aqui. |
-| demais pastas | Protótipos antigos sem relação com o bot (app Base44, etc.). A versão 1.0 (`bot/`) foi removida — segue acessível no histórico do git. |
+| **[`anestbot2/`](anestbot2/)** | ✅ **ANESTBOT (versão em produção)** — todo o código do bot. |
+| [`ANESTBOT-APP-PROMPT.md`](ANESTBOT-APP-PROMPT.md) | Prompt completo para gerar o app comercial (dashboard, registro de anestesias, TUSS/CBHPM). |
 
-Toda a documentação de arquitetura, deploy (Railway + UltraMsg) e comandos está no **[README do `anestbot2/`](anestbot2/README.md)**.
+Toda a documentação de arquitetura, deploy (Railway + UltraMsg) e comandos está no **[README do `anestbot2/`](anestbot2/README.md)**. Versões antigas (1.0 e protótipos) foram removidas — seguem acessíveis no histórico do git.
 
 ## Destaques da arquitetura atual
 
