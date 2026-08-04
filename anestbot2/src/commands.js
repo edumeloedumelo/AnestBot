@@ -73,7 +73,9 @@ export async function handleCommand(chatId, body, msg) {
     case 'ajuda': case 'help': case 'comandos': return sendText(chatId, helpText());
     case 'analisar': case 'triagem': return doAnalisar(chatId);
     case 'status': return doStatus(chatId);
-    case 'resetar': case 'reset': return requireAdmin(chatId, msg, () => doRetry(chatId, args));
+    // Liberado para todos do grupo (04/08): é operacional e seguro — só reabre
+    // o último caso e reanalisa. Os destrutivos/de config continuam admin.
+    case 'resetar': case 'reset': return doRetry(chatId, args);
     case 'resetartudo': return requireAdmin(chatId, msg, () => { resetChat(chatId); return sendText(chatId, '⚠️ Estado do grupo apagado por completo. O próximo caso começa do zero.'); });
     case 'cirurgias': return listSurgeries(chatId);
     case 'limites': return listLimits(chatId);
