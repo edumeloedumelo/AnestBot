@@ -58,15 +58,16 @@ export function getConfig() {
   return cache;
 }
 
+// Devolve true se persistiu no disco; false = a alteração vale só em memória
+// (ex.: volume não montado / disco cheio) — quem editou PRECISA saber disso.
 export function saveConfig(cfg) {
   cache = cfg;
-  try { atomicWrite(CONFIG_PATH, cfg); }
-  catch (e) { console.error('[config] falha ao salvar:', e.message); }
+  try { atomicWrite(CONFIG_PATH, cfg); return true; }
+  catch (e) { console.error('[config] falha ao salvar:', e.message); return false; }
 }
 
 export function updateConfig(mutator) {
   const cfg = getConfig();
   mutator(cfg);
-  saveConfig(cfg);
-  return cfg;
+  return saveConfig(cfg);
 }

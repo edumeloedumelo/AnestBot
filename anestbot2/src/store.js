@@ -33,6 +33,11 @@ function load() {
   seqCounter = mx + 1;
 }
 
+// Contador de falhas de persistência (ENOSPC, volume desmontado…): o processo
+// segue em memória, mas a verificação automática (/resetar) DEVE denunciar —
+// senão o operador só descobre no restart, quando o estado volta no tempo.
+let saveErrors = 0;
+export function getSaveErrorCount() { return saveErrors; }
 function save() {
   try { fs.mkdirSync(STATE_DIR, { recursive: true }); } catch { /* já existe */ }
   try {
@@ -40,7 +45,8 @@ function save() {
     fs.writeFileSync(tmp, JSON.stringify(db));
     fs.renameSync(tmp, STORE_PATH);
   } catch (e) {
-    console.error('[store] falha ao salvar (ignorado):', e.message);
+    saveErrors++;
+    console.error(`[store] FALHA AO PERSISTIR (${saveErrors}ª): ${e.message} — estado vive só em memória até resolver`);
   }
 }
 

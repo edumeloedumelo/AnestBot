@@ -188,6 +188,7 @@ export async function downloadMediaBlock(url, { aggressive = false } = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT_MS);
   let buffer;
+  let ct = ''; // fora do try: o fallback por content-type (abaixo) usa depois
   try {
     let res;
     try {
@@ -196,7 +197,7 @@ export async function downloadMediaBlock(url, { aggressive = false } = {}) {
       if (e.name === 'AbortError') throw new Error(`download travou (sem resposta em ${DOWNLOAD_TIMEOUT_MS / 1000}s)`);
       throw e;
     }
-    const ct = res.headers.get('content-type') || '';
+    ct = res.headers.get('content-type') || '';
     if (!res.ok) { res.body?.cancel()?.catch(() => {}); throw new Error(`download falhou (${res.status})`); }
     if (ct.includes('text/html')) {
       res.body?.cancel()?.catch(() => {});

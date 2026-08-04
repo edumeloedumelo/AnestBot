@@ -594,5 +594,52 @@ t('numbersMatch: casa com/sem DDI e nunca por sufixo curto', () => {
   assert.ok(!_c4.numbersMatch('', '5583999999999'), 'vazio nunca casa');
 });
 
+// ── CASO 25: rodada 2 de auditoria 04/08 — regressões dos 13 achados ─────────
+t('numbersMatch: mínimo 11 dígitos — fixo Campinas não vira admin pelo sufixo do celular RJ', () => {
+  assert.ok(!_c4.numbersMatch('5521987654321', '1987654321'), 'falso positivo DDD21/DDD19 eliminado');
+  assert.ok(_c4.numbersMatch('5583999999999', '83999999999'), 'tolerância de DDI preservada (11 dígitos)');
+});
+
+t('dedupeLabels: legenda literal "X (2)" não colide com sufixo gerado', () => {
+  const out = _t3.dedupeLabels(['Raio-X', 'Raio-X', 'Raio-X (2)']);
+  assert.equal(new Set(out).size, 3, 'todos os labels devem ser únicos: ' + out.join(' | '));
+});
+
+t('gateDecision: ❌❌ solto com caso FECHADO não é gravado (regra absoluta)', () => {
+  const g = _w.gateDecision(false, 'chat', 'que situação hein ❌❌❌❌');
+  assert.equal(g.store, false, 'reação solta com ❌ não pode poluir o store');
+  assert.equal(g.nowOpen, false);
+});
+
+t('extractSurgery: texto corrido iniciando linha com "ASA" não corta a cirurgia', () => {
+  const s = extractSurgery(['Cirurgia: Lipoaspiração\nASA alta risco cardiovascular, atenção']);
+  assert.ok(s.includes('ASA alta'), 'descrição livre deve permanecer: ' + s);
+  assert.equal(extractSurgery(['Cirurgia: Rinoplastia\nAnestesista: Dr. Fulano']), 'Rinoplastia', 'rótulo com ":" ainda para');
+});
+
+t('BOT_MARKERS: mensagem humana com 🔄 dentro de caso NÃO é descartada', () => {
+  const msgs = [
+    { id: 'r1', type: 'chat', body: 'xxxx\nPaciente: Duda\nProcedimento: Masto', timestamp: 100 },
+    { id: 'r2', type: 'chat', body: '🔄 Vou reagendar para semana que vem, aguarde', timestamp: 101 },
+    { id: 'r3', type: 'chat', body: '❌❌❌❌', timestamp: 102 },
+  ];
+  const cases = splitIntoCases(msgs, new Set());
+  assert.equal(cases.length, 1);
+  assert.ok(cases[0].texts.some((x) => x.includes('reagendar')), 'coordenação humana deve permanecer no caso');
+});
+
+await ta('webhook: fechar caso NÃO corta o início do caso recém-fechado (cap aberto no append do ❌❌❌❌)', async () => {
+  const cid = 'cap-close@g.us';
+  _s3.resetChat(cid);
+  const wh = (id, body, ts) => _w.handleWebhook({ event_type: 'message_received', data: { id, from: cid, type: 'chat', body, timestamp: ts } });
+  await wh('cc-first', 'xxxx\nPaciente: Zilda\nProcedimento: Lipo', 10);
+  for (let i = 0; i < 850; i++) await wh('cc-' + i, 'linha ' + i, 11 + i);
+  await wh('cc-close', '❌❌❌❌', 999);
+  const msgs = _s3.getMessages(cid);
+  assert.ok(msgs.some((m) => m.id === 'cc-first'), 'card de abertura deve sobreviver ao fechamento');
+  assert.equal(_s3.isCaseOpen(cid), false, 'caso deve constar fechado');
+  _s3.resetChat(cid);
+});
+
 console.log(`\n${fail === 0 ? '🎉' : '⚠️'} ${pass} passaram, ${fail} falharam`);
 process.exit(fail === 0 ? 0 : 1);

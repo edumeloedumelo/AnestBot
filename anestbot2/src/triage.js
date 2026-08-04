@@ -12,11 +12,14 @@ const sanitizeLabel = (s) => (s || '').replace(/\s+/g, ' ').trim().slice(0, 80);
 // enforceMediaBudget (o indexOf em degradedFiles poderia tirar o aviso do
 // arquivo ERRADO — deixando o descartado listado como "anexado"). Exportada p/ testes.
 export function dedupeLabels(list) {
-  const seen = new Map();
+  // Laço até ficar único: um contador cego colidiria com legenda LITERAL
+  // "X (2)" digitada pelo usuário (achado de auditoria).
+  const used = new Set();
   return list.map((l) => {
-    const n = (seen.get(l) || 0) + 1;
-    seen.set(l, n);
-    return n > 1 ? `${l} (${n})` : l;
+    let label = l, n = 1;
+    while (used.has(label)) { n++; label = `${l} (${n})`; }
+    used.add(label);
+    return label;
   });
 }
 

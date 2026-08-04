@@ -31,7 +31,7 @@ const BOT_MARKERS = [
   '🔍 Verificando casos', '🔍 Buscando mensagens',
   'caso(s) novo(s). Iniciando', '⏳ Analisando caso', '✅ Análise concluída',
   '📁 CASO', '⚠️ Nenhum caso novo encontrado', 'Nenhuma mensagem nova',
-  '🔄 ', 'caso(s) reaberto', 'Já há uma análise em andamento',
+  'caso(s) reaberto', 'Já há uma análise em andamento',
   '⚠️ Nenhum caso recente', '⛔ Você não tem permissão', '❓ Comando desconhecido',
   '🤖 ANESTBOT', '🔪 CIRURGIAS CADASTRADAS', '📊 LIMITES / VALORES',
   '📊 Status do grupo', '📝 Instruções adicionais', '📝 Nenhuma instrução',
@@ -66,7 +66,10 @@ export function extractName(texts) {
 
 export function extractSurgery(texts) {
   const j = texts.join('\n');
-  const stop = /(?=\n\s*(?:🔷|🔹|🔶|Data\b|Telefone\b|Observ|Paciente\b|Cirurgi[ãa]o\b|Anestesista\b|Conv[êe]nio\b|Hospital\b|Peso\b|Altura\b|Idade\b|ASA\b|\d️?⃣|[-_—━─]{3,})|\n\n|$)/;
+  // Rótulos adicionados (Cirurgião/Anestesista/.../ASA) exigem ":" ou "-" após
+  // o nome — sem isso, texto corrido legítimo começando com "ASA..." em linha
+  // nova cortaria a cirurgia no meio (achado de auditoria).
+  const stop = /(?=\n\s*(?:🔷|🔹|🔶|Data\b|Telefone\b|Observ|Paciente\b|(?:Cirurgi[ãa]o|Anestesista|Conv[êe]nio|Hospital|Peso|Altura|Idade|ASA)\s*[:\-]|\d️?⃣|[-_—━─]{3,})|\n\n|$)/;
   const field = (label) => new RegExp(`${label}\\s*[:\\-：]\\s*([\\s\\S]{3,180}?)${stop.source}`, 'i');
   const m = j.match(field('Procedimento'))
         || j.match(field('Cirurgia\\s+programada'))

@@ -5,7 +5,7 @@
 // automaticamente o que é corrigível e devolve um relatório do que foi feito.
 import fs from 'fs';
 import path from 'path';
-import { selfHealChat } from './store.js';
+import { selfHealChat, getSaveErrorCount } from './store.js';
 import { getConfig } from './config.js';
 import { ping } from './anthropic.js';
 
@@ -39,6 +39,9 @@ export async function runSelfCheck(chatId) {
   } catch (e) {
     warnings.push(`Volume ${STATE_DIR} NÃO gravável (${e.message}) — verifique o volume no Railway`);
   }
+  // 2b. Falhas de persistência acumuladas desde o boot (disco cheio etc.).
+  const se = getSaveErrorCount();
+  if (se > 0) warnings.push(`${se} gravação(ões) do histórico FALHARAM desde o último boot — estado pode se perder num restart (verifique espaço/volume no Railway)`);
 
   // 3. Config (cirurgias/limites) legível e não-vazia.
   try {

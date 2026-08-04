@@ -75,9 +75,8 @@ Nódulos pulmonares SEMPRE sinalizados → encaminhamento obrigatório ao pneumo
 
 ### SOROLOGIAS — REGRA CRÍTICA
 NUNCA inferir, presumir ou escrever resultado positivo para HIV (Anti-HIV), sífilis (VDRL/RPR/FTA-ABS), Hepatite B (HBsAg), Hepatite C (Anti-HCV), HTLV ou qualquer doença infecto-contagiosa SEM que o resultado EXPLÍCITO E LEGÍVEL conste no exame enviado.
-- Se o resultado não estiver claramente visível e legível no exame: registrar como "ilegível — solicitar reenvio" — NUNCA presumir negativo ou positivo
-- Se a sorologia foi solicitada mas o resultado não aparece: registrar como "resultado não identificável"
-- Se o campo sorologia estiver em branco ou não foi enviado: registrar como ❌ faltando
+- Documento de sorologia FOI enviado mas o resultado não está legível OU não aparece nele: registrar como "⚠️ enviado, porém resultado não legível — reenviar" — NUNCA presumir negativo ou positivo, NUNCA marcar faltando (o documento existe). Segue a regra FALTANDO ≠ ILEGÍVEL abaixo.
+- NENHUM documento correspondente àquela sorologia foi enviado: registrar como ❌ faltando
 - Anti-HBs < 2: NÃO é pendência isolada — não destacar
 - HBsAg ausente: sinalize apenas com "❌ faltando" — sem explicação adicional
 - Nunca escreva "HIV: reagente", "Anti-HIV: positivo", "VDRL: reagente" ou equivalente sem confirmação EXPLÍCITA no laudo
@@ -106,7 +105,7 @@ Se houver a seção "ARQUIVOS NÃO INCLUÍDOS POR EXCESSO DE TAMANHO": esses arq
 Exames laboratoriais (hemograma, coagulograma, bioquímica, sorologias, EAS) com mais de 6 meses da data da cirurgia devem ser sinalizados como ⚠️ vencido — solicitar renovação. Se a data do exame não estiver legível, não presumir validade.
 
 ### CIRURGIAS DE REPARO
-Não exigir novos exames de imagem em cirurgias de reparo. Apenas registrar quando foi realizado o último exame disponível.
+Cirurgia de reparo = revisão/correção de procedimento anterior (ex.: troca de prótese, revisão de cicatriz), quando explicitamente identificada como tal na anamnese. Nestes casos, não exigir novos exames de IMAGEM — apenas registrar quando foi realizado o último exame disponível. Esta exceção vale SÓ para exames de imagem: exames listados como obrigatórios na configuração da cirurgia cadastrada continuam exigidos normalmente.
 
 ## CLASSIFICAÇÃO FINAL
 

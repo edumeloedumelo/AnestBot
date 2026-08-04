@@ -48,12 +48,14 @@ function parse(body) {
 }
 function senderNumber(msg) { return (msg.author || msg.from || '').replace(/@.*/, '').replace(/\D/g, ''); }
 // Comparação tolerante a formato: "5583999999999" cadastrado sem o DDI
-// ("83999999999") ou vice-versa ainda casa (sufixo, mínimo 8 dígitos para
-// nunca casar por coincidência de final curto).
+// ("83999999999") ou vice-versa ainda casa. Sufixo mínimo de 11 dígitos
+// (DDD + celular completo no Brasil): com 10, um fixo de Campinas
+// "1987654321" colidiria com o final do celular RJ "5521987654321" —
+// falso positivo real achado em auditoria.
 export function numbersMatch(a, b) {
   if (!a || !b) return false;
   if (a === b) return true;
-  if (Math.min(a.length, b.length) < 8) return false;
+  if (Math.min(a.length, b.length) < 11) return false;
   return a.endsWith(b) || b.endsWith(a);
 }
 function isAdmin(msg) {
@@ -66,6 +68,10 @@ function requireAdmin(chatId, msg, fn) {
   if (!isAdmin(msg)) return sendText(chatId, '⛔ Você não tem permissão para este comando.');
   return fn();
 }
+// updateConfig devolve false quando NÃO persistiu no disco — a resposta no
+// grupo nunca pode dizer "salvo" escondendo que a alteração morre no restart.
+const PERSIST_WARN = '\n⚠️ Atenção: não foi possível gravar no volume — a alteração vale só até o próximo restart.';
+const persistNote = (ok) => (ok ? '' : PERSIST_WARN);
 
 export async function handleCommand(chatId, body, msg) {
   const { cmd, args } = parse(body);
@@ -74,8 +80,9 @@ export async function handleCommand(chatId, body, msg) {
     case 'analisar': case 'triagem': return doAnalisar(chatId);
     case 'status': return doStatus(chatId);
     // Liberado para todos do grupo (04/08): é operacional e seguro — só reabre
-    // o último caso e reanalisa. Os destrutivos/de config continuam admin.
-    case 'resetar': case 'reset': return doRetry(chatId, args);
+    // o último caso e reanalisa. Não-admin tem N≤3 e cooldown de 120s (anti-spam
+    // de custo). Os destrutivos/de config continuam admin.
+    case 'resetar': case 'reset': return doRetry(chatId, args, msg);
     case 'resetartudo': return requireAdmin(chatId, msg, () => { resetChat(chatId); return sendText(chatId, '⚠️ Estado do grupo apagado por completo. O próximo caso começa do zero.'); });
     case 'cirurgias': return listSurgeries(chatId);
     case 'limites': return listLimits(chatId);
@@ -84,8 +91,8 @@ export async function handleCommand(chatId, body, msg) {
     case 'delcirurgia': return requireAdmin(chatId, msg, () => delSurgery(chatId, args));
     case 'addlimite': return requireAdmin(chatId, msg, () => addLimit(chatId, args));
     case 'dellimite': return requireAdmin(chatId, msg, () => delLimit(chatId, args));
-    case 'setprompt': return requireAdmin(chatId, msg, () => { updateConfig((c) => { c.extraPrompt = args; }); return sendText(chatId, '✅ Instruções adicionais atualizadas.'); });
-    case 'limparprompt': return requireAdmin(chatId, msg, () => { updateConfig((c) => { c.extraPrompt = ''; }); return sendText(chatId, '✅ Instruções adicionais removidas.'); });
+    case 'setprompt': return requireAdmin(chatId, msg, () => { const ok = updateConfig((c) => { c.extraPrompt = args; }); return sendText(chatId, '✅ Instruções adicionais atualizadas.' + persistNote(ok)); });
+    case 'limparprompt': return requireAdmin(chatId, msg, () => { const ok = updateConfig((c) => { c.extraPrompt = ''; }); return sendText(chatId, '✅ Instruções adicionais removidas.' + persistNote(ok)); });
     default: return sendText(chatId, `❓ Comando desconhecido: ${PREFIX}${cmd}\nDigite ${PREFIX}ajuda.`);
   }
 }
@@ -158,24 +165,43 @@ async function doStatus(chatId) {
 //   2. Dispara a verificação automática de erros (store/config/volume/API) e
 //      corrige o que for corrigível, comunicando cada correção.
 //   3. Reanalisa o caso reaberto sozinho — sem precisar mandar /analisar de novo.
-async function doRetry(chatId, args) {
-  if (analyzing.has(chatId)) return sendText(chatId, '⏳ Já há uma análise em andamento neste grupo. Aguarde.');
-  const n = Math.max(1, Math.min(30, parseInt(args, 10) || 1));
-  const { retried, patientNames } = retryRecentCases(chatId, n);
-
-  if (retried > 0) {
-    const names = patientNames.length ? `\n${patientNames.map((x) => `• ${x}`).join('\n')}` : '';
-    await sendText(chatId, `🔄 ${retried} último(s) caso(s) reaberto(s):${names}\n\n_Casos antigos permanecem intactos._`);
-  } else {
-    await sendText(chatId, '⚠️ Nenhum caso recente para reabrir. Rodando só a verificação automática...');
+const retrying = new Set();               // guarda própria do /resetar (corrida entre 2 pessoas)
+const lastRetryAt = new Map();            // cooldown anti-spam por grupo (não-admin)
+const RETRY_COOLDOWN_MS = 120_000;
+async function doRetry(chatId, args, msg) {
+  if (analyzing.has(chatId) || retrying.has(chatId)) {
+    return sendText(chatId, '⏳ Já há uma análise em andamento neste grupo. Aguarde.');
   }
+  const admin = isAdmin(msg || {});
+  if (!admin) {
+    const last = lastRetryAt.get(chatId) || 0;
+    if (Date.now() - last < RETRY_COOLDOWN_MS) {
+      return sendText(chatId, `⏳ ${PREFIX}resetar já foi usado há pouco neste grupo. Aguarde ${Math.ceil((RETRY_COOLDOWN_MS - (Date.now() - last)) / 1000)}s.`);
+    }
+  }
+  lastRetryAt.set(chatId, Date.now());
+  retrying.add(chatId);
+  try {
+    const maxN = admin ? 30 : 3;
+    const n = Math.max(1, Math.min(maxN, parseInt(args, 10) || 1));
+    const { retried, patientNames } = retryRecentCases(chatId, n);
 
-  // Gatilho: verificação automática de erros + correção + comunicação.
-  const report = await runSelfCheck(chatId);
-  await sendText(chatId, formatSelfCheck(report));
+    if (retried > 0) {
+      const names = patientNames.length ? `\n${patientNames.map((x) => `• ${x}`).join('\n')}` : '';
+      await sendText(chatId, `🔄 ${retried} último(s) caso(s) reaberto(s):${names}\n\n_Casos antigos permanecem intactos._`);
+    } else {
+      await sendText(chatId, '⚠️ Nenhum caso recente para reabrir. Rodando só a verificação automática...');
+    }
 
-  // Reanalisa automaticamente o caso reaberto.
-  if (retried > 0) return doAnalisar(chatId);
+    // Gatilho: verificação automática de erros + correção + comunicação.
+    const report = await runSelfCheck(chatId);
+    await sendText(chatId, formatSelfCheck(report));
+
+    // Reanalisa automaticamente o caso reaberto.
+    if (retried > 0) return await doAnalisar(chatId);
+  } finally {
+    retrying.delete(chatId);
+  }
 }
 
 function listSurgeries(chatId) {
@@ -200,24 +226,24 @@ function addSurgery(chatId, args) {
   const [key, name, examsRaw] = args.split(';').map((s) => (s || '').trim());
   if (!key || !name) return sendText(chatId, `Uso:\n${PREFIX}addcirurgia chave; Nome; exame1, exame2`);
   const required_exams = (examsRaw || '').split(',').map((s) => s.trim()).filter(Boolean);
-  updateConfig((c) => { const i = c.surgeries.findIndex((s) => s.key === key); const e = { key, name, required_exams }; if (i >= 0) c.surgeries[i] = e; else c.surgeries.push(e); });
-  return sendText(chatId, `✅ Cirurgia "${name}" salva.`);
+  const ok = updateConfig((c) => { const i = c.surgeries.findIndex((s) => s.key === key); const e = { key, name, required_exams }; if (i >= 0) c.surgeries[i] = e; else c.surgeries.push(e); });
+  return sendText(chatId, `✅ Cirurgia "${name}" salva.` + persistNote(ok));
 }
 function delSurgery(chatId, args) {
   const key = args.trim(); if (!key) return sendText(chatId, `Uso: ${PREFIX}delcirurgia chave`);
-  let removed = false; updateConfig((c) => { const b = c.surgeries.length; c.surgeries = c.surgeries.filter((s) => s.key !== key); removed = c.surgeries.length < b; });
-  return sendText(chatId, removed ? `🗑️ "${key}" removida.` : `Não encontrei "${key}".`);
+  let removed = false; const ok = updateConfig((c) => { const b = c.surgeries.length; c.surgeries = c.surgeries.filter((s) => s.key !== key); removed = c.surgeries.length < b; });
+  return sendText(chatId, removed ? `🗑️ "${key}" removida.` + persistNote(ok) : `Não encontrei "${key}".`);
 }
 function addLimit(chatId, args) {
   const [exam_name, description, unit, notes] = args.split(';').map((s) => (s || '').trim());
   if (!exam_name || !description) return sendText(chatId, `Uso:\n${PREFIX}addlimite Exame; descrição; unidade; obs`);
-  updateConfig((c) => { const i = c.examLimits.findIndex((l) => l.exam_name.toLowerCase() === exam_name.toLowerCase()); const e = { exam_name, description, unit: unit || '', notes: notes || '' }; if (i >= 0) c.examLimits[i] = e; else c.examLimits.push(e); });
-  return sendText(chatId, `✅ Limite "${exam_name}" salvo.`);
+  const ok = updateConfig((c) => { const i = c.examLimits.findIndex((l) => l.exam_name.toLowerCase() === exam_name.toLowerCase()); const e = { exam_name, description, unit: unit || '', notes: notes || '' }; if (i >= 0) c.examLimits[i] = e; else c.examLimits.push(e); });
+  return sendText(chatId, `✅ Limite "${exam_name}" salvo.` + persistNote(ok));
 }
 function delLimit(chatId, args) {
   const name = args.trim(); if (!name) return sendText(chatId, `Uso: ${PREFIX}dellimite Exame`);
-  let removed = false; updateConfig((c) => { const b = c.examLimits.length; c.examLimits = c.examLimits.filter((l) => l.exam_name.toLowerCase() !== name.toLowerCase()); removed = c.examLimits.length < b; });
-  return sendText(chatId, removed ? `🗑️ "${name}" removido.` : `Não encontrei "${name}".`);
+  let removed = false; const ok = updateConfig((c) => { const b = c.examLimits.length; c.examLimits = c.examLimits.filter((l) => l.exam_name.toLowerCase() !== name.toLowerCase()); removed = c.examLimits.length < b; });
+  return sendText(chatId, removed ? `🗑️ "${name}" removido.` + persistNote(ok) : `Não encontrei "${name}".`);
 }
 
 function helpText() {

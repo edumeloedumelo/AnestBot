@@ -60,7 +60,9 @@ export function gateDecision(open, type, body) {
   const opens = lines.length > 0 && isCaseOpener(lines[0]);
   const closes = lines.length > 0 && isSeparator(lines[lines.length - 1]);
   return {
-    store: opens || closes || open,
+    // Um ❌❌❌❌ com caso FECHADO não grava nada: sem "opens || open", uma
+    // reação solta com ❌ fora de caso poluiria o store (regra absoluta).
+    store: opens || open,
     nowOpen: closes ? false : (opens ? true : open),
     opens,
     closes,
@@ -111,6 +113,9 @@ export async function handleWebhook(payload) {
   if (!m || !m.id) return;
 
   const chatId = resolveChatId(m);
+  // Payload anômalo: fromMe sem "to" faz o chatId cair no próprio número do
+  // bot — não há como rotear certo; o log evita depuração às cegas.
+  if (m.fromMe && !m.to) console.error(`[webhook] fromMe sem campo "to" — chatId pode estar incorreto (${chatId})`);
 
   const type = m.type || 'chat';
   const body = getBody(m);
@@ -147,14 +152,15 @@ export async function handleWebhook(payload) {
   const isMedia = type === 'image' || type === 'document' || type === 'video';
   const wasOpen = isCaseOpen(chatId);
   const { store, nowOpen, opens, closes } = gateDecision(wasOpen, type, body);
-  if (type === 'chat') {
-    setCaseOpen(chatId, nowOpen);
-    // Só quando FECHA um caso real (aberto antes ou aberto nesta mensagem) —
-    // um ❌❌❌❌ redundante não vira marco de fechamento (prescrição do coordenador).
-    if (closes && (wasOpen || opens)) recordCaseClosed(chatId, timestamp);
-  }
 
   const hasContent = store && ((type === 'chat' && body) || isMedia);
+
+  // Tipos não suportados (áudio/ptt/sticker/location): nunca são conteúdo de
+  // caso, mas o descarte precisa deixar rastro nos logs.
+  if (type !== 'chat' && !isMedia) {
+    console.error(`[webhook] tipo não suportado (${type}) — ignorado chat=${chatId}${wasOpen ? ' (CASO ABERTO — se for exame, reenviar como foto/PDF)' : ''}`);
+    return;
+  }
 
   if (!hasContent && isMedia) {
     const fate = handleOrphanMedia(chatId, {
@@ -178,6 +184,9 @@ export async function handleWebhook(payload) {
   }
 
   if (hasContent) {
+    // O append acontece ANTES do setCaseOpen: o cap do store lê caseOpen na
+    // hora do push — virar a flag antes da mensagem de fechamento faria o cap
+    // "fechado" cortar o início do caso recém-fechado (achado de auditoria).
     appendMessage(chatId, {
       id: m.id,
       chatId,
@@ -193,9 +202,16 @@ export async function handleWebhook(payload) {
     } else {
       console.error(`[webhook] texto gravado chat=${chatId} len=${body.length}`);
     }
+  }
+
+  if (type === 'chat') {
+    setCaseOpen(chatId, nowOpen);
+    // Só quando FECHA um caso real (aberto antes ou aberto nesta mensagem) —
+    // um ❌❌❌❌ redundante não vira marco de fechamento (prescrição do coordenador).
+    if (closes && (wasOpen || opens)) recordCaseClosed(chatId, timestamp);
     // Caso ABRIU nesta mensagem (mesmo que também feche nela): adota mídias
     // pendentes recentes (chegaram antes do xxxx).
-    if (type === 'chat' && opens) {
+    if (hasContent && opens) {
       const adopted = adoptPendingMedia(chatId, timestamp);
       if (adopted) console.error(`[webhook] ${adopted} mídia(s) pendente(s) adotada(s) chat=${chatId}`);
     }

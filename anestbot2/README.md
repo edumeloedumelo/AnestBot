@@ -78,10 +78,12 @@ Repo: `edumeloedumelo/AnestBot` — o bot vive na subpasta **`anestbot2/`**.
   - `ANTHROPIC_API_KEY` = sua chave da Anthropic
   - `STATE_DIR` = `/data`
   - `PORT` = `3000` (necessário para o domínio público do Railway)
-  - **`ADMIN_NUMBERS`** = números admin separados por vírgula. ⚠️ **Configure em
-    produção**: se ficar vazio, QUALQUER membro do grupo pode rodar comandos de
-    admin (`/resetartudo`, `/setprompt`, `/addcirurgia` etc.). O número
-    conectado à UltraMsg é sempre admin (`fromMe`).
+  - **`ADMIN_NUMBERS`** = números admin separados por vírgula, só dígitos
+    (ex.: `5583999999999`). O DDI 55 é opcional — a comparação tolera número
+    cadastrado com ou sem ele. ⚠️ **Configure em produção**: se ficar vazio,
+    QUALQUER membro do grupo pode rodar comandos de admin (`/resetartudo`,
+    `/setprompt`, `/addcirurgia` etc.). O número conectado à UltraMsg é sempre
+    admin (`fromMe`).
   - (opcional) `ALLOWED_CHATS` = ids de grupos permitidos (vazio = todos)
   - (opcional) `ANTHROPIC_MODEL` (padrão `claude-sonnet-4-6`)
 - O `railway.json` já define builder Dockerfile, healthcheck `/health` e
@@ -108,6 +110,9 @@ a cada 5 minutos.
 `/setprompt` · `/limparprompt` · `/resetartudo`.
 
 ### /resetar — o que ele faz
+
+Aberto a todos do grupo (não-admin: máx. 3 casos por vez e 1 uso a cada 120s
+por grupo; admin: até 30, sem cooldown).
 
 1. **Reabre APENAS o último caso** (ou os últimos N com `/resetar N`) — os casos
    antigos NUNCA são reanalisados.
