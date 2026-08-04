@@ -16,8 +16,7 @@ xxxx                          ← abre o caso
 | Pasta | Conteúdo |
 |---|---|
 | **[`anestbot2/`](anestbot2/)** | ✅ **ANESTBOT (versão atual, em produção)** — arquitetura webhook-first. Comece por aqui. |
-| `bot/` | Versão 1.0 (legado, desativada) — mantida só como histórico. |
-| demais pastas | Protótipos antigos sem relação com o bot (app Base44, etc.). |
+| demais pastas | Protótipos antigos sem relação com o bot (app Base44, etc.). A versão 1.0 (`bot/`) foi removida — segue acessível no histórico do git. |
 
 Toda a documentação de arquitetura, deploy (Railway + UltraMsg) e comandos está no **[README do `anestbot2/`](anestbot2/README.md)**.
 
