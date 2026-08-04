@@ -9,7 +9,7 @@ cd "$(dirname "$0")/.."
 if [ -n "${DATABASE_URL_TEST:-}" ]; then
   export DATABASE_URL="$DATABASE_URL_TEST"
   echo "[testdb] usando DATABASE_URL_TEST"
-  npx tsx --test test/*.test.ts
+  npx tsx --test --test-concurrency=1 test/*.test.ts
   exit $?
 fi
 
@@ -39,4 +39,4 @@ RUNAS "'$PGBIN/createdb' -h '$WORK' -p $PORT -U anest $DBNAME" >/dev/null
 export DATABASE_URL="postgres://anest@localhost:$PORT/$DBNAME?host=$WORK"
 echo "[testdb] Postgres efêmero em $WORK (porta $PORT)"
 
-npx tsx --test test/*.test.ts
+npx tsx --test --test-concurrency=1 test/*.test.ts

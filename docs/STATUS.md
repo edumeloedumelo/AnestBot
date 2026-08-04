@@ -12,7 +12,8 @@
 - [x] **Marco 0 — baseline e proteção** ✅ (93 testes verdes; smoke test dos endpoints OK)
 - [x] **Marco 1 — integração confiável (outbox/HMAC/idempotência)** ✅ (107 testes verdes)
 - [x] **Marco 2 — núcleo SaaS (API, tenants, RBAC, inbox)** ✅ (30 testes de integração verdes em Postgres real)
-- [ ] **Marco 3 — prontuário anestésico** ← PRÓXIMO
+- [x] **Marco 3 — prontuário anestésico** ✅ (39 testes de integração verdes)
+- [ ] **Marco 4 — faturamento** ← EM ANDAMENTO
 - [ ] Marco 2 — núcleo SaaS (monorepo, PostgreSQL, auth, tenants, RBAC)
 - [ ] Marco 3 — prontuário anestésico
 - [ ] Marco 4 — faturamento
@@ -86,16 +87,33 @@
   máquina de estados não regride, CRM obrigatório, homônimos não fundidos,
   auditoria sem conteúdo clínico, logs sem PHI.
 
+## Marco 3 — entregue
+
+- Migration 004: record_templates (versionados por nome — nunca sobrescreve),
+  anesthesia_records (pré/intra/pós em jsonb, draft→signed), anesthesia_events
+  (drogas/via aérea/eventos/notas com horário), vitals (com CHECKs de faixa),
+  signatures (hash sha256 + snapshot canônico, 1 por registro), record_addenda.
+  Imutabilidade por TRIGGER: registro assinado bloqueia UPDATE/DELETE próprio e
+  INSERT/UPDATE/DELETE de eventos/vitais; assinaturas/adendos append-only.
+- `src/canonical.ts`: JSON canônico determinístico (chaves ordenadas) + sha256.
+- `src/routes/records.ts`: CRUD de rascunho, eventos, vitais, assinatura
+  (exige CRM; congela snapshot na MESMA transação), adendos (só em assinado,
+  com CRM), templates, verificação de integridade no GET (recalcula hash).
+- RBAC: `record:read/write/sign` — secretaria SEM acesso ao prontuário.
+- Nota honesta no código: é registro de autoria com integridade verificável,
+  NÃO assinatura eletrônica qualificada ICP-Brasil (etapa futura).
+- Testes (9 novos, 39 total): cenário 14 comprovado por API (409) E por
+  bypass direto no banco (trigger), hash verificável, adendo não quebra
+  verificação, RBAC, isolamento, templates versionados, auditoria sem PHI.
+
 ## Próximo passo imediato
 
-Marco 3 — prontuário anestésico (`apps/api` + migrations):
-1. Migration 004: anesthesia_records (pré/intra/pós), anesthesia_events,
-   vitals, record_addenda, signatures (hash sha256 do snapshot canônico),
-   record_templates versionados.
-2. Endpoints: criar registro a partir de caso, rascunho (draft), eventos/vitais,
-   assinatura (congela snapshot + hash; registro assinado imutável), adendos.
-3. Testes: registro assinado não pode ser alterado (cenário 14), adendo
-   rastreável, hash verificável.
+Marco 4 — faturamento (`apps/api` + migration 005):
+1. procedure_codes/versions (importação versionada com origem+checksum, sem
+   valores inventados), insurers, insurer_price_tables (centavos), billing_entries
+   (a_faturar→enviado→pago|glosado com motivo), payment_events, memória de cálculo.
+2. Calculadora determinística (porte, urgência %, múltiplos 100/70/50, centavos).
+3. Testes de arredondamento/centavos e transições de estado.
 
 ## Decisões pendentes de humano (não bloqueiam os marcos atuais)
 

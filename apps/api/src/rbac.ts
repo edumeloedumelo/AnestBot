@@ -14,26 +14,31 @@ export type Permission =
   | 'case:manage_pending'  // criar/resolver pendências
   | 'case:review'          // revisão médica (exige CRM no perfil)
   | 'case:override'        // decisão por cima do parecer (exige CRM + motivo)
+  | 'record:read'          // prontuário anestésico (conteúdo clínico)
+  | 'record:write'         // criar/editar rascunho, eventos, vitais, templates
+  | 'record:sign'          // assinar (exige CRM) e adendar
   | 'audit:read';
 
 const MATRIX: Record<Role, ReadonlySet<Permission>> = {
   owner: new Set<Permission>([
     'team:manage', 'invite:create', 'pairing:manage', 'patient:read', 'patient:write',
-    'case:read', 'case:read_clinical', 'case:manage_pending', 'case:review', 'case:override', 'audit:read',
+    'case:read', 'case:read_clinical', 'case:manage_pending', 'case:review', 'case:override',
+    'record:read', 'record:write', 'record:sign', 'audit:read',
   ]),
   admin: new Set<Permission>([
     'team:manage', 'invite:create', 'pairing:manage', 'patient:read', 'patient:write',
-    'case:read', 'case:read_clinical', 'case:manage_pending', 'audit:read',
+    'case:read', 'case:read_clinical', 'case:manage_pending', 'record:read', 'audit:read',
   ]),
   anesthesiologist: new Set<Permission>([
     'patient:read', 'patient:write', 'case:read', 'case:read_clinical',
     'case:manage_pending', 'case:review', 'case:override',
+    'record:read', 'record:write', 'record:sign',
   ]),
   secretary: new Set<Permission>([
     'patient:read', 'patient:write', 'case:read', 'case:manage_pending',
   ]),
   viewer: new Set<Permission>([
-    'patient:read', 'case:read', 'case:read_clinical',
+    'patient:read', 'case:read', 'case:read_clinical', 'record:read',
   ]),
 };
 
