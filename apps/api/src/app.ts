@@ -8,6 +8,7 @@ import { patientsRouter } from './routes/patients.js';
 import { casesRouter } from './routes/cases.js';
 import { dashboardRouter } from './routes/dashboard.js';
 import { recordsRouter } from './routes/records.js';
+import { billingRouter } from './routes/billing.js';
 import { getPool } from './db.js';
 
 export function createApp(): Express {
@@ -59,6 +60,7 @@ export function createApp(): Express {
   app.use('/api', casesRouter());
   app.use('/api', dashboardRouter());
   app.use('/api', recordsRouter());
+  app.use('/api', billingRouter());
 
   app.use((_req, res) => { res.status(404).json({ error: 'rota não encontrada' }); });
 

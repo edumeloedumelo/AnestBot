@@ -13,7 +13,8 @@
 - [x] **Marco 1 — integração confiável (outbox/HMAC/idempotência)** ✅ (107 testes verdes)
 - [x] **Marco 2 — núcleo SaaS (API, tenants, RBAC, inbox)** ✅ (30 testes de integração verdes em Postgres real)
 - [x] **Marco 3 — prontuário anestésico** ✅ (39 testes de integração verdes)
-- [ ] **Marco 4 — faturamento** ← EM ANDAMENTO
+- [x] **Marco 4 — faturamento** ✅ (50 testes de integração verdes)
+- [ ] **Marco 5 — conhecimento e comercial** ← EM ANDAMENTO (parcial)
 - [ ] Marco 2 — núcleo SaaS (monorepo, PostgreSQL, auth, tenants, RBAC)
 - [ ] Marco 3 — prontuário anestésico
 - [ ] Marco 4 — faturamento
@@ -106,14 +107,37 @@
   bypass direto no banco (trigger), hash verificável, adendo não quebra
   verificação, RBAC, isolamento, templates versionados, auditoria sem PHI.
 
+## Marco 4 — entregue
+
+- Migration 005: procedure_imports (versão com checksum sha256 — NUNCA
+  embutimos valores TUSS/CBHPM; cada equipe importa a base autorizada),
+  procedure_code_versions (imutáveis), insurers, insurer_port_prices
+  (CENTAVOS bigint, vigência), billing_entries (memória de cálculo jsonb
+  imutável por trigger), billing_entry_items (referência à versão exata do
+  código), payment_events (append-only).
+- `src/billing/calc.ts`: calculadora PURA — múltiplos 100/70/50 ordenados por
+  valor (desempate por código = determinismo), acréscimos percentuais sobre o
+  subtotal, arredondamento half-up documentado, memória legível, inteiros
+  seguros apenas (lança em float).
+- `src/routes/billing.ts`: importação (checksum server-side), busca na versão
+  mais recente, convênios/preços, entrada calculada 100% server-side (cliente
+  nunca envia preço), eventos com máquina a_faturar→enviado→pago|glosado
+  (glosa exige motivo; glosado→enviado = recurso; pago terminal), relatório
+  por status/convênio.
+- RBAC: `billing:read/write` — secretaria OPERA faturamento; viewer não acessa.
+- Testes (11 novos, 50 total): meio-centavo half-up exato, reprodutibilidade
+  bit a bit, checksum estável entre reimportações, 422 p/ código fora da base
+  e porte sem preço, transições inválidas 409, glosa sem motivo 400, trilha
+  completa enviado→glosado→enviado→pago, imutabilidade por trigger, RBAC.
+
 ## Próximo passo imediato
 
-Marco 4 — faturamento (`apps/api` + migration 005):
-1. procedure_codes/versions (importação versionada com origem+checksum, sem
-   valores inventados), insurers, insurer_price_tables (centavos), billing_entries
-   (a_faturar→enviado→pago|glosado com motivo), payment_events, memória de cálculo.
-2. Calculadora determinística (porte, urgência %, múltiplos 100/70/50, centavos).
-3. Testes de arredondamento/centavos e transições de estado.
+Marco 5 — conhecimento e comercial (parcial, conforme contexto):
+1. Migration 006: topics/topic_versions (biblioteca clínica versionada).
+2. Rotas: protocolos Markdown versionados com busca; distinção
+   institucional × referência; aviso de apoio à decisão.
+3. Planos/trial já modelados em teams (plan/trial_ends_at) — limites de plano
+   no backend ficam para sessão futura com decisão de gateway.
 
 ## Decisões pendentes de humano (não bloqueiam os marcos atuais)
 

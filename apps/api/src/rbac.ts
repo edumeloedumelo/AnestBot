@@ -17,25 +17,30 @@ export type Permission =
   | 'record:read'          // prontuário anestésico (conteúdo clínico)
   | 'record:write'         // criar/editar rascunho, eventos, vitais, templates
   | 'record:sign'          // assinar (exige CRM) e adendar
+  | 'billing:read'         // produção, entradas, relatórios
+  | 'billing:write'        // importar terminologia, convênios, entradas, eventos
   | 'audit:read';
 
 const MATRIX: Record<Role, ReadonlySet<Permission>> = {
   owner: new Set<Permission>([
     'team:manage', 'invite:create', 'pairing:manage', 'patient:read', 'patient:write',
     'case:read', 'case:read_clinical', 'case:manage_pending', 'case:review', 'case:override',
-    'record:read', 'record:write', 'record:sign', 'audit:read',
+    'record:read', 'record:write', 'record:sign', 'billing:read', 'billing:write', 'audit:read',
   ]),
   admin: new Set<Permission>([
     'team:manage', 'invite:create', 'pairing:manage', 'patient:read', 'patient:write',
-    'case:read', 'case:read_clinical', 'case:manage_pending', 'record:read', 'audit:read',
+    'case:read', 'case:read_clinical', 'case:manage_pending', 'record:read',
+    'billing:read', 'billing:write', 'audit:read',
   ]),
   anesthesiologist: new Set<Permission>([
     'patient:read', 'patient:write', 'case:read', 'case:read_clinical',
     'case:manage_pending', 'case:review', 'case:override',
-    'record:read', 'record:write', 'record:sign',
+    'record:read', 'record:write', 'record:sign', 'billing:read',
   ]),
+  // Secretaria FAZ o faturamento (operacional, não clínico) — mas não vê prontuário.
   secretary: new Set<Permission>([
     'patient:read', 'patient:write', 'case:read', 'case:manage_pending',
+    'billing:read', 'billing:write',
   ]),
   viewer: new Set<Permission>([
     'patient:read', 'case:read', 'case:read_clinical', 'record:read',
