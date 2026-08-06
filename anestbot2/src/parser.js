@@ -36,6 +36,7 @@ const BOT_MARKERS = [
   '🤖 ANESTBOT', '🔪 CIRURGIAS CADASTRADAS', '📊 LIMITES / VALORES',
   '📊 Status do grupo', '📝 Instruções adicionais', '📝 Nenhuma instrução',
   'Estado do grupo apagado', 'arquivo(s) sem URL', 'arquivo(s) com problema',
+  '*TAMANHO DAS ÚLTIMAS', '📏 Medindo o tamanho',
   '✅ Instruções adicionais', '✅ Cirurgia "', '✅ Limite "', '🗑️ "',
   'Nenhuma cirurgia cadastrada', 'Nenhum limite cadastrado',
   // "reenviar os exames" sozinho seria genérico demais (uma orientação clínica

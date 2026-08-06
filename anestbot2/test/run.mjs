@@ -641,5 +641,20 @@ await ta('webhook: fechar caso NÃO corta o início do caso recém-fechado (cap 
   _s3.resetChat(cid);
 });
 
+// ── CASO 26: /tamanhos — estatística de tamanhos de mídia ────────────────────
+t('mediaSizeStats: média/mediana/faixas e contagem >20MB corretas', () => {
+  const MB = 1024 * 1024;
+  const st = _c4.mediaSizeStats([0.5 * MB, 2 * MB, 7 * MB, 15 * MB, 25 * MB, 3 * MB]);
+  assert.equal(st.count, 6);
+  assert.equal(st.max, 25 * MB);
+  assert.equal(st.over20, 1, 'só um arquivo acima de 20MB');
+  assert.equal(st.buckets.reduce((s, b) => s + b.count, 0), 6, 'faixas cobrem todos');
+  assert.equal(st.median, 5 * MB, 'mediana de [0.5,2,3,7,15,25] = (3+7)/2 = 5MB');
+});
+t('mediaSizeStats: lista vazia não explode', () => {
+  const st = _c4.mediaSizeStats([]);
+  assert.equal(st.count, 0); assert.equal(st.avg, 0); assert.equal(st.over20, 0);
+});
+
 console.log(`\n${fail === 0 ? '🎉' : '⚠️'} ${pass} passaram, ${fail} falharam`);
 process.exit(fail === 0 ? 0 : 1);

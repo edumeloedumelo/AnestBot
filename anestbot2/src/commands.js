@@ -84,6 +84,7 @@ export async function handleCommand(chatId, body, msg) {
     // de custo). Os destrutivos/de config continuam admin.
     case 'resetar': case 'reset': return doRetry(chatId, args, msg);
     case 'resetartudo': return requireAdmin(chatId, msg, () => { resetChat(chatId); return sendText(chatId, '⚠️ Estado do grupo apagado por completo. O próximo caso começa do zero.'); });
+    case 'tamanhos': case 'tamanho': return doMediaStats(chatId, args);
     case 'cirurgias': return listSurgeries(chatId);
     case 'limites': return listLimits(chatId);
     case 'prompt': return showPrompt(chatId);
@@ -204,6 +205,81 @@ async function doRetry(chatId, args, msg) {
   }
 }
 
+// /tamanhos [N] — mede o tamanho REAL das últimas N mídias do grupo, sem
+// baixar os arquivos (HEAD/Range só de tamanho). Serve para dimensionar
+// limites de canal (ex.: Telegram Bot API só baixa arquivos até 20 MB).
+const MB = 1024 * 1024;
+export function mediaSizeStats(sizes) {
+  const s = sizes.slice().sort((a, b) => a - b);
+  const n = s.length;
+  const sum = s.reduce((x, y) => x + y, 0);
+  const median = n ? (n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2) : 0;
+  const buckets = [
+    { label: '≤ 1 MB', max: 1 * MB, count: 0 },
+    { label: '1–5 MB', max: 5 * MB, count: 0 },
+    { label: '5–10 MB', max: 10 * MB, count: 0 },
+    { label: '10–20 MB', max: 20 * MB, count: 0 },
+    { label: '> 20 MB', max: Infinity, count: 0 },
+  ];
+  for (const v of s) buckets.find((b) => v <= b.max).count++;
+  return { count: n, avg: n ? sum / n : 0, median, max: n ? s[n - 1] : 0, buckets, over20: buckets[4].count };
+}
+
+async function headSize(url) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10_000);
+  try {
+    let res = await fetch(url, { method: 'HEAD', signal: controller.signal });
+    let len = parseInt(res.headers.get('content-length') || '', 10);
+    if (!res.ok || !Number.isFinite(len) || len <= 0) {
+      // Alguns hosts não devolvem content-length no HEAD: pede só o 1º byte
+      // e lê o total no content-range ("bytes 0-0/12345").
+      res = await fetch(url, { headers: { Range: 'bytes=0-0' }, signal: controller.signal });
+      const m = (res.headers.get('content-range') || '').match(/\/(\d+)\s*$/);
+      len = m ? parseInt(m[1], 10) : NaN;
+      res.body?.cancel()?.catch(() => {});
+    }
+    return Number.isFinite(len) && len > 0 ? len : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function doMediaStats(chatId, args) {
+  const n = Math.max(10, Math.min(200, parseInt(args, 10) || 100));
+  const urls = getMessages(chatId)
+    .filter((m) => (m.type === 'image' || m.type === 'document' || m.type === 'video') && m.mediaUrl)
+    .slice(-n)
+    .map((m) => m.mediaUrl);
+  if (!urls.length) return sendText(chatId, '⚠️ Nenhuma mídia com URL registrada neste grupo.');
+  await sendText(chatId, `📏 Medindo o tamanho de ${urls.length} mídia(s) — só consulta, nada é baixado...`);
+
+  const sizes = [];
+  let failed = 0;
+  let cursor = 0;
+  async function worker() {
+    for (;;) {
+      const i = cursor++;
+      if (i >= urls.length) return;
+      const s = await headSize(urls[i]);
+      if (s) sizes.push(s); else failed++;
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(4, urls.length) }, () => worker()));
+
+  if (!sizes.length) return sendText(chatId, `⚠️ Nenhuma das ${urls.length} URLs respondeu — os links da UltraMsg podem ter expirado. Tente após novos casos chegarem.`);
+  const st = mediaSizeStats(sizes);
+  const mb = (b) => (b / MB).toFixed(1).replace('.', ',') + ' MB';
+  const pct = (c) => Math.round((c / st.count) * 100) + '%';
+  let out = `📊 *TAMANHO DAS ÚLTIMAS ${st.count} MÍDIAS*${failed ? ` _(${failed} sem resposta)_` : ''}\n\n`;
+  out += `• Média: ${mb(st.avg)}\n• Mediana: ${mb(st.median)}\n• Maior: ${mb(st.max)}\n\n*Distribuição:*\n`;
+  for (const b of st.buckets) out += `• ${b.label}: ${b.count} (${pct(b.count)})\n`;
+  out += `\n📌 Acima de 20 MB (limite de download do bot do Telegram): *${st.over20}* (${pct(st.over20)})`;
+  return sendText(chatId, out);
+}
+
 function listSurgeries(chatId) {
   const { surgeries } = getConfig();
   if (!surgeries.length) return sendText(chatId, 'Nenhuma cirurgia cadastrada.');
@@ -264,6 +340,7 @@ ${PREFIX}cirurgias — lista cirurgias/exames exigidos
 ${PREFIX}limites — valores de referência
 ${PREFIX}prompt — instruções extras ativas
 ${PREFIX}resetar [N] — reabre SÓ o(s) último(s) caso(s) + verificação automática de erros + reanálise
+${PREFIX}tamanhos [N] — mede o tamanho das últimas N mídias do grupo (padrão 100)
 ${PREFIX}ajuda — esta mensagem
 
 ADMIN: ${PREFIX}addcirurgia · ${PREFIX}delcirurgia · ${PREFIX}addlimite · ${PREFIX}dellimite · ${PREFIX}setprompt · ${PREFIX}limparprompt · ${PREFIX}resetartudo
