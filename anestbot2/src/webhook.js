@@ -102,36 +102,22 @@ export function shouldNotifyLate(chatId, now = Date.now()) {
   return true;
 }
 
-export async function handleWebhook(payload) {
-  if (!payload) return;
-
-  const et = payload.event_type;
-  const isMsg = !et || et === 'message_received' || et === 'message_create' || et === 'message_created';
-  if (!isMsg) return;
-
-  const m = payload.data;
-  if (!m || !m.id) return;
-
-  const chatId = resolveChatId(m);
-  // Payload anômalo: fromMe sem "to" faz o chatId cair no próprio número do
-  // bot — não há como rotear certo; o log evita depuração às cegas.
-  if (m.fromMe && !m.to) console.error(`[webhook] fromMe sem campo "to" — chatId pode estar incorreto (${chatId})`);
-
-  const type = m.type || 'chat';
-  const body = getBody(m);
-
-  // Log de TODO evento — essencial para depurar webhook/comandos nos logs do Railway.
-  console.error(`[webhook] evento=${et || 'msg'} from=${m.from} to=${m.to || '-'} fromMe=${!!m.fromMe} type=${type} len=${body.length} chat=${chatId}`);
+// ── NÚCLEO AGNÓSTICO DE CANAL ────────────────────────────────────────────────
+// Recebe uma mensagem já NORMALIZADA (de qualquer adaptador: UltraMsg/WhatsApp,
+// Telegram, ...) e aplica: eco → comando → portão de captura → store/estado.
+// n = { id, chatId, type('chat'|'image'|'document'|'video'|outro), body,
+//       mediaUrl, timestamp(s), fromMe, author }
+export async function processIncoming(n) {
+  const { id, chatId, body, timestamp } = n;
+  const type = n.type || 'chat';
 
   if (!isAllowed(chatId)) { console.error(`[webhook] chat não permitido: ${chatId}`); return; }
-
-  const timestamp = Number(m.timestamp || m.time || Math.floor(Date.now() / 1000));
 
   // Eco do próprio bot (resposta enviada via API voltando pelo webhook): nunca
   // é conteúdo clínico E nunca é comando — checado ANTES do dispatch de comando,
   // para que uma resposta do bot que por acaso comece com "/" jamais seja
-  // reexecutada como comando (loop).
-  if (m.fromMe && type === 'chat' && isBotText(chatId, body)) {
+  // reexecutada como comando (loop). (Telegram não ecoa o bot: fromMe=false.)
+  if (n.fromMe && type === 'chat' && isBotText(chatId, body)) {
     console.error(`[webhook] eco do bot descartado chat=${chatId}`);
     return;
   }
@@ -139,15 +125,14 @@ export async function handleWebhook(payload) {
   // Comando (/analisar etc.): dispara, mas NÃO grava no store (mantém o histórico limpo).
   // Funciona em grupo e no privado, inclusive vindo do próprio número conectado.
   if (type === 'chat' && isCommand(body)) {
-    console.error(`[webhook] comando "${body.trim().split(/\s/)[0]}" chat=${chatId} fromMe=${!!m.fromMe}`);
-    await handleCommand(chatId, body, m);
+    console.error(`[webhook] comando "${body.trim().split(/\s/)[0]}" chat=${chatId} fromMe=${!!n.fromMe}`);
+    await handleCommand(chatId, body, { fromMe: n.fromMe, author: n.author, from: n.author || chatId });
     return;
   }
 
   // ── PORTÃO DE CAPTURA (regra absoluta) ────────────────────────────────────
-  // O webhook SÓ captura conteúdo entre xxxx e ❌❌❌❌. Conversa fora de um
-  // caso aberto NÃO é gravada — nem texto, nem mídia. Comandos (acima) sempre
-  // funcionam, em grupo ou no privado.
+  // Só captura conteúdo entre xxxx e ❌❌❌❌. Conversa fora de um caso aberto
+  // NÃO é gravada — nem texto, nem mídia. Comandos (acima) sempre funcionam.
 
   const isMedia = type === 'image' || type === 'document' || type === 'video';
   const wasOpen = isCaseOpen(chatId);
@@ -164,8 +149,8 @@ export async function handleWebhook(payload) {
 
   if (!hasContent && isMedia) {
     const fate = handleOrphanMedia(chatId, {
-      id: m.id, chatId, type, body, mediaUrl: m.media || '', caption: body,
-      timestamp, fromMe: !!m.fromMe,
+      id, chatId, type, body, mediaUrl: n.mediaUrl || '', caption: body,
+      timestamp, fromMe: !!n.fromMe,
     });
     if (fate === 'inside') {
       console.error(`[webhook] mídia com envio anterior ao ❌❌❌❌ — incluída no caso chat=${chatId}`);
@@ -188,17 +173,17 @@ export async function handleWebhook(payload) {
     // hora do push — virar a flag antes da mensagem de fechamento faria o cap
     // "fechado" cortar o início do caso recém-fechado (achado de auditoria).
     appendMessage(chatId, {
-      id: m.id,
+      id,
       chatId,
       type,
       body,                         // texto completo (do webhook, nunca truncado)
-      mediaUrl: isMedia ? (m.media || '') : '',
+      mediaUrl: isMedia ? (n.mediaUrl || '') : '',
       caption: isMedia ? body : '',
       timestamp,
-      fromMe: !!m.fromMe,
+      fromMe: !!n.fromMe,
     });
     if (isMedia) {
-      console.error(`[webhook] mídia gravada chat=${chatId} type=${type} url=${m.media ? 'sim' : 'AUSENTE'}`);
+      console.error(`[webhook] mídia gravada chat=${chatId} type=${type} url=${n.mediaUrl ? 'sim' : 'AUSENTE'}`);
     } else {
       console.error(`[webhook] texto gravado chat=${chatId} len=${body.length}`);
     }
@@ -216,4 +201,38 @@ export async function handleWebhook(payload) {
       if (adopted) console.error(`[webhook] ${adopted} mídia(s) pendente(s) adotada(s) chat=${chatId}`);
     }
   }
+}
+
+// ── ADAPTADOR UltraMsg/WhatsApp ──────────────────────────────────────────────
+export async function handleWebhook(payload) {
+  if (!payload) return;
+
+  const et = payload.event_type;
+  const isMsg = !et || et === 'message_received' || et === 'message_create' || et === 'message_created';
+  if (!isMsg) return;
+
+  const m = payload.data;
+  if (!m || !m.id) return;
+
+  const chatId = resolveChatId(m);
+  // Payload anômalo: fromMe sem "to" faz o chatId cair no próprio número do
+  // bot — não há como rotear certo; o log evita depuração às cegas.
+  if (m.fromMe && !m.to) console.error(`[webhook] fromMe sem campo "to" — chatId pode estar incorreto (${chatId})`);
+
+  const type = m.type || 'chat';
+  const body = getBody(m);
+
+  // Log de TODO evento — essencial para depurar webhook/comandos nos logs do Railway.
+  console.error(`[webhook] evento=${et || 'msg'} from=${m.from} to=${m.to || '-'} fromMe=${!!m.fromMe} type=${type} len=${body.length} chat=${chatId}`);
+
+  await processIncoming({
+    id: m.id,
+    chatId,
+    type,
+    body,
+    mediaUrl: m.media || '',
+    timestamp: Number(m.timestamp || m.time || Math.floor(Date.now() / 1000)),
+    fromMe: !!m.fromMe,
+    author: m.author || m.from,
+  });
 }

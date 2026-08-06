@@ -180,6 +180,12 @@ const DOWNLOAD_TIMEOUT_MS = 60_000; // servidor-a-servidor, mas PDFs de laudo po
 // ainda legível para laudos; se ficar ilegível, o modelo declara ilegível (falha
 // segura), nunca inventa.
 export async function downloadMediaBlock(url, { aggressive = false } = {}) {
+  // Mídia do Telegram é armazenada como "tg:<file_id>" — o link real expira em
+  // ~1h, então é resolvido AGORA via getFile (nunca no momento do recebimento).
+  if (typeof url === 'string' && url.startsWith('tg:')) {
+    const { telegramFileUrl } = await import('./telegram.js');
+    url = await telegramFileUrl(url.slice(3));
+  }
   // Timeout: sem isso, um host de mídia que nunca responde trava o /analisar
   // do grupo PARA SEMPRE (o lock em commands.js só libera quando o await volta).
   // O timer cobre a requisição INTEIRA, inclusive a leitura do corpo: um

@@ -656,5 +656,66 @@ t('mediaSizeStats: lista vazia não explode', () => {
   assert.equal(st.count, 0); assert.equal(st.avg, 0); assert.equal(st.over20, 0);
 });
 
+// ── CASO 27: canal Telegram — normalização e portão de captura ───────────────
+const _tg = await import('../src/telegram.js');
+t('telegram: texto de grupo normalizado (chatId tg:, author = user id)', () => {
+  const p = _tg.normalizeTelegramUpdate({ update_id: 1, message: {
+    message_id: 42, date: 1700000000, chat: { id: -100987, type: 'supergroup' },
+    from: { id: 5551234, is_bot: false }, text: 'xxxx\nPaciente: Lia' } });
+  assert.equal(p.norm.chatId, 'tg:-100987');
+  assert.equal(p.norm.type, 'chat');
+  assert.equal(p.norm.author, '5551234');
+  assert.equal(p.norm.fromMe, false);
+  assert.equal(p.norm.timestamp, 1700000000);
+});
+t('telegram: foto usa o file_id de MAIOR resolução, caption vira body', () => {
+  const p = _tg.normalizeTelegramUpdate({ message: { message_id: 2, date: 1, chat: { id: 9 },
+    from: { id: 1 }, caption: 'hemograma', photo: [{ file_id: 'small' }, { file_id: 'big' }] } });
+  assert.equal(p.norm.type, 'image');
+  assert.equal(p.norm.mediaUrl, 'tg:big');
+  assert.equal(p.norm.body, 'hemograma');
+});
+t('telegram: documento >20MB é sinalizado como oversize', () => {
+  const p = _tg.normalizeTelegramUpdate({ message: { message_id: 3, date: 1, chat: { id: 9 },
+    from: { id: 1 }, document: { file_id: 'd1', file_name: 'laudo.pdf', file_size: 25 * 1024 * 1024 } } });
+  assert.equal(p.norm.mediaUrl, 'tg:d1');
+  assert.equal(p.oversizeName, 'laudo.pdf');
+});
+t('telegram: comando /analisar@AnestBot vira /analisar', () => {
+  const p = _tg.normalizeTelegramUpdate({ message: { message_id: 4, date: 1, chat: { id: 9 },
+    from: { id: 1 }, text: '/analisar@MeuAnestBot' } });
+  assert.equal(p.norm.body, '/analisar');
+});
+t('telegram: voice/sticker reportado como não suportado (não vira norm)', () => {
+  const p = _tg.normalizeTelegramUpdate({ message: { message_id: 5, date: 1, chat: { id: 9 },
+    from: { id: 1 }, voice: { file_id: 'v' } } });
+  assert.equal(p.norm, null);
+  assert.equal(p.unsupported, 'voice');
+});
+
+await ta('telegram: fluxo completo xxxx→card→foto→❌❌❌❌ entra no store e vira caso', async () => {
+  const cid = 'tg:-100555';
+  _s3.resetChat(cid);
+  const send = (message) => _tg.handleTelegramWebhook({ message });
+  await send({ message_id: 10, date: 100, chat: { id: -100555 }, from: { id: 7 }, text: 'xxxx\nPaciente: Tati\nProcedimento: Rino' });
+  await send({ message_id: 11, date: 101, chat: { id: -100555 }, from: { id: 7 }, caption: 'hemograma', photo: [{ file_id: 'ph1' }] });
+  await send({ message_id: 12, date: 102, chat: { id: -100555 }, from: { id: 7 }, text: '❌❌❌❌' });
+  const cases = splitIntoCases(_s3.getMessages(cid), new Set());
+  assert.equal(cases.length, 1);
+  assert.equal(extractName(cases[0].texts), 'Tati');
+  assert.equal(cases[0].media.length, 1);
+  assert.equal(cases[0].media[0].url, 'tg:ph1');
+  assert.equal(_s3.isCaseOpen(cid), false);
+  _s3.resetChat(cid);
+});
+
+await ta('telegram: conversa fora do portão NÃO é gravada (regra absoluta vale no tg)', async () => {
+  const cid = 'tg:-100556';
+  _s3.resetChat(cid);
+  await _tg.handleTelegramWebhook({ message: { message_id: 20, date: 100, chat: { id: -100556 }, from: { id: 7 }, text: 'bom dia pessoal' } });
+  assert.equal(_s3.getMessages(cid).length, 0);
+  _s3.resetChat(cid);
+});
+
 console.log(`\n${fail === 0 ? '🎉' : '⚠️'} ${pass} passaram, ${fail} falharam`);
 process.exit(fail === 0 ? 0 : 1);

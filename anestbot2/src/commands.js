@@ -229,6 +229,10 @@ async function headSize(url) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10_000);
   try {
+    if (url.startsWith('tg:')) {
+      const { telegramFileUrl } = await import('./telegram.js');
+      url = await telegramFileUrl(url.slice(3));
+    }
     let res = await fetch(url, { method: 'HEAD', signal: controller.signal });
     let len = parseInt(res.headers.get('content-length') || '', 10);
     if (!res.ok || !Number.isFinite(len) || len <= 0) {

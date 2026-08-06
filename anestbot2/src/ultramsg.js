@@ -1,5 +1,7 @@
-// Envio de mensagens de texto pela API UltraMsg (com quebra em pedaços seguros).
+// Envio de mensagens de texto — roteia por canal: chatId "tg:..." vai para o
+// Telegram; o resto vai pela API UltraMsg (WhatsApp), com quebra em pedaços.
 import { recordBotText } from './store.js';
+import { sendTelegramText, isTelegramChat } from './telegram.js';
 
 const INSTANCE = process.env.ULTRAMSG_INSTANCE_ID;
 const TOKEN = process.env.ULTRAMSG_TOKEN;
@@ -30,6 +32,8 @@ export async function sendText(to, body) {
   // Nunca silencioso: um laudo vazio (ex.: format.js removeu tudo ou a API
   // devolveu '') deixaria o grupo sem resposta e sem pista nos logs.
   if (!body) { console.error(`[ultramsg] corpo VAZIO — nada enviado para ${to}`); return; }
+  // Canal Telegram: sem eco (não precisa recordBotText) e limite próprio.
+  if (isTelegramChat(to)) return sendTelegramText(String(to).slice(3), body);
   for (const chunk of splitMessage(body)) {
     recordBotText(to, chunk); // p/ reconhecer o eco no webhook e não poluir casos
     // Timeout: sem isso, a API da UltraMsg travando prende para sempre o

@@ -86,6 +86,8 @@ Repo: `edumeloedumelo/AnestBot` — o bot vive na subpasta **`anestbot2/`**.
     admin (`fromMe`).
   - (opcional) `ALLOWED_CHATS` = ids de grupos permitidos (vazio = todos)
   - (opcional) `ANTHROPIC_MODEL` (padrão `claude-sonnet-4-6`)
+  - (opcional) `TELEGRAM_BOT_TOKEN` = token do @BotFather — ativa o canal Telegram
+  - (opcional) `TELEGRAM_WEBHOOK_SECRET` = segredo do webhook Telegram (recomendado)
 - O `railway.json` já define builder Dockerfile, healthcheck `/health` e
   `watchPatterns: ["**"]` (todo push dispara deploy).
 - ⚠️ **Rode com 1 réplica só**: o store é um arquivo JSON no volume, sem lock
@@ -102,6 +104,28 @@ tamanho completo do card. No `/analisar`, `[analisar] ... cirurgia="..."`.
 
 Monitoramento recomendado: UptimeRobot em `https://SEU-APP.up.railway.app/health`
 a cada 5 minutos.
+
+## Canal Telegram (paralelo ao WhatsApp)
+
+O núcleo é agnóstico de canal — o Telegram funciona com o MESMO protocolo
+(`xxxx` … `❌❌❌❌` … `/analisar`) e as mesmas regras. Para ativar:
+
+1. No Telegram, fale com o **@BotFather** → `/newbot` → guarde o token.
+2. Ainda no BotFather: `/setprivacy` → **Disable** (o bot precisa ler todas as
+   mensagens do grupo, não só comandos).
+3. No Railway → Variables: `TELEGRAM_BOT_TOKEN` (e `TELEGRAM_WEBHOOK_SECRET`
+   com qualquer string longa aleatória). Salvar redeploya.
+4. Registre o webhook abrindo no navegador (uma linha só):
+   `https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://SEU-APP.up.railway.app/telegram-webhook&secret_token=<SECRET>`
+   → deve responder `{"ok":true}`.
+5. Crie o grupo, adicione o bot, envie um caso e rode `/analisar`.
+
+Particularidades do canal: sem eco do bot (a API não entrega as próprias
+mensagens); mídia é guardada como `file_id` e o link é resolvido na hora do
+download (links do Telegram expiram em ~1h); arquivos **acima de 20 MB** não
+podem ser baixados pelo Bot API — o bot avisa na hora e pede reenvio
+comprimido. Admin: adicione o **ID numérico** do usuário do Telegram (veja o
+seu com o @userinfobot) em `ADMIN_NUMBERS`.
 
 ## Comandos
 
