@@ -21,35 +21,43 @@ export const TG_DOWNLOAD_LIMIT = 20 * 1024 * 1024; // limite do getFile (Bot API
 export const isTelegramChat = (chatId) => String(chatId).startsWith('tg:');
 
 // ── envio ────────────────────────────────────────────────────────────────────
+// Uma tentativa = um timeout próprio; o corpo da resposta é SEMPRE consumido
+// (res.json), inclusive no sucesso — senão cada envio deixa uma conexão
+// pendente (achado de auditoria).
+async function tgSendOnce(chatId, text, useMarkdown) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), SEND_TIMEOUT_MS);
+  try {
+    const payload = { chat_id: chatId, text };
+    if (useMarkdown) payload.parse_mode = 'Markdown';
+    const res = await fetch(`${API()}/sendMessage`, {
+      method: 'POST', signal: controller.signal,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json().catch(() => ({}));
+    return { ok: res.ok, status: res.status, data };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function sendTelegramText(chatId, body) {
   if (!body) { console.error(`[telegram] corpo VAZIO — nada enviado para ${chatId}`); return; }
   if (!TG_TOKEN) { console.error('[telegram] TELEGRAM_BOT_TOKEN não configurado — envio ignorado'); return; }
   for (const chunk of splitMessage(body)) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), SEND_TIMEOUT_MS);
     try {
       // 1ª tentativa com Markdown (deixa os *negritos* do laudo bonitos);
-      // se o texto tiver asterisco desbalanceado o Telegram devolve 400 —
-      // reenvia como texto puro (conteúdo NUNCA pode ser perdido por formatação).
-      let res = await fetch(`${API()}/sendMessage`, {
-        method: 'POST', signal: controller.signal,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: chatId, text: chunk, parse_mode: 'Markdown' }),
-      });
-      if (!res.ok) {
-        res.body?.cancel()?.catch(() => {});
-        res = await fetch(`${API()}/sendMessage`, {
-          method: 'POST', signal: controller.signal,
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ chat_id: chatId, text: chunk }),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) console.error('[telegram] send error', res.status, JSON.stringify(data).slice(0, 200));
+      // asterisco desbalanceado → 400 → reenvia como texto puro com timeout
+      // NOVO (conteúdo NUNCA pode ser perdido por formatação nem por orçamento
+      // de tempo herdado da 1ª tentativa).
+      let r = await tgSendOnce(chatId, chunk, true);
+      if (!r.ok) {
+        r = await tgSendOnce(chatId, chunk, false);
+        if (!r.ok) console.error('[telegram] send error', r.status, JSON.stringify(r.data).slice(0, 200));
       }
     } catch (e) {
       console.error('[telegram] falha no envio:', e.name === 'AbortError' ? `timeout (${SEND_TIMEOUT_MS / 1000}s)` : e.message);
-    } finally {
-      clearTimeout(timer);
     }
   }
 }
